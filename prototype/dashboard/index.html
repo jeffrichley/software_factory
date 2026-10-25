@@ -443,6 +443,103 @@ a{color:inherit}
 .ftip .ft-tp,.ftip .ft-ts{color:var(--text-2)}
 @media (max-width:1280px){ .flow{--flow-label:112px;padding:var(--s2) var(--s4)} }
 
+/* ---------- Variant E — Full v1 ---------- */
+.top-e{gap:var(--s4)}
+.top-e .counts{margin-left:auto}
+.mpills{display:flex;gap:var(--s2);min-width:0}
+.mpill{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}
+.mpill .mdot{display:block;flex:none;width:8px;height:8px;border-radius:50%;background:var(--pass)}
+.mpill .mmeta{font:500 var(--fs-xs)/1 var(--font-mono);color:var(--text-2)}
+.mpill.silent{border-style:dashed;color:var(--text-2)}
+.mpill.silent .mdot{background:transparent;border:1.5px solid var(--stale)}
+.mpill.sel{border-color:var(--text);background:var(--surface-3)}
+@media (hover:hover){ .mpill:hover{border-color:#8a94a6;background:var(--surface-2)} }
+.btn-on{border-color:var(--text);background:var(--surface-3)}
+.ve{display:grid;grid-template-rows:auto minmax(0,1fr);height:calc(100vh - var(--top-h))}
+.ve-body{display:grid;grid-template-columns:360px minmax(0,1fr);min-height:0}
+.ve-body > section{overflow-y:auto;padding:var(--s5) var(--s5) var(--switcher-room);min-height:0}
+.frow.frow-e{grid-template-columns:var(--flow-label) minmax(0,.7fr) repeat(8,minmax(0,1fr))}
+.fhead > div.fcol-unk{white-space:normal;line-height:1.1;border-bottom-style:dotted}
+.fcell.fcol-unk{background:transparent;border:1px dotted var(--line-2)}
+.fchip.ph-unknown{border-style:dotted}
+.linkbtn{background:none;border:0;padding:0;color:var(--text);cursor:pointer;font:inherit;text-align:left;text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:3px}
+@media (hover:hover){ .linkbtn:hover{text-decoration-color:var(--working);color:#fff} }
+.stale-note,.unknown-phase{display:flex;align-items:center;gap:var(--s2);margin:0;padding:var(--s2) var(--s3);border:1px dashed var(--line-2);border-radius:var(--r);background:var(--stale-bg);color:var(--text-2);font-size:var(--fs-sm)}
+.stale-note b,.unknown-phase b{color:var(--text)}
+.map-h{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s3)}
+.map-h h3{margin:2px 0 0;font:600 var(--fs-lg)/1.2 var(--font-display)}
+.mapgrid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--s4);align-items:start}
+.map-side{display:grid;gap:var(--s3)}
+.map-side .where{grid-template-columns:1fr}
+.map-side .needs-q{font-size:var(--fs-md)}
+.gwrap{overflow-x:auto}
+.dag .node.muted .nb{fill:var(--surface)}
+.dag .node.muted text{opacity:.7}
+.dag .node.needs .nb{stroke:var(--needs);stroke-width:2.5}
+.dag .gt{font:600 13px var(--font-body);fill:var(--text)}
+.dag .gs{font:600 12px var(--font-mono);fill:var(--text-2)}
+.dag .gs.st-claimed{fill:var(--working)}
+.dag .gs2{font:400 12px var(--font-body);fill:var(--text-2)}
+.dag .gs2.blk{fill:#ff9a9a} .dag .gs2.fr{fill:var(--working)}
+.dag .gb{fill:none;stroke:var(--line-2)}
+.dag .gb.mode{stroke-dasharray:2 2;stroke:#6b7385}
+.dag .gbt{font:600 10px var(--font-mono);letter-spacing:.04em;fill:var(--text-2)}
+.dag .gb.needs{fill:var(--needs);stroke:var(--needs)} .dag .gbt.needs{fill:var(--needs-ink)}
+.dag .gb.blk{stroke:var(--fail)} .dag .gbt.blk{fill:#ff9a9a}
+.dag .gb.fr{stroke:var(--working);stroke-dasharray:3 2} .dag .gbt.fr{fill:var(--working)}
+.dag .gb.ns{fill:var(--surface-3)}
+.dag .fog{pointer-events:none}
+.dag .fog ellipse{fill:#9aa3b2;opacity:.14}
+.dag .fog-t{font:italic 500 12px var(--font-body);fill:var(--text-3)}
+.dag .fog-h{font:600 10px var(--font-mono);letter-spacing:.08em;fill:var(--text-3)}
+.urls a{overflow-wrap:anywhere;font-size:var(--fs-xs)}
+.tl{list-style:none;margin:0;padding:0;display:grid}
+.tl li{display:grid;grid-template-columns:56px 16px minmax(0,1fr);gap:var(--s2);font-size:var(--fs-sm)}
+.tl time{font-family:var(--font-mono);color:var(--text-3);padding-top:2px}
+.tl .tl-m{position:relative;display:block}
+.tl .tl-m::before{content:"";position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--line-2)}
+.tl .tl-m::after{content:"";position:absolute;left:3px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--surface-3);border:2px solid var(--text-3);box-sizing:border-box}
+.tl li:last-child .tl-m::after{background:var(--working);border-color:var(--working)}
+.tl li > span:last-child{padding:2px 0 var(--s3);color:var(--text-2)}
+.tl li:last-child > span:last-child{color:var(--text)}
+.hlist{display:grid;gap:var(--s2)}
+.hrow{display:grid;grid-template-columns:150px minmax(0,1fr) 96px 96px;gap:var(--s3);align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:var(--s3) var(--s4);cursor:pointer;color:var(--text)}
+.hrow > span{display:block}
+@media (hover:hover){ .hrow:hover{border-color:#7a8496;background:var(--surface-2)} }
+.hname{display:grid;gap:2px}
+.ht{font-weight:600}
+.hm{font:500 var(--fs-xs)/1.4 var(--font-mono);color:var(--text-3)}
+.hdur,.hago{font:500 var(--fs-sm)/1 var(--font-mono);color:var(--text-2)}
+.hout{display:inline-flex !important;align-items:center;gap:6px;font-weight:600;font-size:var(--fs-sm);white-space:nowrap}
+.out-merged{color:var(--done)} .out-closed{color:var(--text-2)} .out-abandoned{color:#ff9a9a}
+.rp-ctl{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s4);align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:var(--s4)}
+.rp-track{display:grid;gap:4px;min-width:0}
+.rp-track input[type=range]{width:100%;margin:0;accent-color:var(--working);cursor:pointer}
+.scrub{position:relative;height:24px;margin:0 8px}
+.scrub::before{content:"";position:absolute;left:0;right:0;top:11px;height:2px;background:var(--line-2)}
+.mk{position:absolute;top:5px;width:14px;height:14px;margin-left:-7px;padding:0;border-radius:50%;border:2px solid var(--surface);cursor:pointer}
+.mk:focus-visible{outline:2px solid var(--working);outline-offset:1px}
+.mk-phase{background:var(--text);border-radius:2px} .mk-pass{background:var(--pass)} .mk-fail{background:var(--fail)}
+.mk-commit{background:var(--working)} .mk-needs{background:var(--needs)} .mk-review{background:var(--text-3)} .mk-end{background:var(--done);border-radius:2px}
+.mk.mk-needs{top:2px;height:20px;border-radius:3px}
+.mk-i{display:inline-block;flex:none;width:12px;height:12px;border-radius:50%}
+.mk-i.mk-phase,.mk-i.mk-end{border-radius:2px}
+.rp-time{font:600 var(--fs-md)/1 var(--font-mono);white-space:nowrap}
+.rp-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--s3);margin-bottom:var(--s3)}
+.rp-ev{display:flex;gap:var(--s3);align-items:flex-start}
+.rp-ev .mk-i{margin-top:4px}
+.rp-ev p{margin:4px 0 0;font-size:var(--fs-lg);line-height:1.35}
+.rp-list{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.rp-li{display:grid;grid-template-columns:72px 14px minmax(0,1fr);gap:var(--s2);align-items:center;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:4px;padding:4px 8px;cursor:pointer;color:var(--text-3);font-size:var(--fs-sm)}
+.rp-li > *{display:block}
+.rp-li time{font-family:var(--font-mono)}
+.rp-li.past{color:var(--text-2)}
+.rp-li.cur{color:var(--text);background:var(--surface-3);border-color:var(--line-2)}
+@media (hover:hover){ .rp-li:hover{border-color:var(--line-2);color:var(--text)} }
+@media (max-width:1440px){ .top-e .clock,.top-e .count-done{display:none} }
+@media (max-width:1366px){ .mapgrid{grid-template-columns:minmax(0,1fr)} .rp-grid{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:1280px){ .ve-body{grid-template-columns:320px minmax(0,1fr)} .hrow{grid-template-columns:130px minmax(0,1fr) 80px 80px} }
+
 /* ---------- Toast ---------- */
 .toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:60;background:var(--surface-3);color:var(--text);border:1px solid var(--line-2);border-radius:var(--r);padding:10px 16px;font-size:var(--fs-sm);box-shadow:0 12px 32px rgba(0,0,0,.5);max-width:min(640px,90vw)}
 
@@ -507,7 +604,7 @@ a{color:inherit}
 const T0 = Date.now();
 const ago = m => T0 - m * 60000;
 const PHASES = ['Exploring','Red','Green','Refactor','Reviewing','Committed','Merged'];
-const VARIANTS = [{ id:'A', name:'Triage list' }, { id:'B', name:'Repo swimlanes' }, { id:'C', name:'Mission control' }, { id:'D', name:'Mission control + flow strip' }];
+const VARIANTS = [{ id:'A', name:'Triage list' }, { id:'B', name:'Repo swimlanes' }, { id:'C', name:'Mission control' }, { id:'D', name:'Mission control + flow strip' }, { id:'E', name:'Full v1' }];
 
 const DATA = {
   repos: ['software_factory','daku_press','worlds'],
@@ -644,7 +741,7 @@ const DATA = {
     },
   ],
 };
-const byId = id => DATA.sessions.find(s => s.id === id);
+const byId = id => DATA.sessions.find(s => s.id === id) || (typeof EXTRA_E !== 'undefined' ? EXTRA_E.find(s => s.id === id) : undefined);
 
 /* ================= Helpers ================= */
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -925,7 +1022,7 @@ function sessionDetail(s, stepId, ctx){
 /* ================= UI state ================= */
 const params = new URLSearchParams(location.search);
 const ui = {
-  variant: VARIANTS.some(v => v.id === (params.get('variant') || '').toUpperCase()) ? params.get('variant').toUpperCase() : 'A',
+  variant: VARIANTS.some(v => v.id === (params.get('variant') || '').toUpperCase()) ? params.get('variant').toUpperCase() : 'E',
   sel: null,          // { sid, step }
   drawer: false,      // A
   modal: false,       // B
@@ -1151,20 +1248,578 @@ document.addEventListener('mouseout', e => { const c = e.target.closest('.fchip'
 document.addEventListener('focusin', e => { const c = e.target.closest && e.target.closest('.fchip'); if (c) showTip(c); });
 document.addEventListener('focusout', e => { if (e.target.closest && e.target.closest('.fchip')) hideTip(); });
 
+/* ================= Variant E — Full v1 =================
+   E-only data lives here so variants A–D keep showing the original seven sessions. */
+Object.assign(ICONS, {
+  search:'<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+  play:'<path d="M7 5l12 7-12 7z"/>',
+  pause:'<path d="M8 5v14"/><path d="M16 5v14"/>',
+  history:'<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>',
+  file:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+});
+const MACHINES_E = [ { name:'desk-wsl' }, { name:'desk-win' }, { name:'mac-mini', silent:true, lastSeen:ago(12) } ];
+const EXTRA_E = [
+  {
+    id:'rs-fields', kind:'research', machine:'desk-wsl', repo:'software_factory',
+    workItem:{ type:'Decision ticket', name:"Prove the dashboard's shaky fields can be sourced" }, mapNode:'RS',
+    state:'Working', seen:true, since:ago(17), lastEvent:ago(0.5),
+    sessionName:'sf-research-fields', terminal:'tmux · research:0',
+    now:'reading the GitHub check runs docs',
+    research:{
+      question:'Can the shaky dashboard fields — test pass/fail pulse, files touched, review findings, CI checks and time in Phase — be sourced from Claude Code hooks, git and the GitHub API, without modifying any skill?',
+      searches:['claude code hooks PostToolUse payload fields','claude code hooks Stop SubagentStop event','detect test runner exit code from Bash tool hook','git diff --numstat per worktree','github check runs api for a branch'],
+      sources:['https://docs.anthropic.com/en/docs/claude-code/hooks','https://docs.anthropic.com/en/docs/claude-code/hooks-guide','https://git-scm.com/docs/git-diff','https://docs.github.com/en/rest/checks/runs'],
+      findings:null,
+    },
+    actions:[{at:ago(17),t:'Claimed Decision ticket'},{at:ago(12),t:'Searched: claude code hooks PostToolUse payload fields'},{at:ago(4),t:'Fetched git-diff docs'}],
+  },
+  {
+    id:'ts-chunks', kind:'to-spec', machine:'desk-win', repo:'worlds',
+    workItem:{ type:'Spec', name:'Chunk streaming v2' }, fromMap:'Worlds: chart the way to endless terrain',
+    state:'Working', seen:true, since:ago(22), lastEvent:ago(0.4),
+    sessionName:'worlds-to-spec', terminal:'Windows Terminal · tab 4',
+    now:'writing section "Seam handling"',
+    outline:[['Problem',1],['Goals and non-goals',1],['Chunk lifecycle',1],['Seam handling',0],['LOD transitions',0],['Testing strategy',0],['Ticket breakdown',0]],
+    published:null,
+    actions:[{at:ago(22),t:'Read Map "Worlds: chart the way to endless terrain"'},{at:ago(15),t:'Wrote section "Problem"'},{at:ago(10),t:'Wrote section "Goals and non-goals"'},{at:ago(4),t:'Wrote section "Chunk lifecycle"'}],
+  },
+  {
+    id:'tj-invoice', kind:'Ticket Job', machine:'desk-wsl', repo:'daku_press',
+    workItem:{ type:'Ticket', name:'Invoice PDF footer' },
+    state:'Working', seen:true, since:ago(14), lastEvent:ago(1),
+    sessionName:'daku-invoice-footer', terminal:'tmux · factory:4',
+    now:'editing src/invoice/footer.ts',
+    step:{ id:'t', ticket:'Invoice PDF footer', phase:null, phaseSince:null, deps:[],
+      branch:'ticket/invoice-pdf-footer', worktree:null, checklist:null, tests:null,
+      files:[{p:'src/invoice/footer.ts',a:27,d:3},{p:'src/invoice/render.ts',a:4,d:1}],
+      commits:[], findings:null, pr:null, events:[] },
+  },
+  {
+    id:'adhoc-mac', kind:'ad hoc', machine:'mac-mini', repo:'worlds', workItem:null,
+    state:'Stale', staleReason:'Machine silent', seen:true, since:ago(12), lastEvent:ago(12),
+    sessionName:'worlds-mac-adhoc', terminal:'Terminal.app · window 1',
+    now:'running cargo test',
+    actions:[{at:ago(31),t:'Prompt: "does the tile seam reproduce on macOS?"'},{at:ago(29),t:'Read src/render/chunk.ts'},{at:ago(26),t:'grep "half_texel" src/'},{at:ago(23),t:'Read src/render/tileAtlas.ts'},{at:ago(19),t:'Edited test/seam_macos.rs'},{at:ago(16),t:'Ran cargo build'},{at:ago(13),t:'Build OK — 0 warnings'},{at:ago(12),t:'Ran cargo test'}],
+  },
+];
+const allE = () => DATA.sessions.concat(EXTRA_E);
+
+const MAP_E = {
+  name:'Software Factory: chart the way to a spec',
+  destination:'A written Spec for Factory v1 — server, dashboard and plugin — ready for to-tickets.',
+  fog:['Automatic pickup','Desktop & phone notifications','Enforcement','Dashboard over Tailscale'],
+  nodes:[
+    { id:'R1', name:'Survey zazencodes factories v1 and v2', type:'research', state:'closed', deps:[], gist:"Copy v2's queue + worker split, not v1's loop" },
+    { id:'R2', name:'Study how the superpowers plugin is built', type:'research', state:'closed', deps:[], gist:'Skills are markdown + hooks — wrap outside' },
+    { id:'R3', name:'Survey autonomous coding agents', type:'research', state:'closed', deps:[], gist:'Agents stall silently — make silence a state' },
+    { id:'R4', name:"Map Claude Code's native observation and orchestration features", type:'research', state:'closed', deps:[], gist:'Hooks give per-event signals; no push API' },
+    { id:'R5', name:'Survey multi-session managers and dashboards', type:'research', state:'closed', deps:[], gist:'None show a Phase per Ticket' },
+    { id:'G1', name:'Choose where the dashboard gets its information', type:'grilling', state:'closed', deps:['R4','R5'], gist:'Hook events → local server; git for diffs', thisSession:true },
+    { id:'G2', name:'Define what the human sees for each kind of work', type:'grilling', state:'closed', deps:['R3','R5'], gist:'State, headline, Phase, where to go', thisSession:true },
+    { id:'W', name:'Choose how the Factory wraps skills without modifying them', type:'grilling', state:'open', deps:['R1','R2'] },
+    { id:'N', name:'Choose how Needs you and Done are detected', type:'grilling', state:'open', deps:['R4'] },
+    { id:'P', name:'Prototype the dashboard', type:'prototype', state:'claimed', claimedBy:'wf-dash', needs:true, deps:['G1','G2'], createdThisSession:true },
+    { id:'RS', name:"Prove the dashboard's shaky fields can be sourced", type:'research', state:'claimed', claimedBy:'rs-fields', deps:['G1'], createdThisSession:true },
+    { id:'L', name:'Define the lifecycle of Ticket Jobs and Spec Jobs', type:'grilling', state:'open', deps:['W'], blockedBy:'W' },
+    { id:'PL', name:'Choose the Factory plugin layout and slash commands', type:'grilling', state:'open', deps:['W'] },
+    { id:'CR', name:'Choose the cross-platform runtime', type:'grilling', state:'open', deps:['N'] },
+    { id:'I', name:'Define what installing the Factory into a repo does', type:'grilling', state:'open', deps:['PL'] },
+    { id:'T', name:'Prove every Machine can reach the Factory server on the local network', type:'task', mode:'HITL', state:'open', deps:['CR'], blockedBy:'CR' },
+  ],
+};
+const TICKETS_E = [
+  { id:'E1', name:'Email template schema', deps:[] },
+  { id:'E2', name:'Order confirmation email', deps:['E1'] },
+  { id:'E3', name:'Shipping update email', deps:['E1'] },
+  { id:'E4', name:'Unsubscribe handling', deps:['E1'] },
+  { id:'E5', name:'Bounce webhook', deps:['E4'] },
+  { id:'E6', name:'Email preview CLI', deps:['E2','E3'] },
+];
+
+/* History (sample) */
+const OUT = { merged:{ label:'PR merged', icon:'check' }, closed:{ label:'PR closed', icon:'x' }, abandoned:{ label:'Abandoned', icon:'flag' } };
+const H_BASE = [
+  [0,'phase','Exploring','Picked up — reading the code'],[.07,'phase','Red','Failing test written'],[.1,'test','f','Tests failed (1)'],
+  [.18,'test','f','Tests failed (1)'],[.27,'phase','Green','Tests pass'],[.29,'test','p','Tests passed'],[.31,'commit','','feat: first pass'],
+  [.36,'needs','','Needs you — permission prompt: Bash npm install'],[.41,'phase','Refactor','Refactor'],[.5,'commit','','refactor: extract helper'],
+  [.58,'phase','Reviewing','Self-review'],
+];
+const H_TAIL = {
+  merged:[[.63,'review','','2 review findings'],[.7,'commit','','fix: review findings'],[.76,'phase','Committed','Pushed — PR opened'],[.88,'test','p','CI checks passed'],[1,'phase','Merged','PR merged']],
+  closed:[[.66,'review','','5 review findings — approach questioned'],[.74,'needs','','Needs you — escalation: reviewer rejects approach'],[.82,'phase','Committed','Pushed — PR opened'],[1,'end','','PR closed without merge']],
+};
+const H_ABANDONED = [[0,'phase','Exploring','Picked up — reading the code'],[.1,'phase','Red','Failing test written'],[.15,'test','f','Tests failed (2)'],[.25,'test','f','Tests failed (2)'],
+  [.35,'test','f','Tests failed (2)'],[.45,'test','f','Tests failed (2)'],[.5,'needs','','Needs you — escalation: tests keep failing (4×)'],[.62,'commit','','wip: alternative approach'],
+  [.7,'test','f','Tests failed (3)'],[.85,'test','f','Tests failed (3)'],[1,'end','','Abandoned by human — branch kept']];
+const H_LABEL = { phase:'Phase', test:'Tests', commit:'Commit', needs:'Needs you', review:'Review', end:'End' };
+const HIST_E = [
+  { id:'h1', kind:'Ticket Job', name:'Session registry over WebSocket', repo:'software_factory', machine:'desk-wsl', outcome:'merged', pr:37, dur:72, ended:ago(190) },
+  { id:'h2', kind:'Spec Job', name:'Product catalog import', repo:'daku_press', machine:'desk-wsl', outcome:'merged', pr:121, dur:228, ended:ago(26 * 60) },
+  { id:'h3', kind:'Ticket Job', name:'Biome blend at chunk edges', repo:'worlds', machine:'desk-win', outcome:'closed', pr:88, dur:54, ended:ago(5 * 60) },
+  { id:'h4', kind:'Ticket Job', name:'Factory server health endpoint', repo:'software_factory', machine:'desk-win', outcome:'merged', pr:35, dur:26, ended:ago(8 * 60) },
+  { id:'h5', kind:'Ticket Job', name:'Noise seed per world', repo:'worlds', machine:'desk-wsl', outcome:'abandoned', pr:null, dur:91, ended:ago(30 * 60) },
+  { id:'h6', kind:'Ticket Job', name:'Tax line rounding', repo:'daku_press', machine:'desk-wsl', outcome:'merged', pr:119, dur:41, ended:ago(47 * 60) },
+].map(h => {
+  const tpl = h.outcome === 'abandoned' ? H_ABANDONED : H_BASE.concat(H_TAIL[h.outcome]);
+  h.events = tpl.map(([f, type, x, text]) => {
+    const cls = type === 'test' ? (x === 'p' ? 'pass' : 'fail') : type;
+    return { t: Math.round(f * h.dur * 60), type, cls, phase: type === 'phase' ? x : null, text, label: type === 'phase' ? `→ ${x} — ${text}` : text };
+  });
+  return h;
+});
+const histById = id => HIST_E.find(h => h.id === id);
+
+/* helpers */
+const trunc = (t, n) => t.length > n ? t.slice(0, n - 1) + '…' : t;
+function wrapTxt(t, max, lines){
+  const out = [''];
+  for (const w of t.split(' ')) {
+    const cur = out[out.length - 1], next = (cur + ' ' + w).trim();
+    if (next.length <= max) { out[out.length - 1] = next; continue; }
+    if (out.length === lines) { out[lines - 1] = trunc(cur + ' ' + w, max); return out; }
+    out.push(w);
+  }
+  return out;
+}
+const fmtSec = s => s >= 3600 ? `${Math.floor(s / 3600)}h ${String(Math.floor(s % 3600 / 60)).padStart(2,'0')}m` : `${Math.floor(s / 60)}m ${String(Math.floor(s % 60)).padStart(2,'0')}s`;
+const fmtAgo = ts => { const m = Math.floor((Date.now() - ts) / 60000); return m >= 1440 ? `${Math.floor(m / 1440)}d ago` : `${fmtDur(Date.now() - ts)} ago`; };
+const machineOf = name => MACHINES_E.find(m => m.name === name);
+const staleWhy = s => s.staleReason || `no events for ${fmtDur(Date.now() - s.lastEvent)}`;
+const dnode = id => MAP_E.nodes.find(n => n.id === id);
+const sessName = id => { const s = byId(id); return s ? s.sessionName + (id === 'wf-dash' ? ' (this session)' : '') : '—'; };
+const modeOf = n => n.type === 'research' ? 'AFK' : n.type === 'task' ? (n.mode || 'HITL/AFK') : 'HITL';
+const mapFrontier = n => n.state === 'open' && !n.claimedBy && n.deps.every(d => dnode(d).state === 'closed');
+
+/* ---------- ONE graph grammar: left→right; solid = resolved, dashed grey = waiting, dashed red = blocking, dashed blue + FRONTIER = takeable ---------- */
+function graphE(c){
+  const NW = c.NW, NH = c.NH, CG = 64, RG = 20, PAD = 16, FOGW = 200;
+  const byN = Object.fromEntries(c.nodes.map(n => [n.id, n]));
+  const depth = {};
+  const d = n => depth[n.id] ?? (depth[n.id] = n.deps.length ? 1 + Math.max(...n.deps.map(id => d(byN[id]))) : 0);
+  c.nodes.forEach(d);
+  const cols = [];
+  c.nodes.forEach(n => (cols[depth[n.id]] ||= []).push(n));
+  const maxRows = Math.max(...cols.map(x => x.length));
+  const fogN = c.fog ? c.fog.length : 0;
+  const H = Math.max(maxRows * NH + (maxRows - 1) * RG, fogN * 120);
+  const GW = cols.length * NW + (cols.length - 1) * CG;
+  const W = GW + (fogN ? CG + FOGW : 0);
+  const pos = {};
+  cols.forEach((col, ci) => {
+    const off = (H - (col.length * NH + (col.length - 1) * RG)) / 2;
+    col.forEach((n, ri) => pos[n.id] = { x: PAD + ci * (NW + CG), y: PAD + off + ri * (NH + RG) });
+  });
+  const mk = (id, col) => `<marker id="${c.gid}-arr-${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="${col}"/></marker>`;
+  const edges = c.nodes.flatMap(n => n.deps.map(dep => {
+    const a = pos[dep], b = pos[n.id];
+    const cls = n.blockedBy === dep ? 'block' : c.resolved(byN[dep]) ? '' : 'wait';
+    const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x - 6, y2 = b.y + NH / 2;
+    return `<path class="edge ${cls}" d="M${x1} ${y1} C${x1 + 40} ${y1}, ${x2 - 40} ${y2}, ${x2} ${y2}" marker-end="url(#${c.gid}-arr-${cls || 'm'})"/>`;
+  })).join('');
+  const nodes = c.nodes.map(n => {
+    const p = pos[n.id], fr = c.frontier(n);
+    return `<g class="node ${n.id === c.selId ? 'sel' : ''} ${fr ? 'frontier' : ''} ${c.muted && c.muted(n) ? 'muted' : ''} ${n.needs ? 'needs' : ''}" transform="translate(${p.x},${p.y})" tabindex="0" role="button"
+      aria-label="${esc(c.label(n, fr))}" data-act="gnode" data-node="${n.id}" data-key="g-${c.gid}-${n.id}"><rect class="nb" width="${NW}" height="${NH}" rx="6"/>${c.body(n, NW, NH, fr)}</g>`;
+  }).join('');
+  let fog = '';
+  if (fogN) {
+    const fx = PAD + GW + CG, step = H / fogN;
+    fog = `<text class="fog-h" x="${fx + FOGW / 2}" y="12" text-anchor="middle">NOT YET SPECIFIED</text>` + c.fog.map((f, i) => {
+      const cx = fx + FOGW / 2, cy = PAD + step * i + step / 2;
+      return `<g class="fog" role="img" aria-label="Not yet specified: ${esc(f)}"><g filter="url(#${c.gid}-blur)"><ellipse cx="${cx - 36}" cy="${cy}" rx="64" ry="30"/><ellipse cx="${cx + 30}" cy="${cy - 8}" rx="70" ry="34"/><ellipse cx="${cx + 8}" cy="${cy + 14}" rx="78" ry="26"/></g><text class="fog-t" x="${cx}" y="${cy + 5}" text-anchor="middle">${esc(f)}</text></g>`;
+    }).join('');
+  }
+  const vw = W + PAD * 2, vh = H + PAD * 2;
+  return `<svg class="dag gsvg" viewBox="0 0 ${vw} ${vh}" width="${vw}" height="${vh}" ${ui.mapFit && c.fit ? '' : `style="width:${vw}px"`} role="group" aria-label="${esc(c.title)}">
+    <defs>${mk('m','#4a5263')}${mk('wait','#6b7385')}${mk('block','#ff6b6b')}<filter id="${c.gid}-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="9"/></filter></defs>${edges}${nodes}${fog}</svg>`;
+}
+function badgeSvg(x, y, t, cls){
+  const w = Math.round(t.length * 6.6 + 12);
+  return [`<rect class="gb ${cls}" x="${x}" y="${y}" width="${w}" height="18" rx="3"/><text class="gbt ${cls}" x="${x + w / 2}" y="${y + 13}" text-anchor="middle">${esc(t)}</text>`, w];
+}
+function decisionBody(n, W, H, fr){
+  let out = wrapTxt(n.name, 30, 2).map((l, i) => `<text class="gt" x="14" y="${24 + i * 18}">${esc(l)}</text>`).join('');
+  let x = 14;
+  for (const [t, cls] of [[n.type.toUpperCase(), 'type'], [modeOf(n), 'mode']]) { const [s, w] = badgeSvg(x, 52, t, cls); out += s; x += w + 6; }
+  const tag = n.needs ? ['NEEDS YOU','needs'] : n.blockedBy ? ['BLOCKED','blk'] : fr ? ['FRONTIER','fr'] : null;
+  if (tag) out += badgeSvg(W - Math.round(tag[0].length * 6.6 + 12) - 12, 52, tag[0], tag[1])[0];
+  const st = n.state === 'closed' ? 'closed' : n.claimedBy ? `claimed by ${sessName(n.claimedBy)}` : 'open';
+  out += `<text class="gs st-${n.state}" x="14" y="88">${esc(trunc(st, 34))}</text>`;
+  if (n.state === 'closed') out += `<text class="gs2" x="14" y="104">${esc(trunc(n.gist, 38))}</text>`;
+  else if (n.blockedBy) out += `<text class="gs2 blk" x="14" y="104">${esc(trunc('blocked by ' + dnode(n.blockedBy).name, 38))}</text>`;
+  else if (fr) out += `<text class="gs2 fr" x="14" y="104">takeable now</text>`;
+  return out;
+}
+function ticketBody(n, W, H, fr){
+  let out = wrapTxt(n.name, 26, 1).map((l, i) => `<text class="gt" x="14" y="${26 + i * 18}">${esc(l)}</text>`).join('');
+  out += badgeSvg(14, 40, 'NOT STARTED', 'ns')[0];
+  if (fr) out += badgeSvg(W - Math.round(8 * 6.6 + 12) - 12, 40, 'FRONTIER', 'fr')[0];
+  return out;
+}
+
+/* ---------- E chrome ---------- */
+function renderTopE(){
+  const S = allE(), n = k => S.filter(s => stateKey(s) === k).length, needs = n('needs');
+  const pills = MACHINES_E.map(m => {
+    const ss = S.filter(s => s.machine === m.name);
+    const sel = ui.eview === 'machine' && ui.emachine === m.name;
+    return `<button class="mpill ${m.silent ? 'silent' : ''} ${sel ? 'sel' : ''}" data-act="machine" data-m="${m.name}" data-key="mp-${m.name}"
+      aria-label="Machine ${m.name}: ${m.silent ? 'silent, last seen ' + fmtDur(Date.now() - m.lastSeen) + ' ago' : 'reporting, ' + ss.length + ' sessions'}">
+      <span class="mdot" aria-hidden="true"></span><span class="mono">${m.name}</span><span class="mmeta">${m.silent ? `last seen ${since(m.lastSeen)}` : `${ss.length} sessions`}</span></button>`;
+  }).join('');
+  return `<header class="top top-e">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Factory</div>
+    <nav class="mpills" aria-label="Machines">${pills}</nav>
+    <div class="counts">
+      <span class="count count-needs ${needs ? 'hot' : ''}">${needs ? icon('alert') : ''}<b>${needs}</b>Needs you</span>
+      <span class="count count-done"><span class="dot dot-done"></span><b>${n('done')}</b>Done unseen</span>
+    </div>
+    <button class="btn ${ui.eview === 'history' || ui.eview === 'replay' ? 'btn-on' : ''}" data-act="history" data-key="history">${icon('history')}History</button>
+    <button class="btn" data-act="sound" data-key="sound">${icon('bell')}Play Needs you sound</button>
+    <time class="clock" id="clock">${new Date().toTimeString().slice(0,8)}</time>
+  </header>`;
+}
+
+const FLOW_COLS_E = ['Phase unknown', ...PHASES, 'Planning / ad hoc'];
+const PLAN_ICON_E = Object.assign({}, PLAN_ICON, { research:'search' });
+function flowChipE(s, st){
+  const k = stateKey(s), isSpec = !!s.spec;
+  const sel = ui.eview === 'session' && ui.sel && ui.sel.sid === s.id && (!isSpec || ui.sel.step === st.id);
+  const full = st ? st.ticket : s.workItem ? s.workItem.name : `${s.kind} session`;
+  const label = st ? st.ticket : s.kind;
+  const stateTxt = (k === 'done' ? 'Done · unseen' : s.state) + (s.state === 'Stale' ? ' · ' + staleWhy(s) : '') + (isSpec && st.blockedBy ? ' · blocked' : '');
+  const phaseTxt = st ? (st.phase ? `Phase: ${st.phase}` : 'Phase unknown') : `${s.kind} session`;
+  const grpTxt = isSpec ? `Spec Job · ${s.workItem.name}` : s.kind;
+  const phCls = st ? (st.phase ? 'ph-' + slug(st.phase) : 'ph-unknown') : 'fplan';
+  return `<button class="fchip fs-${k} ${phCls} ${sel ? 'sel' : ''}" data-act="open" data-sid="${s.id}" data-step="${isSpec ? st.id : ''}" data-key="fc-${s.id}-${isSpec ? st.id : 'x'}"
+    data-tt="${esc(full)}" data-tg="${esc(grpTxt)}" data-tp="${esc(phaseTxt)}" data-ts="${esc(stateTxt)}" data-tm="${esc(s.machine + ' · ' + s.repo)}"
+    aria-label="${esc(full)} — ${esc(phaseTxt)}, ${esc(stateTxt)}, ${esc(s.machine)}">
+    <span class="fdot ${k === 'needs' ? 'pulse' : ''}" aria-hidden="true"></span>${isSpec ? `<span class="fgrp" aria-hidden="true">${initials(s.workItem.name)}</span>` : ''}${st ? '' : icon(PLAN_ICON_E[s.kind] || 'terminal')}<span class="fl">${esc(label)}</span></button>`;
+}
+function flowStripE(){
+  const head = `<div class="frow frow-e fhead"><div>Tracked repo</div>${FLOW_COLS_E.map((c, i) => `<div class="${i === 0 ? 'fcol-unk' : i === 8 ? 'fcol-plan' : 'ph-' + slug(c)}" title="${c}">${c}</div>`).join('')}</div>`;
+  const rows = DATA.repos.map(repo => {
+    const ss = sorted(allE().filter(s => s.repo === repo));
+    const cells = FLOW_COLS_E.map(() => []);
+    ss.forEach(s => {
+      if (s.spec) s.spec.steps.forEach(st => cells[PHASES.indexOf(st.phase) + 1].push(flowChipE(s, st)));
+      else if (s.step) cells[s.step.phase ? PHASES.indexOf(s.step.phase) + 1 : 0].push(flowChipE(s, s.step));
+      else cells[8].push(flowChipE(s, null));
+    });
+    return `<div class="frow frow-e ${ss.some(s => s.state === 'Needs you') ? 'has-needs' : ''}">
+      <div class="flabel"><span class="od-truncate mono" title="${esc(repo)}">${esc(repo)}</span></div>
+      ${cells.map((c, i) => `<div class="fcell ${i === 0 ? 'fcol-unk' : i === 8 ? 'fcol-plan' : ''}">${c.join('')}</div>`).join('')}
+    </div>`;
+  }).join('');
+  return `<section class="flow" aria-label="Flow strip — Steps by Phase">${head}${rows}</section>`;
+}
+
+function inboxE(){
+  const all = sorted(allE());
+  const needs = all.filter(s => s.state === 'Needs you');
+  const doneU = all.filter(s => stateKey(s) === 'done');
+  const cur = ui.eview === 'session' ? ui.sel.sid : null;
+  return `<section class="inbox" data-scroll="e-inbox" aria-label="Needs you inbox">
+    <div class="inbox-h"><span class="n ${needs.length ? '' : 'zero'}">${needs.length}</span><div><h2>Needs you</h2><p>Oldest first. Each one is an agent waiting on you.</p></div></div>
+    ${needs.length ? needs.map(s => `<article class="ncard ${cur === s.id ? 'sel' : ''}" aria-label="${REASON[s.needs.kind]} from ${esc(s.sessionName)}">
+      <header>${icon(REASON_ICON[s.needs.kind], '18px')}${REASON[s.needs.kind]}<span class="wait">${since(s.since)}</span></header>
+      <div class="nb">
+        <span class="nwhat"><b>${esc(s.repo)}</b> · ${esc(s.kind)} · ${wiLink(s)}</span>
+        ${s.needs.kind === 'permission' ? `<span class="eyebrow" style="color:#d9b36a">${esc(s.needs.tool)} wants to run</span><pre class="cmd">${esc(s.needs.command)}</pre>` : `<p class="needs-q">${esc(s.needs.text || s.needs.ticket || s.needs.reason)}</p>`}
+        <dl class="where"><div><dt>Machine</dt><dd>${esc(s.machine)}</dd></div><div><dt>Session</dt><dd>${esc(s.sessionName)}</dd></div><div><dt>Terminal</dt><dd>${esc(s.terminal)}</dd></div></dl>
+        <div class="nact"><button class="btn btn-needs" data-act="copy" data-text="${esc(resumeCmd(s))}" data-key="ecopy-${s.id}">${icon('terminal')}Copy resume command</button><button class="btn" data-act="open" data-sid="${s.id}" data-key="eopen-${s.id}">Open detail ${icon('arrow')}</button></div>
+      </div></article>`).join('') : `<div class="empty">${icon('check')} Nothing needs you. New questions and permission prompts land here.</div>`}
+    <h3 class="sec-h">${icon('check')}Done — unseen · ${doneU.length}</h3>
+    ${doneU.length ? doneU.map(s => `<div class="dcard"><span class="dt">${esc(s.kind)} · ${wiLink(s)}</span><span class="dm">${esc(s.repo)} · ${esc(s.machine)} · ${since(s.since)} ago</span>${nowLine(s)}
+      <div class="nact"><button class="btn" data-act="open" data-sid="${s.id}" data-key="edopen-${s.id}">Open</button><button class="btn" data-act="seen" data-sid="${s.id}" data-key="edseen-${s.id}">${icon('check')}Mark seen</button></div></div>`).join('')
+      : `<div class="empty">Everything finished has been seen.</div>`}
+  </section>`;
+}
+
+/* ---------- E centre views ---------- */
+function staleNote(s){
+  if (s.state !== 'Stale') return '';
+  const m = machineOf(s.machine);
+  return `<p class="stale-note">${icon('clock')}<b>Stale</b> · ${esc(staleWhy(s))}${m && m.silent ? ` — ${esc(s.machine)} last seen ${since(m.lastSeen)} ago` : ''}</p>`;
+}
+function headE(s){
+  return `<nav class="crumbs" aria-label="Zoom level"><span>Overview</span><span aria-hidden="true">›</span><button data-act="machine" data-m="${s.machine}" data-key="cr-m-${s.id}">${esc(s.machine)}</button><span aria-hidden="true">›</span><span>${esc(s.repo)}</span><span aria-hidden="true">›</span><span class="cur">${esc(s.kind)} session</span></nav>
+  <header class="sd-h">
+    <span class="eyebrow">${esc(s.kind)}${s.workItem ? ' · ' + esc(s.workItem.type) : ''}</span>
+    <h2>${s.workItem ? wiLink(s) : 'Ad hoc session <span class="muted">— no skill</span>'}</h2>
+    <div class="sd-meta">${stateBadge(s)}<span>in state ${since(s.since)}</span><span class="od-row" style="--od-gap:6px">${icon('terminal')}<span class="mono">${esc(s.machine)}</span>·<span class="mono">${esc(s.sessionName)}</span></span><span>repo <span class="mono">${esc(s.repo)}</span></span></div>
+    ${nowLine(s)}
+  </header>${staleNote(s)}`;
+}
+const timeline = list => `<ol class="tl">${list.map(a => `<li><time>${clockOf(a.at)}</time><span class="tl-m" aria-hidden="true"></span><span>${esc(a.t)}</span></li>`).join('')}</ol>`;
+const dash = '<span class="muted">—</span>';
+
+function unknownJobView(s){
+  const st = s.step;
+  return `<div class="detail">${headE(s)}
+    <section class="step" aria-label="Step detail">
+      <div class="step-h"><div class="od-stack" style="--od-gap:2px"><span class="eyebrow">Ticket</span><h3><a href="#" class="wi" data-act="noop">${esc(st.ticket)}</a></h3></div><span class="tag">Phase unknown</span></div>
+      <div class="kv"><span class="od-row">${icon('branch')}<span class="mono">${esc(st.branch)}</span></span><span class="od-row">${icon('folder')}${dash}</span></div>
+      <p class="unknown-phase">${icon('question')}<span><b>Phase unknown</b> — the Factory has received no Phase events for this Job, so there is no Phase track.</span></p>
+      <div class="step-grid">
+        <div class="panel"><h4>Agent checklist</h4><p style="margin:0">${dash}</p></div>
+        <div class="panel"><h4>Tests</h4><p style="margin:0">${dash}</p><h4>Files touched (from git)</h4><ul class="files">${st.files.map(f => `<li><span class="path">${esc(f.p)}</span><span class="add">+${f.a}</span><span class="del">−${f.d}</span></li>`).join('')}</ul></div>
+        <div class="panel"><h4>Commits</h4><p class="hint">No commits yet.</p></div>
+        <div class="panel"><h4>Review findings</h4><p style="margin:0">${dash}</p><h4>Pull request</h4><p style="margin:0">${dash}</p></div>
+      </div>
+    </section></div>`;
+}
+
+function decisionPanel(n){
+  const blocks = MAP_E.nodes.filter(x => x.deps.includes(n.id));
+  const fr = mapFrontier(n);
+  return `<div class="panel" aria-label="Decision ticket detail">
+    <div class="step-h"><div class="od-stack" style="--od-gap:2px"><span class="eyebrow">Decision ticket</span><h3 style="margin:0;font:600 var(--fs-lg)/1.2 var(--font-display)"><a href="#" class="wi" data-act="noop">${esc(n.name)}</a></h3></div>
+      <div class="od-cluster" style="justify-content:flex-end"><span class="tag">${esc(n.type)}</span><span class="tag">${modeOf(n)}</span>${n.needs ? '<span class="tag tag-needs">Needs you</span>' : ''}${n.blockedBy ? '<span class="tag tag-blocked">Blocked</span>' : ''}${fr ? '<span class="tag tag-frontier">Frontier</span>' : ''}</div></div>
+    <div class="kv"><span>State: <b>${n.state === 'claimed' ? 'claimed' : n.state}</b></span>${n.claimedBy ? `<span>by <span class="mono">${esc(sessName(n.claimedBy))}</span></span>` : ''}</div>
+    <h4>Decision</h4><p style="margin:0">${n.gist ? esc(n.gist) : dash}</p>
+    <h4>Depends on</h4>${n.deps.length ? `<ul class="files">${n.deps.map(id => `<li><button class="linkbtn" data-act="gnode" data-node="${id}" data-key="dp-${id}">${esc(dnode(id).name)}</button><span class="muted">${dnode(id).state}</span></li>`).join('')}</ul>` : `<p style="margin:0">${dash}</p>`}
+    <h4>Unblocks</h4>${blocks.length ? `<ul class="files">${blocks.map(b => `<li><button class="linkbtn" data-act="gnode" data-node="${b.id}" data-key="ub-${b.id}">${esc(b.name)}</button></li>`).join('')}</ul>` : `<p style="margin:0">${dash}</p>`}
+    ${n.claimedBy && n.claimedBy !== 'wf-dash' ? `<div><button class="btn" data-act="open" data-sid="${n.claimedBy}" data-key="dpo-${n.id}">Open claiming session ${icon('arrow')}</button></div>` : ''}
+  </div>`;
+}
+function mapView(s){
+  const sel = ui.gsel ? dnode(ui.gsel) : null;
+  const graph = graphE({ gid:'map', title:`Map: ${MAP_E.name}`, nodes:MAP_E.nodes, NW:248, NH:112, body:decisionBody, fog:MAP_E.fog, fit:true,
+    selId:ui.gsel, resolved:n => n.state === 'closed', frontier:mapFrontier, muted:n => n.state === 'closed',
+    label:(n, fr) => `${n.name} — ${n.type}, ${modeOf(n)}, ${n.state}${n.claimedBy ? ' by ' + sessName(n.claimedBy) : ''}${fr ? ', frontier' : ''}${n.blockedBy ? ', blocked' : ''}${n.needs ? ', needs you' : ''}` });
+  const done = MAP_E.nodes.filter(n => n.thisSession), created = MAP_E.nodes.filter(n => n.createdThisSession);
+  return `<div class="detail">${headE(s)}
+    <div class="mapgrid">
+      <div class="od-stack" style="--od-gap:12px">
+        <div class="map-h"><div><span class="eyebrow">Map</span><h3>${esc(MAP_E.name)}</h3></div><button class="btn" data-act="mapfit" data-key="mapfit">${ui.mapFit ? 'Actual size' : 'Fit to width'}</button></div>
+        <div class="dag-wrap gwrap ${ui.mapFit ? 'fit' : ''}" data-scroll="mapx">${graph}</div>
+        <div class="dag-legend"><span><span class="lg-line"></span>resolved</span><span><span class="lg-line wait"></span>waiting</span><span><span class="lg-line block"></span>blocking</span><span><span class="tag tag-frontier">Frontier</span>unblocked, takeable now</span><span>Fog = not yet specified</span></div>
+        ${sel ? decisionPanel(sel) : '<p class="hint">Select a Decision ticket to see its decision, dependencies and claim.</p>'}
+      </div>
+      <aside class="map-side" aria-label="This Wayfinder session">
+        <div class="panel"><h4>Destination</h4><p style="margin:0">${esc(MAP_E.destination)}</p></div>
+        ${s.needs ? needsDetail(s) : ''}
+        <div class="panel"><h4>Decisions this session</h4><ul class="files">${done.map(n => `<li class="od-stack" style="--od-gap:2px;display:flex"><button class="linkbtn" data-act="gnode" data-node="${n.id}" data-key="ds-${n.id}">${esc(n.name)}</button><span class="muted">${esc(n.gist)}</span></li>`).join('')}</ul></div>
+        <div class="panel"><h4>Tickets this session</h4>
+          <span class="eyebrow">Created ${created.length}</span><ul class="files">${created.map(n => `<li><button class="linkbtn" data-act="gnode" data-node="${n.id}" data-key="cs-${n.id}">${esc(n.name)}</button></li>`).join('')}</ul>
+          <span class="eyebrow">Closed ${done.length}</span><ul class="files">${done.map(n => `<li><span>${esc(n.name)}</span></li>`).join('')}</ul></div>
+      </aside>
+    </div></div>`;
+}
+
+function researchView(s){
+  const r = s.research;
+  return `<div class="detail">${headE(s)}
+    <div class="panel"><h4>Question</h4><p class="needs-q" style="margin:0">${esc(r.question)}</p>
+      <p class="hint" style="margin:0">Decision ticket: <button class="linkbtn" data-act="open-map-node" data-node="${s.mapNode}" data-key="rs-map">${esc(s.workItem.name)}</button> on the Map</p></div>
+    <div class="step-grid">
+      <div class="panel"><h4>Searches run · ${r.searches.length}</h4><ol class="files">${r.searches.map(q => `<li>${icon('search')}<span class="mono">${esc(q)}</span></li>`).join('')}</ol></div>
+      <div class="panel"><h4>Sources fetched · ${r.sources.length}</h4><ul class="files urls">${r.sources.map(u => `<li>${icon('file')}<a href="#" class="wi mono" data-act="noop">${esc(u)}</a></li>`).join('')}</ul></div>
+    </div>
+    <div class="panel"><h4>Findings file</h4><p style="margin:0">${r.findings ? `<a href="#" class="wi" data-act="noop">${esc(r.findings)}</a>` : `${dash} <span class="hint">not pushed yet</span>`}</p></div>
+    <div class="panel"><h4>Last actions</h4>${timeline(s.actions.slice(-8))}</div>
+  </div>`;
+}
+
+function ticketsView(s){
+  const sel = ui.gsel ? TICKETS_E.find(t => t.id === ui.gsel) : null;
+  const graph = graphE({ gid:'tix', title:`Tickets created from Spec ${s.workItem.name}`, nodes:TICKETS_E, NW:220, NH:72, body:ticketBody,
+    selId:ui.gsel, resolved:() => false, frontier:n => n.deps.length === 0, label:(n, fr) => `${n.name} — not started${fr ? ', frontier' : ''}` });
+  return `<div class="detail">${headE(s)}
+    <div class="map-h"><div><span class="eyebrow">Spec</span><h3>Spec: <a href="#" class="wi" data-act="noop">${esc(s.workItem.name)}</a></h3></div><span class="tag">${s.created.length} Tickets created</span></div>
+    <div class="dag-wrap gwrap">${graph}</div>
+    <div class="dag-legend"><span><span class="lg-line wait"></span>waiting on dependency</span><span><span class="tag tag-frontier">Frontier</span>unblocked, takeable now</span><span>No Ticket has a Job yet</span></div>
+    ${sel ? `<div class="panel"><span class="eyebrow">Ticket</span><h3 style="margin:0;font:600 var(--fs-lg)/1.2 var(--font-display)"><a href="#" class="wi" data-act="noop">${esc(sel.name)}</a></h3>
+      <div class="kv"><span>State: <b>not started</b></span><span>Phase: ${dash}</span><span>Job: ${dash}</span></div>
+      <h4>Depends on</h4><p style="margin:0">${sel.deps.length ? sel.deps.map(d => esc(TICKETS_E.find(t => t.id === d).name)).join(', ') : dash}</p></div>`
+      : '<p class="hint">Select a Ticket for its dependencies.</p>'}
+    <div class="panel"><h4>Last actions</h4>${timeline(s.actions.slice(-8))}</div>
+  </div>`;
+}
+
+function toSpecView(s){
+  const ci = s.outline.findIndex(o => !o[1]);
+  const written = s.outline.filter(o => o[1]).length;
+  return `<div class="detail">${headE(s)}
+    <div class="step-grid">
+      <div class="panel"><h4>From Map</h4><p style="margin:0"><a href="#" class="wi" data-act="noop">${esc(s.fromMap)}</a></p>
+        <h4>Spec created</h4><p style="margin:0">${s.published ? `<a href="#" class="wi" data-act="noop">${esc(s.published)}</a>` : `${dash} <span class="hint">not published yet</span>`}</p></div>
+      <div class="panel"><h4>Spec being written · ${written} / ${s.outline.length} sections</h4><h3 style="margin:0;font:600 var(--fs-lg)/1.2 var(--font-display)">${esc(s.workItem.name)}</h3>
+        <ul class="checklist">${s.outline.map((o, i) => `<li class="${o[1] ? 'done' : i === ci ? 'cur' : ''}"><span class="cb">${o[1] ? icon('check','12px') : ''}</span><span>${esc(o[0])}${i === ci ? ' — writing now' : ''}</span></li>`).join('')}</ul></div>
+    </div>
+    <div class="panel"><h4>Last actions</h4>${timeline(s.actions.slice(-8))}</div>
+  </div>`;
+}
+
+function adhocView(s){
+  return `<div class="detail">${headE(s)}
+    <div class="panel"><h4>Last ${Math.min(8, s.actions.length)} actions</h4>${timeline(s.actions.slice(-8))}</div>
+    <p class="hint">Ad hoc sessions run no skill, so there is no Job, Step or Phase. Finished work shows up in <button class="linkbtn" data-act="history" data-key="ah-hist">History</button>.</p>
+  </div>`;
+}
+
+function machineView(name){
+  const m = machineOf(name) || MACHINES_E[0];
+  const ss = sorted(allE().filter(s => s.machine === m.name));
+  const last = m.silent ? m.lastSeen : Math.max(...ss.map(s => s.lastEvent));
+  return `<div class="detail">
+    <nav class="crumbs" aria-label="Zoom level"><span>Overview</span><span aria-hidden="true">›</span><span class="cur">Machine</span></nav>
+    <header class="sd-h"><span class="eyebrow">Machine</span><h2 class="mono">${esc(m.name)}</h2>
+      <div class="sd-meta">${m.silent ? `<span class="state st-stale">${icon('clock')}Silent</span><span>last seen ${since(last)} ago — its sessions are marked Stale (Machine silent)</span>` : `<span class="state st-working">${icon('work')}Reporting</span><span>last event ${since(last)} ago</span>`}<span>${ss.length} Tracked sessions</span></div></header>
+    <div class="panel" style="gap:4px">${ss.map(s => `<button class="msess ${s.state === 'Needs you' ? 'needs' : ''}" data-act="open" data-sid="${s.id}" data-key="mv-${s.id}">
+      ${dotFor(s)}<span><span class="mt od-truncate">${esc(s.workItem ? s.workItem.name : s.kind + ' session')}</span><span class="mm od-truncate">${esc(s.repo)} · ${esc(s.kind)} · ${esc(s.state)}${s.state === 'Stale' ? ' — ' + esc(staleWhy(s)) : ''}</span></span><span class="mtime">${since(s.since)}</span></button>`).join('')}</div>
+  </div>`;
+}
+
+function historyView(){
+  return `<div class="detail">
+    <nav class="crumbs" aria-label="Zoom level"><span>Overview</span><span aria-hidden="true">›</span><span class="cur">History</span></nav>
+    <header class="sd-h"><span class="eyebrow">History</span><h2>Finished Jobs</h2><p class="hint" style="margin:0">Sample data. Pick a Job to replay its events.</p></header>
+    <div class="hlist">${HIST_E.map(h => `<button class="hrow" data-act="replay" data-h="${h.id}" data-key="h-${h.id}">
+      <span class="hout out-${h.outcome}">${icon(OUT[h.outcome].icon)}${OUT[h.outcome].label}${h.pr ? ` <span class="mono">#${h.pr}</span>` : ''}</span>
+      <span class="hname"><span class="ht od-truncate">${esc(h.name)}</span><span class="hm od-truncate">${esc(h.kind)} · ${esc(h.repo)} · ${esc(h.machine)}</span></span>
+      <span class="hdur">${fmtDur(h.dur * 60000)}</span><span class="hago">${fmtAgo(h.ended)}</span></button>`).join('')}</div>
+  </div>`;
+}
+function replayLive(h){
+  const pos = ui.replay.pos, evs = h.events;
+  let ci = -1, phase = 'Exploring';
+  evs.forEach((e, i) => { if (e.t <= pos) { ci = i; if (e.type === 'phase') phase = e.phase; } });
+  const cur = evs[ci];
+  return `<div class="rp-grid">
+      <div class="panel"><h4>Phase at ${fmtSec(pos)}</h4>${phaseTrack(phase)}<p class="phase-time">${phaseName(phase)}${h.outcome !== 'merged' && ci === evs.length - 1 ? ' · ' + OUT[h.outcome].label : ''}</p></div>
+      <div class="panel"><h4>Event</h4>${cur ? `<div class="rp-ev"><span class="mk-i mk-${cur.cls}" aria-hidden="true"></span><div><span class="eyebrow">${fmtSec(cur.t)} · ${H_LABEL[cur.type]}</span><p>${esc(cur.label)}</p></div></div>` : `<p style="margin:0">${dash}</p>`}</div>
+    </div>
+    <div class="panel"><h4>Events · ${evs.length}</h4><ol class="rp-list">${evs.map((e, i) => `<li><button class="rp-li ${i < ci ? 'past' : i === ci ? 'cur' : ''}" data-act="replay-jump" data-t="${e.t}" data-key="rj-${i}"><time>${fmtSec(e.t)}</time><span class="mk-i mk-${e.cls}" aria-hidden="true"></span><span>${esc(e.label)}</span></button></li>`).join('')}</ol></div>`;
+}
+function replayView(){
+  const h = histById(ui.replay.id), max = h.dur * 60, r = ui.replay;
+  return `<div class="detail">
+    <nav class="crumbs" aria-label="Zoom level"><span>Overview</span><span aria-hidden="true">›</span><button data-act="history" data-key="cr-hist">History</button><span aria-hidden="true">›</span><span class="cur">Replay</span></nav>
+    <header class="sd-h"><span class="eyebrow">${esc(h.kind)} · Replay</span><h2>${esc(h.name)}</h2>
+      <div class="sd-meta"><span class="hout out-${h.outcome}">${icon(OUT[h.outcome].icon)}${OUT[h.outcome].label}</span>${h.pr ? `<a href="#" class="wi" data-act="noop">PR #${h.pr}</a>` : ''}<span>repo <span class="mono">${esc(h.repo)}</span></span><span class="mono">${esc(h.machine)}</span><span>took ${fmtDur(h.dur * 60000)}</span><span>ended ${fmtAgo(h.ended)}</span></div></header>
+    <div class="rp-ctl">
+      <button class="btn btn-icon" data-act="rplay" data-key="rplay" aria-pressed="${r.playing}" aria-label="${r.playing ? 'Pause' : 'Play'} replay">${icon(r.playing ? 'pause' : 'play', '18px')}</button>
+      <div class="rp-track">
+        <div class="scrub">${h.events.map((e, i) => `<button class="mk mk-${e.cls}" style="left:${(e.t / max * 100).toFixed(2)}%" data-act="replay-jump" data-t="${e.t}" data-key="mk-${i}" title="${fmtSec(e.t)} · ${esc(e.label)}" aria-label="${fmtSec(e.t)} ${esc(e.label)}"></button>`).join('')}</div>
+        <input type="range" id="replay-range" min="0" max="${max}" step="1" value="${Math.round(r.pos)}" data-key="replay-range" aria-label="Scrub replay timeline">
+      </div>
+      <span class="rp-time" id="rp-time">${fmtSec(r.pos)} / ${fmtSec(max)}</span>
+    </div>
+    <div class="dag-legend"><span><span class="mk-i mk-phase"></span>Phase change</span><span><span class="mk-i mk-pass"></span>Tests pass</span><span><span class="mk-i mk-fail"></span>Tests fail</span><span><span class="mk-i mk-commit"></span>Commit</span><span><span class="mk-i mk-needs"></span>Needs you</span><span><span class="mk-i mk-review"></span>Review</span></div>
+    <div id="replay-live">${replayLive(h)}</div>
+  </div>`;
+}
+
+function centreE(){
+  if (ui.eview === 'history') return historyView();
+  if (ui.eview === 'replay' && ui.replay) return replayView();
+  if (ui.eview === 'machine') return machineView(ui.emachine);
+  const s = byId(ui.sel.sid) || byId('spec-order-export');
+  if (s.kind === 'Spec Job' || s.kind === 'Ticket Job') {
+    if (s.step && !s.step.phase) return unknownJobView(s);
+    return staleNote(s) + sessionDetail(s, ui.sel.step, 'centre');
+  }
+  if (s.kind === 'Wayfinder') return mapView(s);
+  if (s.kind === 'research') return researchView(s);
+  if (s.kind === 'to-tickets') return ticketsView(s);
+  if (s.kind === 'to-spec') return toSpecView(s);
+  return adhocView(s);
+}
+function renderE(){
+  if (!ui.sel) ui.sel = { sid:'spec-order-export', step:null };
+  if (!ui.eview) ui.eview = 'session';
+  return `<main class="ve">${flowStripE()}<div class="ve-body">${inboxE()}<section class="centre" data-scroll="c-centre" aria-label="Focus">${centreE()}</section></div></main>`;
+}
+
+/* ---------- E interactions ---------- */
+let replayTimer = null;
+function stopReplay(){ if (replayTimer) clearInterval(replayTimer); replayTimer = null; if (ui.replay) ui.replay.playing = false; }
+function updateReplay(){
+  const live = document.getElementById('replay-live');
+  if (!live || !ui.replay) { stopReplay(); return; }
+  const h = histById(ui.replay.id), max = h.dur * 60, r = ui.replay;
+  const keep = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null;
+  live.innerHTML = replayLive(h);
+  const range = document.getElementById('replay-range');
+  if (range && !r.dragging) range.value = Math.round(r.pos);
+  document.getElementById('rp-time').textContent = `${fmtSec(r.pos)} / ${fmtSec(max)}`;
+  const b = document.querySelector('[data-key="rplay"]');
+  if (b) { b.innerHTML = icon(r.playing ? 'pause' : 'play', '18px'); b.setAttribute('aria-pressed', String(r.playing)); b.setAttribute('aria-label', (r.playing ? 'Pause' : 'Play') + ' replay'); }
+  if (keep && keep.startsWith('rj-')) { const el = document.querySelector(`[data-key="${keep}"]`); if (el) el.focus({ preventScroll:true }); }
+}
+function togglePlay(){
+  const r = ui.replay; if (!r) return;
+  if (r.playing) { stopReplay(); updateReplay(); return; }
+  const max = histById(r.id).dur * 60;
+  if (r.pos >= max) r.pos = 0;
+  r.playing = true;
+  replayTimer = setInterval(() => { r.pos = Math.min(max, r.pos + max / 120); if (r.pos >= max) stopReplay(); updateReplay(); }, 100);
+  updateReplay();
+}
+const scrollCentreTop = () => { const c = document.querySelector('[data-scroll="c-centre"]'); if (c) c.scrollTop = 0; };
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || ui.variant !== 'E') return;
+  const a = el.dataset.act;
+  if (a === 'machine') { stopReplay(); ui.eview = 'machine'; ui.emachine = el.dataset.m; render(); scrollCentreTop(); }
+  else if (a === 'history') { stopReplay(); ui.eview = 'history'; render(); scrollCentreTop(); }
+  else if (a === 'replay') { stopReplay(); ui.eview = 'replay'; ui.replay = { id: el.dataset.h, pos: 0, playing: false, dragging: false }; render(); scrollCentreTop(); const p = document.querySelector('[data-key="rplay"]'); if (p) p.focus(); }
+  else if (a === 'gnode') { ui.gsel = el.dataset.node; render(); }
+  else if (a === 'mapfit') { ui.mapFit = !ui.mapFit; render(); }
+  else if (a === 'open-map-node') { stopReplay(); ui.eview = 'session'; ui.sel = { sid:'wf-dash', step:null }; ui.gsel = el.dataset.node; render(); scrollCentreTop(); }
+  else if (a === 'rplay') togglePlay();
+  else if (a === 'replay-jump' && ui.replay) { stopReplay(); ui.replay.pos = Number(el.dataset.t); updateReplay(); }
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'replay-range' && ui.replay) { stopReplay(); ui.replay.pos = Number(e.target.value); updateReplay(); }
+});
+document.addEventListener('pointerdown', e => { if (e.target.id === 'replay-range' && ui.replay) ui.replay.dragging = true; });
+document.addEventListener('pointerup', () => {
+  if (ui.replay && ui.replay.dragging) { ui.replay.dragging = false; if (ui.pendingRender) { ui.pendingRender = false; render(); } }
+});
+
+/* E-only liveness: to-spec writes sections, research runs more searches */
+const RS_QUEUE = [['searches','claude code hooks Notification event permission prompt'],['sources','https://docs.github.com/en/rest/commits/statuses'],['searches','measure time in phase from hook timestamps'],['sources','https://docs.anthropic.com/en/docs/claude-code/settings']];
+let eTick = 0;
+setInterval(() => {
+  eTick++;
+  const now = Date.now(), ts = byId('ts-chunks'), rs = byId('rs-fields');
+  if (eTick % 4 === 0) {
+    const i = ts.outline.findIndex(o => !o[1]);
+    if (i >= 0) {
+      ts.outline[i][1] = 1;
+      ts.actions.push({ at:now, t:`Wrote section "${ts.outline[i][0]}"` });
+      const nx = ts.outline[i + 1];
+      ts.now = nx ? `writing section "${nx[0]}"` : 'outline complete — ready to publish';
+    }
+  }
+  ts.lastEvent = now;
+  if (eTick % 3 === 0 && RS_QUEUE.length) {
+    const [k, v] = RS_QUEUE.shift();
+    rs.research[k].push(v);
+    rs.now = k === 'searches' ? `searching: ${v}` : `fetched ${v.replace(/^https:\/\//, '')}`;
+    rs.actions.push({ at:now, t: k === 'searches' ? `Searched: ${v}` : `Fetched ${v}` });
+  }
+  rs.lastEvent = now;
+}, 5000);
+
 /* ================= Render ================= */
 function render(){
+  if (ui.variant === 'E' && ui.replay && ui.replay.dragging) { ui.pendingRender = true; return; }
   const keep = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null;
   const scrolls = {};
-  document.querySelectorAll('[data-scroll]').forEach(el => scrolls[el.dataset.scroll] = el.scrollTop);
+  document.querySelectorAll('[data-scroll]').forEach(el => scrolls[el.dataset.scroll] = [el.scrollTop, el.scrollLeft]);
 
   const tipKey = ui.tipKey;
   const before = {};
-  if (ui.variant === 'D') document.querySelectorAll('.fchip[data-key]').forEach(el => { before[el.dataset.key] = el.getBoundingClientRect(); });
+  if (ui.variant === 'D' || ui.variant === 'E') document.querySelectorAll('.fchip[data-key]').forEach(el => { before[el.dataset.key] = el.getBoundingClientRect(); });
 
-  root.innerHTML = renderTop() + (ui.variant === 'A' ? renderA() : ui.variant === 'B' ? renderB() : ui.variant === 'C' ? renderC() : renderD());
+  root.innerHTML = ui.variant === 'E' ? renderTopE() + renderE() : renderTop() + (ui.variant === 'A' ? renderA() : ui.variant === 'B' ? renderB() : ui.variant === 'C' ? renderC() : renderD());
 
   // flow strip: chips that changed Phase column glide from their old spot (FLIP, transform only)
-  if (ui.variant === 'D' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if ((ui.variant === 'D' || ui.variant === 'E') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const moved = [];
     document.querySelectorAll('.fchip[data-key]').forEach(el => {
       const b = before[el.dataset.key]; if (!b) return;
@@ -1183,7 +1838,7 @@ function render(){
       }));
     }
   }
-  if (tipKey && ui.variant === 'D') { const el = document.querySelector(`.fchip[data-key="${tipKey}"]`); if (el) showTip(el); else hideTip(); }
+  if (tipKey && (ui.variant === 'D' || ui.variant === 'E')) { const el = document.querySelector(`.fchip[data-key="${tipKey}"]`); if (el) showTip(el); else hideTip(); }
   else hideTip();
 
   const selS = ui.sel ? byId(ui.sel.sid) : null;
@@ -1197,7 +1852,7 @@ function render(){
     if (!modal.open) modal.showModal();
   } else if (modal.open) modal.close();
 
-  document.querySelectorAll('[data-scroll]').forEach(el => { if (scrolls[el.dataset.scroll] != null) el.scrollTop = scrolls[el.dataset.scroll]; });
+  document.querySelectorAll('[data-scroll]').forEach(el => { const v = scrolls[el.dataset.scroll]; if (v) { el.scrollTop = v[0]; el.scrollLeft = v[1]; } });
   if (keep) { const el = document.querySelector(`[data-key="${keep}"]`); if (el) el.focus({ preventScroll:true }); }
 
   const needs = DATA.sessions.filter(s => s.state === 'Needs you').length;
@@ -1222,7 +1877,7 @@ function openSession(sid, step){
   ui.sel = { sid, step: step || null };
   if (ui.variant === 'A') { ui.returnKey = 'row-' + sid; ui.drawer = true; render(); document.querySelector('[data-key="drawer-close"]').focus(); }
   else if (ui.variant === 'B') { ui.returnKey = active; ui.modal = true; render(); document.querySelector('[data-key="modal-close"]').focus(); }
-  else { render(); const c = document.querySelector('[data-scroll="c-centre"]'); if (c) c.scrollTop = 0; }
+  else { if (ui.variant === 'E') { stopReplay(); ui.eview = 'session'; ui.gsel = null; } render(); const c = document.querySelector('[data-scroll="c-centre"]'); if (c) c.scrollTop = 0; }
 }
 function closeDetail(){
   if (ui.variant === 'A' && ui.drawer) {
@@ -1245,7 +1900,8 @@ function setVariant(id){
   ui.drawer = false; ui.modal = false;
   if (modal.open) modal.close();
   ui.variant = id;
-  if (id !== 'C' && id !== 'D') ui.sel = null;
+  if (id !== 'C' && id !== 'D' && id !== 'E') ui.sel = null;
+  if (id !== 'E') stopReplay();
   try {
     const u = new URL(location.href);
     u.searchParams.set('variant', id);
