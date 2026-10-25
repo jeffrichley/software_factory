@@ -453,6 +453,9 @@ a{color:inherit}
 .mpill.silent{border-style:dashed;color:var(--text-2)}
 .mpill.silent .mdot{background:transparent;border:1.5px solid var(--stale)}
 .mpill.sel{border-color:var(--text);background:var(--surface-3)}
+.mpill.off{opacity:.45;border-style:dashed;background:transparent}
+.mpill.off .mono{text-decoration:line-through}
+.count-hidden{border-color:var(--needs);color:var(--needs);cursor:pointer;background:transparent}
 @media (hover:hover){ .mpill:hover{border-color:#8a94a6;background:var(--surface-2)} }
 .btn-on{border-color:var(--text);background:var(--surface-3)}
 .ve{display:grid;grid-template-rows:auto minmax(0,1fr);height:calc(100vh - var(--top-h))}
@@ -1303,6 +1306,23 @@ const EXTRA_E = [
   },
 ];
 const allE = () => DATA.sessions.concat(EXTRA_E);
+/* Machine filter: pills toggle Machines on/off. Saved in localStorage and in ?machines= (the Machines shown). */
+const hiddenM = (() => {
+  const names = MACHINES_E.map(m => m.name);
+  const q = params.get('machines');
+  if (q != null) { const on = q.split(',').filter(Boolean); return new Set(names.filter(n => !on.includes(n))); }
+  try { return new Set(JSON.parse(localStorage.getItem('factory.hiddenMachines') || '[]').filter(n => names.includes(n))); } catch (e) { return new Set(); }
+})();
+const visE = () => allE().filter(s => !hiddenM.has(s.machine));
+function saveMachineFilter(){
+  try { localStorage.setItem('factory.hiddenMachines', JSON.stringify([...hiddenM])); } catch (e) {}
+  try {
+    const u = new URL(location.href);
+    if (hiddenM.size) u.searchParams.set('machines', MACHINES_E.map(m => m.name).filter(n => !hiddenM.has(n)).join(','));
+    else u.searchParams.delete('machines');
+    history.replaceState(null, '', u);
+  } catch (e) {}
+}
 
 const MAP_E = {
   name:'Software Factory: chart the way to a spec',
@@ -1459,12 +1479,14 @@ function ticketBody(n, W, H, fr){
 
 /* ---------- E chrome ---------- */
 function renderTopE(){
-  const S = allE(), n = k => S.filter(s => stateKey(s) === k).length, needs = n('needs');
+  const A = allE(), S = visE(), n = k => S.filter(s => stateKey(s) === k).length, needs = n('needs');
+  const hiddenNeeds = A.filter(s => stateKey(s) === 'needs' && hiddenM.has(s.machine));
   const pills = MACHINES_E.map(m => {
-    const ss = S.filter(s => s.machine === m.name);
-    const sel = ui.eview === 'machine' && ui.emachine === m.name;
-    return `<button class="mpill ${m.silent ? 'silent' : ''} ${sel ? 'sel' : ''}" data-act="machine" data-m="${m.name}" data-key="mp-${m.name}"
-      aria-label="Machine ${m.name}: ${m.silent ? 'silent, last seen ' + fmtDur(Date.now() - m.lastSeen) + ' ago' : 'reporting, ' + ss.length + ' sessions'}">
+    const ss = A.filter(s => s.machine === m.name);
+    const off = hiddenM.has(m.name);
+    return `<button class="mpill ${m.silent ? 'silent' : ''} ${off ? 'off' : ''}" data-act="machine" data-m="${m.name}" data-key="mp-${m.name}" aria-pressed="${!off}"
+      title="${off ? 'Show' : 'Hide'} ${m.name}"
+      aria-label="Machine ${m.name}: ${off ? 'hidden' : 'shown'}; ${m.silent ? 'silent, last seen ' + fmtDur(Date.now() - m.lastSeen) + ' ago' : 'reporting, ' + ss.length + ' sessions'}">
       <span class="mdot" aria-hidden="true"></span><span class="mono">${m.name}</span><span class="mmeta">${m.silent ? `last seen ${since(m.lastSeen)}` : `${ss.length} sessions`}</span></button>`;
   }).join('');
   return `<header class="top top-e">
@@ -1472,6 +1494,7 @@ function renderTopE(){
     <nav class="mpills" aria-label="Machines">${pills}</nav>
     <div class="counts">
       <span class="count count-needs ${needs ? 'hot' : ''}">${needs ? icon('alert') : ''}<b>${needs}</b>Needs you</span>
+      ${hiddenNeeds.length ? `<button class="count count-hidden" data-act="show-hidden-needs" data-key="hidden-needs" title="Show the Machines these come from">${icon('alert')}+${hiddenNeeds.length} Needs you on hidden Machines</button>` : ''}
       <span class="count count-done"><span class="dot dot-done"></span><b>${n('done')}</b>Done unseen</span>
     </div>
     <button class="btn ${ui.eview === 'history' || ui.eview === 'replay' ? 'btn-on' : ''}" data-act="history" data-key="history">${icon('history')}History</button>
@@ -1499,7 +1522,7 @@ function flowChipE(s, st){
 function flowStripE(){
   const head = `<div class="frow frow-e fhead"><div>Tracked repo</div>${FLOW_COLS_E.map((c, i) => `<div class="${i === 0 ? 'fcol-unk' : i === 8 ? 'fcol-plan' : 'ph-' + slug(c)}" title="${c}">${c}</div>`).join('')}</div>`;
   const rows = DATA.repos.map(repo => {
-    const ss = sorted(allE().filter(s => s.repo === repo));
+    const ss = sorted(visE().filter(s => s.repo === repo));
     const cells = FLOW_COLS_E.map(() => []);
     ss.forEach(s => {
       if (s.spec) s.spec.steps.forEach(st => cells[PHASES.indexOf(st.phase) + 1].push(flowChipE(s, st)));
@@ -1515,7 +1538,7 @@ function flowStripE(){
 }
 
 function inboxE(){
-  const all = sorted(allE());
+  const all = sorted(visE());
   const needs = all.filter(s => s.state === 'Needs you');
   const doneU = all.filter(s => stateKey(s) === 'done');
   const cur = ui.eview === 'session' ? ui.sel.sid : null;
@@ -1543,7 +1566,7 @@ function staleNote(s){
   return `<p class="stale-note">${icon('clock')}<b>Stale</b> · ${esc(staleWhy(s))}${m && m.silent ? ` — ${esc(s.machine)} last seen ${since(m.lastSeen)} ago` : ''}</p>`;
 }
 function headE(s){
-  return `<nav class="crumbs" aria-label="Zoom level"><span>Overview</span><span aria-hidden="true">›</span><button data-act="machine" data-m="${s.machine}" data-key="cr-m-${s.id}">${esc(s.machine)}</button><span aria-hidden="true">›</span><span>${esc(s.repo)}</span><span aria-hidden="true">›</span><span class="cur">${esc(s.kind)} session</span></nav>
+  return `<nav class="crumbs" aria-label="Zoom level"><span>Overview</span><span aria-hidden="true">›</span><span class="mono">${esc(s.machine)}</span><span aria-hidden="true">›</span><span>${esc(s.repo)}</span><span aria-hidden="true">›</span><span class="cur">${esc(s.kind)} session</span></nav>
   <header class="sd-h">
     <span class="eyebrow">${esc(s.kind)}${s.workItem ? ' · ' + esc(s.workItem.type) : ''}</span>
     <h2>${s.workItem ? wiLink(s) : 'Ad hoc session <span class="muted">— no skill</span>'}</h2>
@@ -1659,24 +1682,11 @@ function adhocView(s){
   </div>`;
 }
 
-function machineView(name){
-  const m = machineOf(name) || MACHINES_E[0];
-  const ss = sorted(allE().filter(s => s.machine === m.name));
-  const last = m.silent ? m.lastSeen : Math.max(...ss.map(s => s.lastEvent));
-  return `<div class="detail">
-    <nav class="crumbs" aria-label="Zoom level"><span>Overview</span><span aria-hidden="true">›</span><span class="cur">Machine</span></nav>
-    <header class="sd-h"><span class="eyebrow">Machine</span><h2 class="mono">${esc(m.name)}</h2>
-      <div class="sd-meta">${m.silent ? `<span class="state st-stale">${icon('clock')}Silent</span><span>last seen ${since(last)} ago — its sessions are marked Stale (Machine silent)</span>` : `<span class="state st-working">${icon('work')}Reporting</span><span>last event ${since(last)} ago</span>`}<span>${ss.length} Tracked sessions</span></div></header>
-    <div class="panel" style="gap:4px">${ss.map(s => `<button class="msess ${s.state === 'Needs you' ? 'needs' : ''}" data-act="open" data-sid="${s.id}" data-key="mv-${s.id}">
-      ${dotFor(s)}<span><span class="mt od-truncate">${esc(s.workItem ? s.workItem.name : s.kind + ' session')}</span><span class="mm od-truncate">${esc(s.repo)} · ${esc(s.kind)} · ${esc(s.state)}${s.state === 'Stale' ? ' — ' + esc(staleWhy(s)) : ''}</span></span><span class="mtime">${since(s.since)}</span></button>`).join('')}</div>
-  </div>`;
-}
-
 function historyView(){
   return `<div class="detail">
     <nav class="crumbs" aria-label="Zoom level"><span>Overview</span><span aria-hidden="true">›</span><span class="cur">History</span></nav>
     <header class="sd-h"><span class="eyebrow">History</span><h2>Finished Jobs</h2><p class="hint" style="margin:0">Sample data. Pick a Job to replay its events.</p></header>
-    <div class="hlist">${HIST_E.map(h => `<button class="hrow" data-act="replay" data-h="${h.id}" data-key="h-${h.id}">
+    <div class="hlist">${HIST_E.filter(h => !hiddenM.has(h.machine)).map(h => `<button class="hrow" data-act="replay" data-h="${h.id}" data-key="h-${h.id}">
       <span class="hout out-${h.outcome}">${icon(OUT[h.outcome].icon)}${OUT[h.outcome].label}${h.pr ? ` <span class="mono">#${h.pr}</span>` : ''}</span>
       <span class="hname"><span class="ht od-truncate">${esc(h.name)}</span><span class="hm od-truncate">${esc(h.kind)} · ${esc(h.repo)} · ${esc(h.machine)}</span></span>
       <span class="hdur">${fmtDur(h.dur * 60000)}</span><span class="hago">${fmtAgo(h.ended)}</span></button>`).join('')}</div>
@@ -1715,8 +1725,12 @@ function replayView(){
 function centreE(){
   if (ui.eview === 'history') return historyView();
   if (ui.eview === 'replay' && ui.replay) return replayView();
-  if (ui.eview === 'machine') return machineView(ui.emachine);
-  const s = byId(ui.sel.sid) || byId('spec-order-export');
+  let s = byId(ui.sel.sid) || byId('spec-order-export');
+  if (hiddenM.has(s.machine)) {
+    const v = sorted(visE())[0];
+    if (!v) return `<div class="empty">Every Machine is hidden. Click a Machine pill to show it again.</div>`;
+    s = v; ui.sel = { sid: v.id, step: null };
+  }
   if (s.kind === 'Spec Job' || s.kind === 'Ticket Job') {
     if (s.step && !s.step.phase) return unknownJobView(s);
     return staleNote(s) + sessionDetail(s, ui.sel.step, 'centre');
@@ -1763,7 +1777,8 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el || ui.variant !== 'E') return;
   const a = el.dataset.act;
-  if (a === 'machine') { stopReplay(); ui.eview = 'machine'; ui.emachine = el.dataset.m; render(); scrollCentreTop(); }
+  if (a === 'machine') { const m = el.dataset.m; hiddenM.has(m) ? hiddenM.delete(m) : hiddenM.add(m); saveMachineFilter(); render(); }
+  else if (a === 'show-hidden-needs') { allE().forEach(s => { if (stateKey(s) === 'needs') hiddenM.delete(s.machine); }); saveMachineFilter(); render(); }
   else if (a === 'history') { stopReplay(); ui.eview = 'history'; render(); scrollCentreTop(); }
   else if (a === 'replay') { stopReplay(); ui.eview = 'replay'; ui.replay = { id: el.dataset.h, pos: 0, playing: false, dragging: false }; render(); scrollCentreTop(); const p = document.querySelector('[data-key="rplay"]'); if (p) p.focus(); }
   else if (a === 'gnode') { ui.gsel = el.dataset.node; render(); }
