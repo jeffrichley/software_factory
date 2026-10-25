@@ -399,6 +399,50 @@ a{color:inherit}
 .msess .mtime{font:500 var(--fs-xs)/1 var(--font-mono);color:var(--text-2)}
 .msess.needs .mtime{color:var(--needs);font-weight:700}
 
+/* ---------- Variant D — Mission control + flow strip ---------- */
+.vd{display:grid;grid-template-rows:auto minmax(0,1fr);height:calc(100vh - var(--top-h))}
+.vd > .vc{height:auto;min-height:0}
+.flow{--flow-label:132px;display:grid;gap:4px;padding:var(--s2) var(--s5);background:#0f1114;border-bottom:1px solid var(--line-2)}
+.frow{display:grid;grid-template-columns:var(--flow-label) repeat(8,minmax(0,1fr));gap:4px;min-width:0}
+.fhead > div{font:600 11px/1.2 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);padding:2px 6px 4px;border-bottom:2px solid var(--line-2);
+  min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.fhead > div.ph-red{border-bottom-color:var(--fail);color:#ff9a9a}
+.fhead > div.ph-green{border-bottom-color:var(--pass);color:var(--pass)}
+.fhead > div.ph-merged{border-bottom-color:var(--done);color:var(--done)}
+.fhead > div.fcol-plan{border-bottom-style:dashed}
+.flabel{display:flex;align-items:center;min-width:0;padding:0 6px;font-size:var(--fs-sm);font-weight:500;color:var(--text)}
+.frow.has-needs .flabel{color:var(--needs)}
+.fcell{display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px;min-width:0;min-height:32px;max-height:60px;overflow:hidden;padding:4px;border-radius:4px;background:rgba(255,255,255,.025)}
+.fcell.fcol-plan{background:transparent;border:1px dashed var(--line)}
+.flow.animating .fcell{overflow:visible}
+.fchip{position:relative;overflow:hidden;display:flex;align-items:center;gap:5px;flex:0 1 auto;min-width:0;max-width:100%;height:24px;padding:0 8px;
+  border:1px solid var(--line-2);border-radius:4px;background:var(--surface-2);color:var(--text);cursor:pointer;
+  font:500 12px/1 var(--font-body);text-align:left;transition:border-color var(--dur) var(--ease-out)}
+.fchip .fl{display:block;flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.fchip .od-icon{--od-icon-size:13px}
+.fdot{display:block;flex:none;width:7px;height:7px;border-radius:50%;background:currentColor}
+.fgrp{display:block;flex:none;font:600 9px/1 var(--font-mono);padding:2px 3px;border:1px solid currentColor;border-radius:2px;opacity:.85}
+.fs-working{background:var(--working-bg);border-color:#21406b} .fs-working .fdot{background:var(--working)}
+.fs-needs{background:var(--needs);border-color:var(--needs);color:var(--needs-ink);font-weight:600}
+.fs-needs .fdot{background:var(--needs-ink)}
+.fs-needs::after{content:"";position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;animation:flash 2s var(--ease-out) infinite}
+.fs-done{background:var(--done-bg);border-color:#1f5a53} .fs-done .fdot{background:var(--done)}
+.fs-done-seen{color:var(--text-2)} .fs-done-seen .fdot{background:var(--done);opacity:.6}
+.fs-stale{background:var(--stale-bg);border-style:dashed;color:var(--text-2)} .fs-stale .fdot{background:transparent;border:1.5px dashed var(--stale)}
+.fchip.ph-red{box-shadow:inset 0 -2px 0 var(--fail)}
+.fchip.ph-green{box-shadow:inset 0 -2px 0 var(--pass)}
+@media (hover:hover){ .fchip:hover{border-color:#8a94a6} .fs-needs:hover{border-color:var(--needs-ink)} }
+.fchip:focus-visible{outline:2px solid var(--working);outline-offset:-2px}
+.fchip.sel{outline:2px solid var(--text);outline-offset:-2px}
+.fs-needs.sel{outline-color:var(--needs-ink)}
+.ftip{position:fixed;z-index:70;display:grid;gap:2px;max-width:320px;padding:8px 12px;background:var(--surface-3);border:1px solid var(--line-2);border-radius:var(--r);
+  box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:var(--fs-sm);pointer-events:none}
+.ftip > span{display:block}
+.ftip .ft-tt{font-weight:600;color:var(--text)}
+.ftip .ft-tg,.ftip .ft-tm{font:500 var(--fs-xs)/1.4 var(--font-mono);color:var(--text-3)}
+.ftip .ft-tp,.ftip .ft-ts{color:var(--text-2)}
+@media (max-width:1280px){ .flow{--flow-label:112px;padding:var(--s2) var(--s4)} }
+
 /* ---------- Toast ---------- */
 .toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:60;background:var(--surface-3);color:var(--text);border:1px solid var(--line-2);border-radius:var(--r);padding:10px 16px;font-size:var(--fs-sm);box-shadow:0 12px 32px rgba(0,0,0,.5);max-width:min(640px,90vw)}
 
@@ -447,6 +491,7 @@ a{color:inherit}
 </dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<div id="ftip" class="ftip" role="tooltip" hidden></div>
 
 <nav class="switcher" aria-label="Prototype variant switcher">
   <button type="button" data-act="prev" aria-label="Previous variant">◀</button>
@@ -462,7 +507,7 @@ a{color:inherit}
 const T0 = Date.now();
 const ago = m => T0 - m * 60000;
 const PHASES = ['Exploring','Red','Green','Refactor','Reviewing','Committed','Merged'];
-const VARIANTS = [{ id:'A', name:'Triage list' }, { id:'B', name:'Repo swimlanes' }, { id:'C', name:'Mission control' }];
+const VARIANTS = [{ id:'A', name:'Triage list' }, { id:'B', name:'Repo swimlanes' }, { id:'C', name:'Mission control' }, { id:'D', name:'Mission control + flow strip' }];
 
 const DATA = {
   repos: ['software_factory','daku_press','worlds'],
@@ -1014,7 +1059,7 @@ function cardB(s, st){
 }
 
 /* ================= Variant C — Mission control ================= */
-function renderC(){
+function cRegions(){
   if (!ui.sel) ui.sel = { sid:'spec-order-export', step:null };
   const all = sorted(DATA.sessions);
   const needs = all.filter(s => s.state === 'Needs you');
@@ -1049,8 +1094,62 @@ function renderC(){
       </div>`;
     }).join('')}
   </aside>`;
-  return `<main class="vc">${inbox}${centre}${machines}</main>`;
+  return inbox + centre + machines;
 }
+function renderC(){ return `<main class="vc">${cRegions()}</main>`; }
+
+/* ================= Variant D — Mission control + flow strip ================= */
+const FLOW_COLS = [...PHASES, 'Planning / ad hoc'];
+const PLAN_ICON = { 'Wayfinder':'flag', 'to-spec':'flag', 'to-tickets':'check', 'ad hoc':'terminal' };
+const initials = n => n.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+function flowChip(s, st){
+  const k = stateKey(s), isSpec = !!s.spec;
+  const sel = ui.sel && ui.sel.sid === s.id && (!isSpec || ui.sel.step === st.id);
+  const full = st ? st.ticket : s.workItem ? s.workItem.name : `${s.kind} session`;
+  const label = st ? st.ticket : s.kind;
+  const stateTxt = (k === 'done' ? 'Done · unseen' : s.state) + (isSpec && st.blockedBy ? ' · blocked' : '');
+  const phaseTxt = st ? `Phase: ${st.phase}` : `${s.kind} session`;
+  const grpTxt = isSpec ? `Spec Job · ${s.workItem.name}` : s.kind;
+  const dotCls = k === 'needs' ? 'pulse' : '';
+  return `<button class="fchip fs-${k} ${st ? 'ph-' + slug(st.phase) : 'fplan'} ${sel ? 'sel' : ''}" data-act="open" data-sid="${s.id}" data-step="${isSpec ? st.id : ''}" data-key="fc-${s.id}-${isSpec ? st.id : 'x'}"
+    data-tt="${esc(full)}" data-tg="${esc(grpTxt)}" data-tp="${esc(phaseTxt)}" data-ts="${esc(stateTxt)}" data-tm="${esc(s.machine + ' · ' + s.repo)}"
+    aria-label="${esc(full)} — ${esc(phaseTxt)}, ${esc(stateTxt)}, ${esc(s.machine)}">
+    <span class="fdot ${dotCls}" aria-hidden="true"></span>${isSpec ? `<span class="fgrp" aria-hidden="true">${initials(s.workItem.name)}</span>` : ''}${st ? '' : icon(PLAN_ICON[s.kind] || 'terminal')}<span class="fl">${esc(label)}</span></button>`;
+}
+function flowStrip(){
+  const head = `<div class="frow fhead"><div>Tracked repo</div>${FLOW_COLS.map((c, i) => `<div class="${i === 7 ? 'fcol-plan' : 'ph-' + slug(c)}">${c}</div>`).join('')}</div>`;
+  const rows = DATA.repos.map(repo => {
+    const ss = sorted(DATA.sessions.filter(s => s.repo === repo));
+    const cells = FLOW_COLS.map(() => []);
+    ss.forEach(s => {
+      if (s.spec) s.spec.steps.forEach(st => cells[PHASES.indexOf(st.phase)].push(flowChip(s, st)));
+      else if (s.step) cells[PHASES.indexOf(s.step.phase)].push(flowChip(s, s.step));
+      else cells[7].push(flowChip(s, null));
+    });
+    return `<div class="frow ${ss.some(s => s.state === 'Needs you') ? 'has-needs' : ''}">
+      <div class="flabel"><span class="od-truncate mono" title="${esc(repo)}">${esc(repo)}</span></div>
+      ${cells.map((c, i) => `<div class="fcell ${i === 7 ? 'fcol-plan' : ''}">${c.join('')}</div>`).join('')}
+    </div>`;
+  }).join('');
+  return `<section class="flow" aria-label="Flow strip — Steps by Phase">${head}${rows}</section>`;
+}
+function renderD(){ return `<main class="vd">${flowStrip()}<div class="vc">${cRegions()}</div></main>`; }
+
+/* flow-strip tooltip */
+const ftip = document.getElementById('ftip');
+function showTip(el){
+  ui.tipKey = el.dataset.key;
+  ftip.replaceChildren(...['tt','tg','tp','ts','tm'].map(k => { const sp = document.createElement('span'); sp.className = 'ft-' + k; sp.textContent = el.dataset[k]; return sp; }));
+  ftip.hidden = false;
+  const r = el.getBoundingClientRect(), w = ftip.offsetWidth;
+  ftip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left)) + 'px';
+  ftip.style.top = (r.bottom + 8) + 'px';
+}
+function hideTip(){ ui.tipKey = null; ftip.hidden = true; }
+document.addEventListener('mouseover', e => { const c = e.target.closest('.fchip'); if (c) showTip(c); });
+document.addEventListener('mouseout', e => { const c = e.target.closest('.fchip'); if (c && !c.contains(e.relatedTarget)) hideTip(); });
+document.addEventListener('focusin', e => { const c = e.target.closest && e.target.closest('.fchip'); if (c) showTip(c); });
+document.addEventListener('focusout', e => { if (e.target.closest && e.target.closest('.fchip')) hideTip(); });
 
 /* ================= Render ================= */
 function render(){
@@ -1058,7 +1157,34 @@ function render(){
   const scrolls = {};
   document.querySelectorAll('[data-scroll]').forEach(el => scrolls[el.dataset.scroll] = el.scrollTop);
 
-  root.innerHTML = renderTop() + (ui.variant === 'A' ? renderA() : ui.variant === 'B' ? renderB() : renderC());
+  const tipKey = ui.tipKey;
+  const before = {};
+  if (ui.variant === 'D') document.querySelectorAll('.fchip[data-key]').forEach(el => { before[el.dataset.key] = el.getBoundingClientRect(); });
+
+  root.innerHTML = renderTop() + (ui.variant === 'A' ? renderA() : ui.variant === 'B' ? renderB() : ui.variant === 'C' ? renderC() : renderD());
+
+  // flow strip: chips that changed Phase column glide from their old spot (FLIP, transform only)
+  if (ui.variant === 'D' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const moved = [];
+    document.querySelectorAll('.fchip[data-key]').forEach(el => {
+      const b = before[el.dataset.key]; if (!b) return;
+      const a = el.getBoundingClientRect(), dx = b.left - a.left, dy = b.top - a.top;
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      el.style.transition = 'none';
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      moved.push(el);
+    });
+    if (moved.length) {
+      const flow = document.querySelector('.flow');
+      flow.classList.add('animating');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        moved.forEach(el => { el.style.transition = 'transform 400ms var(--ease-out)'; el.style.transform = ''; el.classList.add('moved'); });
+        setTimeout(() => flow.classList.remove('animating'), 450);
+      }));
+    }
+  }
+  if (tipKey && ui.variant === 'D') { const el = document.querySelector(`.fchip[data-key="${tipKey}"]`); if (el) showTip(el); else hideTip(); }
+  else hideTip();
 
   const selS = ui.sel ? byId(ui.sel.sid) : null;
   if (ui.variant === 'A' && ui.drawer && selS) {
@@ -1119,7 +1245,7 @@ function setVariant(id){
   ui.drawer = false; ui.modal = false;
   if (modal.open) modal.close();
   ui.variant = id;
-  if (id !== 'C') ui.sel = null;
+  if (id !== 'C' && id !== 'D') ui.sel = null;
   try {
     const u = new URL(location.href);
     u.searchParams.set('variant', id);
