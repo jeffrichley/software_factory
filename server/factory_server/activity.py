@@ -22,7 +22,13 @@ def rel(path: str, cwd: str | None) -> str:
 
 
 def running_skill(skill: str) -> str:
+    """A skill the skill table doesn't know."""
     return f"running skill `{skill}`"
+
+
+def started_skill(name: str) -> str:
+    """A skill the skill table knows (a Job, a planning kind or a Phase signal)."""
+    return f"started `{name}`"
 
 
 def tool_headline(event: dict) -> str:
@@ -49,6 +55,4 @@ def tool_headline(event: dict) -> str:
             return f"searching the web for \"{short(args['query'])}\""
         case "Agent" | "Task" if args.get("description"):
             return f"running subagent: {short(args['description'])}"
-        case "Skill" if args.get("skill"):
-            return running_skill(args["skill"])
     return f"using {tool}"

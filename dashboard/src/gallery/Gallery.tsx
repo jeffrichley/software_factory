@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  Detail,
+  AdHocView,
+  AD_HOC,
   DoneCard,
-  Hint,
   DoneUnseenCount,
   HiddenNeedsBadge,
   NeedsCount,
@@ -23,7 +23,6 @@ import {
   SectionHeading,
   SessionHeader,
   SessionTable,
-  Timeline,
   TopBar,
   StateBadge,
   StateChip,
@@ -33,6 +32,7 @@ import {
   UnknownPhase,
   UnknownPhaseTag,
   type Phase,
+  type SessionState,
   type StateChipProps,
 } from "../ds";
 import { adhocActions, flowRows, mapItems, mapFog, needsCards, specItems, ticketItems } from "./fixtures";
@@ -105,6 +105,8 @@ const TYPE: [string, string, string, string][] = [
 ];
 const SPACE = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7"];
 const RADII = ["--r-xs", "--r-sm", "--r", "--r-lg", "--r-pill"];
+
+const headerStates: [SessionState, boolean][] = [["Working", false], ["Needs you", false], ["Done", false], ["Done", true], ["Stale", false]];
 
 const chip = (over: Partial<StateChipProps> & Pick<StateChipProps, "id">): StateChipProps => ({
   label: "Spec DAG view",
@@ -205,26 +207,24 @@ export function Gallery() {
             selectedId={selectedRow}
             onSelect={setSelectedRow}
             sessions={[
-              { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", kind: "Ticket Job", skill: "implement", now: "waiting on permission — Bash", inStateMs: 3 * 60_000 },
-              { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", kind: "ad hoc", skill: "deploy-preview", now: "running skill `deploy-preview`", inStateMs: 42_000 },
-              { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", kind: "research", skill: "research", now: "pushed findings to research/runtime.md", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
-              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", kind: "ad hoc", skill: null, now: null, inStateMs: 14 * 60_000 },
-              { id: "5", machine: "mac-studio", repo: "jeff/gateway", state: "Working", kind: "Wayfinder", skill: "wayfinder", now: "reading docs/agents/a-very-long-path/that/ellipsizes/in/the/headline/column/of/the/session/table.md", inStateMs: 7 * 60_000 },
+              { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", kind: "Ticket Job", unknownSkill: null, now: "waiting on permission — Bash", inStateMs: 3 * 60_000 },
+              { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", kind: "ad hoc", unknownSkill: "deploy-preview", now: "running skill `deploy-preview`", inStateMs: 42_000 },
+              { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", kind: "research", unknownSkill: null, now: "pushed findings to research/runtime.md", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
+              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", kind: "ad hoc", unknownSkill: null, now: null, inStateMs: 14 * 60_000 },
+              { id: "5", machine: "mac-studio", repo: "jeff/gateway", state: "Working", kind: "Wayfinder", unknownSkill: null, now: "reading docs/agents/a-very-long-path/that/ellipsizes/in/the/headline/column/of/the/session/table.md", inStateMs: 7 * 60_000 },
             ]}
           />
           <SessionTable sessions={[]} />
         </Section>
 
-        <Section id="detail" title="Session detail (ad hoc)" note="Header with state, time in state and the now: headline; a timeline of the last actions, the latest marked.">
-          <Detail label="Ad hoc session detail">
-            <SessionHeader machine="desk-wsl" repo="worlds" kind="ad hoc" state="Working" inStateMs={4 * 60_000} now="reading src/render/chunk.ts" title="Ad hoc session" />
-            <Panel title={`Last ${adhocActions.length} actions`}><Timeline actions={adhocActions} /></Panel>
-            <Hint>Ad hoc sessions run no skill the Factory knows, so there is no Job, Step or Phase.</Hint>
-          </Detail>
-          <Detail label="Ad hoc session detail, just started">
-            <SessionHeader machine="mac-mini" repo="gateway" kind="ad hoc" state="Done" inStateMs={30_000} now={null} title={<>Ad hoc session · running skill <code className="mono">deploy-preview</code></>} />
-            <Panel title="Last actions"><Hint>No actions yet.</Hint></Panel>
-          </Detail>
+        <Section id="detail" title="Session detail (ad hoc)" note="AdHocView: header with state, time in state and the now: headline; a timeline of the last actions, the latest marked. Other kinds use it, titled by their kind, until their own view arrives.">
+          <AdHocView machine="desk-wsl" repo="worlds" kind={AD_HOC} state="Working" inStateMs={4 * 60_000} now="reading src/render/chunk.ts" unknownSkill={null} actions={adhocActions} />
+          <AdHocView machine="mac-mini" repo="gateway" kind={AD_HOC} state="Done" inStateMs={30_000} now={null} unknownSkill="deploy-preview" actions={[]} />
+          <AdHocView machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Needs you" inStateMs={3 * 60_000} now="started `implement`" unknownSkill={null} actions={adhocActions.slice(-3)} />
+          <Eyebrow>Session header · every state</Eyebrow>
+          {headerStates.map(([state, seen]) => (
+            <SessionHeader key={`${state}-${seen}`} machine="mac-studio" repo="jeff/widgets" kind="research" state={state} seen={seen} inStateMs={7 * 60_000} now={state === "Stale" ? null : "fetching https://docs.github.com/rest"} title="research session" />
+          ))}
         </Section>
 
         <Section id="machines" title="Machine pills & header counts" note="Click a pill to toggle it; hidden Machines still count their Needs you.">

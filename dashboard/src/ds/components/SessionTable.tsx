@@ -1,6 +1,6 @@
 import { formatDuration } from "../format";
-import type { SessionState } from "../types";
-import { NowLine } from "./InboxCards";
+import { AD_HOC, type SessionState } from "../types";
+import { NowLine } from "./NowLine";
 import { StateBadge } from "./StateBadge";
 import { Empty } from "./Panel";
 
@@ -11,8 +11,8 @@ export interface SessionRowData {
   state: SessionState;
   /** Ticket Job, Spec Job, a planning kind (Wayfinder, to-spec, to-tickets, research) or ad hoc. */
   kind: string;
-  /** The skill that set the kind; for ad hoc, the skill the table doesn't know, if any. */
-  skill: string | null;
+  /** The latest skill the skill table doesn't know, if any; an ad hoc row names it. */
+  unknownSkill: string | null;
   /** The "now: …" headline; null until the session does something. */
   now: string | null;
   /** ms the session has been in its state. */
@@ -48,7 +48,7 @@ export function SessionTable({
             <td><StateBadge state={s.state} /></td>
             <td className="mono">{s.machine}</td>
             <td className="mono">{s.repo}</td>
-            <td>{s.kind}{s.kind === "ad hoc" && s.skill ? <SkillNote skill={s.skill} /> : null}</td>
+            <td>{s.kind}{s.kind === AD_HOC && s.unknownSkill ? <SkillNote skill={s.unknownSkill} /> : null}</td>
             <td><NowLine now={s.now} /></td>
             <td><span className="tmain">{formatDuration(s.inStateMs)}</span></td>
           </tr>

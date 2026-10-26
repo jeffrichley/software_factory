@@ -14,6 +14,7 @@ export * from "./components/StateBadge";
 export * from "./components/StateChip";
 export * from "./components/FlowStrip";
 export * from "./components/MachinePill";
+export * from "./components/NowLine";
 export * from "./components/InboxCards";
 export * from "./components/PhaseTrack";
 export * from "./components/Graph";

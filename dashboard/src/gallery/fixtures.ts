@@ -1,4 +1,4 @@
-import { specInitials, type FlowRow, type GraphNodeInput, type NeedsYouCardProps } from "../ds";
+import { specInitials, type FlowRow, type TimelineEntry, type GraphNodeInput, type NeedsYouCardProps } from "../ds";
 
 /** Fake data for the gallery only. */
 
@@ -69,7 +69,7 @@ export const ticketItems: GraphNodeInput[] = [
 
 const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * m).toISOString();
 
-export const adhocActions: { at: string; text: string }[] = [
+export const adhocActions: TimelineEntry[] = [
   { at: at(9), text: "reading src/render/chunk.ts" },
   { at: at(8), text: "searching for \"seamOffset\"" },
   { at: at(6), text: "reading src/render/tileAtlas.ts" },

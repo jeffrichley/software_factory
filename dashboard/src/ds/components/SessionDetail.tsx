@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import { formatClock, formatDuration } from "../format";
-import type { SessionState } from "../types";
+import { AD_HOC, type SessionState } from "../types";
 import { Icon } from "./Icon";
-import { NowLine } from "./InboxCards";
+import { NowLine } from "./NowLine";
+import { Eyebrow, Panel } from "./Panel";
+import { SkillNote } from "./SessionTable";
 import { StateBadge } from "./StateBadge";
 
 export interface TimelineEntry {
@@ -31,9 +33,11 @@ export interface SessionHeaderProps {
   repo: string;
   kind: string;
   state: SessionState;
+  /** Done only: has the human seen it. */
+  seen?: boolean;
   inStateMs: number;
   now: string | null;
-  /** The detail's title: the Work item, or what an ad hoc session is. */
+  /** The detail's title: the Work item, or what kind of session it is. */
   title: ReactNode;
 }
 
@@ -48,10 +52,10 @@ export function SessionHeader(p: SessionHeaderProps) {
         <span className="cur">{p.kind} session</span>
       </nav>
       <header className="sd-h">
-        <span className="eyebrow">{p.kind}</span>
+        <Eyebrow>{p.kind}</Eyebrow>
         <h2>{p.title}</h2>
         <div className="sd-meta">
-          <StateBadge state={p.state} />
+          <StateBadge state={p.state} seen={p.seen} />
           <span>in state {formatDuration(p.inStateMs)}</span>
           <span className="sd-where"><Icon name="terminal" /><span className="mono">{p.machine}</span></span>
           <span>repo <span className="mono">{p.repo}</span></span>
@@ -70,4 +74,34 @@ export function Detail({ children, label }: { children: ReactNode; label?: strin
 /** Quiet explanatory text under a panel. */
 export function Hint({ children }: { children: ReactNode }) {
   return <p className="hint">{children}</p>;
+}
+
+export interface AdHocViewProps extends Omit<SessionHeaderProps, "title"> {
+  /** The latest skill the skill table doesn't know, if any. */
+  unknownSkill: string | null;
+  actions: TimelineEntry[];
+}
+
+/**
+ * State, headline and the last actions: the whole detail of an ad hoc session, which has no Job, Step or Phase.
+ * Other kinds show it too, titled by their kind, until their own view arrives.
+ */
+export function AdHocView({ actions, unknownSkill, ...header }: AdHocViewProps) {
+  const adHoc = header.kind === AD_HOC;
+  const title = adHoc
+    ? <>Ad hoc session{unknownSkill ? <SkillNote skill={unknownSkill} /> : null}</>
+    : `${header.kind} session`;
+  return (
+    <Detail label={`${header.kind} session detail`}>
+      <SessionHeader {...header} title={title} />
+      <Panel title={actions.length ? `Last ${actions.length} actions` : "Last actions"}>
+        {actions.length ? <Timeline actions={actions} /> : <Hint>No actions yet.</Hint>}
+      </Panel>
+      <Hint>
+        {adHoc
+          ? "Ad hoc sessions run no skill the Factory knows, so there is no Job, Step or Phase."
+          : `The ${header.kind} view is not built yet; this shows the session’s state, headline and last actions.`}
+      </Hint>
+    </Detail>
+  );
 }

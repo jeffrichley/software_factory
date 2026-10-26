@@ -4,6 +4,8 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from .skills import AD_HOC
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
   id INTEGER PRIMARY KEY,
@@ -29,10 +31,17 @@ CREATE TABLE IF NOT EXISTS actions (
   text TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS actions_by_session ON actions (session_id, id);
+-- Every start of a skill the skill table does not know, kept for good (the timeline drops old actions).
+CREATE TABLE IF NOT EXISTS unknown_skills (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL REFERENCES sessions (id),
+  skill TEXT NOT NULL,
+  at TEXT NOT NULL
+);
 """
 # Columns added after the first release, so an existing database gains them on start.
 SESSION_COLUMNS = {
-    "kind": "TEXT NOT NULL DEFAULT 'ad hoc'",
+    "kind": f"TEXT NOT NULL DEFAULT '{AD_HOC}'",
     "skill": "TEXT",
     "headline": "TEXT",
     "mattpocock_skills_version": "TEXT",
@@ -92,6 +101,10 @@ class Store:
         with self.db:
             self.db.execute("UPDATE sessions SET kind = ?, skill = ? WHERE id = ?", (kind, skill, session_id))
 
+    def record_unknown_skill(self, session_id: int, skill: str, now: datetime) -> None:
+        with self.db:
+            self.db.execute("INSERT INTO unknown_skills (session_id, skill, at) VALUES (?, ?, ?)", (session_id, skill, iso(now)))
+
     def record_action(self, session_id: int, text: str, now: datetime) -> None:
         """The session's headline is now `text`; it joins the timeline, which keeps the last few."""
         with self.db:
@@ -105,7 +118,9 @@ class Store:
 
     def live_sessions(self) -> list[dict]:
         rows = self.db.execute(
-            "SELECT id, machine, repo, state, state_since, kind, skill, headline FROM sessions WHERE ended_at IS NULL ORDER BY id"
+            "SELECT id, machine, repo, state, state_since, kind, skill, headline,"
+            " (SELECT skill FROM unknown_skills u WHERE u.session_id = sessions.id ORDER BY u.id DESC LIMIT 1) AS unknown_skill"
+            " FROM sessions WHERE ended_at IS NULL ORDER BY id"
         ).fetchall()
         actions: dict[int, list[dict]] = {}
         for a in self.db.execute(
@@ -116,7 +131,8 @@ class Store:
         return [
             {
                 "id": str(r["id"]), "machine": r["machine"], "repo": r["repo"], "state": r["state"],
-                "state_since": r["state_since"], "kind": r["kind"], "skill": r["skill"], "now": r["headline"],
+                "state_since": r["state_since"], "kind": r["kind"], "skill": r["skill"],
+                "unknown_skill": r["unknown_skill"], "now": r["headline"],
                 "actions": actions.get(r["id"], []),
             }
             for r in rows

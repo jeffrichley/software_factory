@@ -13,6 +13,9 @@
 #                      so list ranged entries before an unranged fallback for the same skill.
 #
 # Phase signals (skills run inside a Job, such as tdd) never change a session's kind.
+#
+# `version` is the table's format; this server reads version 1. A table that fails to parse or validate
+# is logged by the server, which keeps using the last good table (or treats every skill as unknown).
 
 version = 1
 

@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .activity import running_skill, tool_headline
+from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name
 from .store import Store
@@ -88,17 +88,17 @@ def create_app(
     def observe(session_id: int, event: dict, now: datetime) -> None:
         """Kind, headline and timeline from what the session does."""
         if skill := skill_started(event):
-            skill = bare_name(skill) or skill  # Matt's skills are named without their plugin prefix
+            name = bare_name(skill)  # Matt's skills go by their table name, without the plugin prefix
+            role = skills.role(name, store.session(session_id)["mattpocock_skills_version"]) if name else None
+            if role is None:
+                # Recorded even inside a Job or a subagent; it labels the session only while it is ad hoc.
+                store.record_unknown_skill(session_id, skill, now)
+                store.record_action(session_id, running_skill(skill), now)
+                return
             # A subagent's skills (an implementer's tdd) belong to its parent's Job: they never reclassify the session.
-            if "agent_id" not in event:
-                row = store.session(session_id)
-                role = skills.role(skill, row["mattpocock_skills_version"])
-                if role and role.kind:
-                    store.classify(session_id, role.kind, skill)
-                elif row["kind"] == "ad hoc":
-                    # A Phase signal or a skill the table doesn't know: the session stays ad hoc, labelled with it.
-                    store.classify(session_id, "ad hoc", skill)
-            store.record_action(session_id, running_skill(skill), now)
+            if role.kind and "agent_id" not in event:
+                store.classify(session_id, role.kind, name)
+            store.record_action(session_id, started_skill(name), now)
         elif event.get("hook_event_name") == "PreToolUse":
             store.record_action(session_id, tool_headline(event), now)
 
