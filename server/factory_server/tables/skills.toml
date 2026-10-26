@@ -1,0 +1,63 @@
+# The skill table: which role each of Matt Pocock's skills plays for the Factory.
+#
+# Edit it freely; the Factory server reads it again on every skill start, so no restart is needed.
+# To keep edits across plugin updates, copy it to server/skills.toml in the Factory's data directory
+# (~/.claude/plugins/data/factory-software-factory/), which `factory server` prefers, or pass --skill-table.
+# A skill that is not listed plays no role: its session shows as ad hoc, "running skill `<name>`".
+#
+# Each [[skill]] entry:
+#   name               the skill's name, without the "mattpocock-skills:" prefix
+#   role               "Ticket Job", "Spec Job", "planning" or "Phase signal"
+#   kind               for "planning" only: the session kind shown (Wayfinder, to-spec, to-tickets, research)
+#   work_items         optional: the kinds of Work item the skill is meant for ("Map", "Decision ticket", "Spec",
+#                      "Ticket"); one started against another kind is flagged as a Mismatch, never blocked
+#   mattpocock_skills  optional version range, such as ">=1.4, <2"; the first entry whose range holds wins,
+#                      so list ranged entries before an unranged fallback for the same skill.
+#
+# Phase signals (skills run inside a Job, such as tdd) never change a session's kind.
+#
+# `version` is the table's format; this server reads version 1. A table that fails to parse or validate
+# is logged by the server, which keeps using the last good table (or treats every skill as unknown).
+
+version = 1
+
+[[skill]]
+name = "implement"
+role = "Ticket Job"
+work_items = ["Ticket"]
+
+[[skill]]
+name = "implement-spec"
+role = "Spec Job"
+work_items = ["Spec"]
+
+[[skill]]
+name = "wayfinder"
+role = "planning"
+kind = "Wayfinder"
+work_items = ["Map"]
+
+[[skill]]
+name = "to-spec"
+role = "planning"
+kind = "to-spec"
+work_items = ["Map"]
+
+[[skill]]
+name = "to-tickets"
+role = "planning"
+kind = "to-tickets"
+work_items = ["Spec"]
+
+[[skill]]
+name = "research"
+role = "planning"
+kind = "research"
+
+[[skill]]
+name = "tdd"
+role = "Phase signal"
+
+[[skill]]
+name = "code-review"
+role = "Phase signal"

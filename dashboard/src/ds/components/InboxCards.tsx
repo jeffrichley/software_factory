@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { formatDuration } from "../format";
 import { Icon, type IconName } from "./Icon";
+import { NowLine } from "./NowLine";
 import { Unknown } from "./Unknown";
 
 export type NeedsReason =
@@ -27,15 +28,6 @@ export interface WorkItemRef {
 
 export function WorkItemLink({ item }: { item: WorkItemRef | null }) {
   return item ? <a className="wi" href={item.url}>{item.name}</a> : <Unknown />;
-}
-
-export function NowLine({ now }: { now: string | null }) {
-  return (
-    <span className="now">
-      <span className="now-k">now:</span>
-      {now ?? <Unknown />}
-    </span>
-  );
 }
 
 /** Title and icon when the reason isn't known: shown as unknown, never guessed. */

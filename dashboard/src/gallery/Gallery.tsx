@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  AdHocView,
+  AD_HOC,
   DoneCard,
   DoneUnseenCount,
   HiddenNeedsBadge,
@@ -20,6 +22,7 @@ import {
   PhaseName,
   PhaseTrack,
   SectionHeading,
+  SessionHeader,
   SessionTable,
   Split,
   TopBar,
@@ -31,9 +34,10 @@ import {
   UnknownPhase,
   UnknownPhaseTag,
   type Phase,
+  type SessionState,
   type StateChipProps,
 } from "../ds";
-import { flowRows, mapItems, mapFog, needsCards, specItems, ticketItems } from "./fixtures";
+import { adhocActions, flowRows, mapItems, mapFog, needsCards, specItems, ticketItems } from "./fixtures";
 import "./gallery.css";
 
 type Theme = "system" | "light" | "dark";
@@ -104,6 +108,8 @@ const TYPE: [string, string, string, string][] = [
 const SPACE = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7"];
 const RADII = ["--r-xs", "--r-sm", "--r", "--r-lg", "--r-pill"];
 
+const headerStates: [SessionState, boolean][] = [["Working", false], ["Needs you", false], ["Done", false], ["Done", true], ["Stale", false]];
+
 const chip = (over: Partial<StateChipProps> & Pick<StateChipProps, "id">): StateChipProps => ({
   label: "Spec DAG view",
   name: "Spec Job: Steps and the Ticket DAG",
@@ -120,6 +126,7 @@ export function Gallery() {
   const [hidden, setHidden] = useState<Set<string>>(new Set(["win-ps"]));
   const [selected, setSelected] = useState<string | undefined>("api");
   const [mapSel, setMapSel] = useState<string | undefined>();
+  const [selectedRow, setSelectedRow] = useState<string | undefined>("2");
   const toggle = (m: string) => setHidden((h) => { const n = new Set(h); if (n.has(m)) n.delete(m); else n.add(m); return n; });
   const glideRows = flowRows.map((r, i) =>
     i === 0 ? { ...r, chips: r.chips.map((c) => (c.id === "glide" ? { ...c, phase: PHASES[glidePhase] as Phase } : c)) } : r,
@@ -130,7 +137,7 @@ export function Gallery() {
       <header className="g-top">
         <div className="g-brand"><span className="g-mark" aria-hidden="true" />Factory <small>design system</small></div>
         <nav className="g-nav" aria-label="Sections">
-          {["tokens", "states", "sessions", "machines", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
+          {["tokens", "states", "sessions", "detail", "machines", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
         </nav>
         <div className="g-theme" role="group" aria-label="Theme">
           {(["system", "light", "dark"] as const).map((t) => (
@@ -199,15 +206,28 @@ export function Gallery() {
         <Section id="sessions" title="Top bar & session table" note="One row per Tracked session, in every state; empty until a session starts in a Tracked repo.">
           <TopBar />
           <SessionTable
+            selectedId={selectedRow}
+            onSelect={setSelectedRow}
             sessions={[
-              { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", inStateMs: 3 * 60_000 },
-              { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", inStateMs: 42_000 },
-              { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
-              { id: "5", machine: "mac-studio", repo: "jeff/gadgets", state: "Done", seen: true, inStateMs: 5 * 60_000 },
-              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", inStateMs: 14 * 60_000 },
+              { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", kind: "Ticket Job", unknownSkill: null, now: "waiting on permission — Bash", inStateMs: 3 * 60_000 },
+              { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", kind: "ad hoc", unknownSkill: "deploy-preview", now: "running skill `deploy-preview`", inStateMs: 42_000 },
+              { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", kind: "research", unknownSkill: null, now: "pushed findings to research/runtime.md", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
+              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", kind: "ad hoc", unknownSkill: null, now: null, inStateMs: 14 * 60_000 },
+              { id: "5", machine: "mac-studio", repo: "jeff/gateway", state: "Working", kind: "Wayfinder", unknownSkill: null, now: "reading docs/agents/a-very-long-path/that/ellipsizes/in/the/headline/column/of/the/session/table.md", inStateMs: 7 * 60_000 },
+              { id: "6", machine: "mac-studio", repo: "jeff/gadgets", state: "Done", seen: true, kind: "ad hoc", unknownSkill: null, now: "tidied the README", inStateMs: 5 * 60_000 },
             ]}
           />
           <SessionTable sessions={[]} />
+        </Section>
+
+        <Section id="detail" title="Session detail (ad hoc)" note="AdHocView: header with state, time in state and the now: headline; a timeline of the last actions, the latest marked. Other kinds use it, titled by their kind, until their own view arrives.">
+          <AdHocView machine="desk-wsl" repo="worlds" kind={AD_HOC} state="Working" inStateMs={4 * 60_000} now="reading src/render/chunk.ts" unknownSkill={null} actions={adhocActions} />
+          <AdHocView machine="mac-mini" repo="gateway" kind={AD_HOC} state="Done" inStateMs={30_000} now={null} unknownSkill="deploy-preview" actions={[]} />
+          <AdHocView machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Needs you" inStateMs={3 * 60_000} now="started `implement`" unknownSkill={null} actions={adhocActions.slice(-3)} />
+          <Eyebrow>Session header · every state</Eyebrow>
+          {headerStates.map(([state, seen]) => (
+            <SessionHeader key={`${state}-${seen}`} machine="mac-studio" repo="jeff/widgets" kind="research" state={state} seen={seen} inStateMs={7 * 60_000} now={state === "Stale" ? null : "fetching https://docs.github.com/rest"} title="research session" />
+          ))}
         </Section>
 
         <Section id="machines" title="Machine pills & header counts" note="Click a pill to toggle it; hidden Machines still count their Needs you.">

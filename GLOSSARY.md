@@ -46,6 +46,10 @@ _Avoid_: PRD, design doc
 A child of a Spec: one implementable vertical slice produced by `to-tickets`.
 _Avoid_: Task, story, slice
 
+**Mismatch**:
+A skill started against a Work item of a kind it isn't meant for, such as `implement` on a Spec; flagged, never blocked.
+_Avoid_: Wrong kind, error
+
 ### Running work
 
 **Job**:
@@ -63,6 +67,28 @@ _Avoid_: Subtask, stage
 **Phase**:
 Where a Step is in its work right now, such as Exploring, Red, Green, Refactor, Reviewing, Committed or Merged.
 _Avoid_: Job stage, status
+
+### Sessions and skills
+
+**Skill table**:
+The editable, versioned file on the Factory server that gives each of Matt Pocock's skills its role: Ticket Job, Spec Job, a planning kind, or Phase signal, optionally per mattpocock-skills version range.
+_Avoid_: Skill map, registry, config
+
+**Session kind**:
+What a Tracked session is doing, from the skill table: Ticket Job, Spec Job, a planning kind (Wayfinder, to-spec, to-tickets, research) or ad hoc. Separate from the Work item's kind, which comes from GitHub.
+_Avoid_: Session type, mode
+
+**Ad hoc session**:
+A Tracked session running no skill that gives it a kind; a skill not in the skill table shows on it as "running skill `<name>`".
+_Avoid_: Unknown session, freeform session
+
+**Phase signal**:
+A skill run inside a Job (such as `tdd` or `code-review`) that is evidence for a Step's Phase, never a Step or a session kind of its own. The Phase is where the Step is; a Phase signal is one input to working that out.
+_Avoid_: Sub-skill, nested Job
+
+**Headline**:
+The one-line "now: …" on a Tracked session: what its latest event shows it doing, such as "reading src/app.ts".
+_Avoid_: Status, activity, summary
 
 ### States
 

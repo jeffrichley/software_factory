@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  AdHocView,
   DoneCard,
   Empty,
   FlowStrip,
@@ -14,7 +15,9 @@ import {
   inboxOf,
   resumeCommand,
   type NeedsReason,
+  type SessionRowData,
   type SessionState,
+  type TimelineEntry,
 } from "../ds";
 
 /** The server's dashboard state (GET /api/state, and each SSE `state` event). */
@@ -34,8 +37,23 @@ interface FactoryState {
     reason: NeedsReason | null;
     /** Done has been seen. */
     seen: boolean;
+    kind: string;
+    /** The skill that gave the session its kind. */
+    skill: string | null;
+    /** The latest skill the skill table doesn't know. */
+    unknown_skill: string | null;
+    now: string | null;
+    /** The last few actions, oldest first. */
+    actions: TimelineEntry[];
   }[];
 }
+
+type Session = SessionRowData & {
+  ccSessionId: string;
+  reason: NeedsReason | null;
+  seen: boolean;
+  actions: TimelineEntry[];
+};
 
 /** Live dashboard state: the SSE stream sends the full state on connect and on every change. */
 function useFactoryState(): FactoryState | null {
@@ -65,14 +83,19 @@ const SESSION_ID_CHARS = 8;
 export function Dashboard() {
   const state = useFactoryState();
   const now = useNow(1000);
-  const [selected, setSelected] = useState<string | null>(null);
-  const sessions = state?.sessions.map((s) => ({ ...s, inStateMs: now - Date.parse(s.state_since) }));
+  const [selectedId, setSelectedId] = useState<string>();
+  const sessions: Session[] | undefined = state?.sessions.map((s) => ({
+    id: s.id, machine: s.machine, repo: s.repo, ccSessionId: s.cc_session_id, state: s.state, reason: s.reason,
+    seen: s.seen, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, actions: s.actions,
+    inStateMs: now - Date.parse(s.state_since),
+  }));
+  const selected = sessions?.find((s) => s.id === selectedId);
   const { needs, doneUnseen } = inboxOf(sessions ?? []);
 
   const seen = (id: string) => void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
-  /** Opening a session's detail makes its Done seen (the detail view itself comes with session kinds). */
+  /** Opening a session's detail, from its row or its inbox card, makes its Done seen. */
   const open = (id: string) => {
-    setSelected(id);
+    setSelectedId(id);
     seen(id);
   };
 
@@ -90,13 +113,13 @@ export function Dashboard() {
                   reason={s.reason}
                   waitingMs={s.inStateMs}
                   repo={s.repo}
-                  kind={null}
+                  kind={s.kind}
                   workItem={null}
                   machine={s.machine}
-                  session={s.cc_session_id.slice(0, SESSION_ID_CHARS)}
+                  session={s.ccSessionId.slice(0, SESSION_ID_CHARS)}
                   terminal={null}
-                  resumeCommand={resumeCommand(s.cc_session_id)}
-                  selected={s.id === selected}
+                  resumeCommand={resumeCommand(s.ccSessionId)}
+                  selected={s.id === selectedId}
                   onCopy={copy}
                   onOpen={() => open(s.id)}
                 />
@@ -109,12 +132,12 @@ export function Dashboard() {
               doneUnseen.map((s) => (
                 <DoneCard
                   key={s.id}
-                  kind={null}
+                  kind={s.kind}
                   workItem={null}
                   repo={s.repo}
                   machine={s.machine}
                   agoMs={s.inStateMs}
-                  now={null}
+                  now={s.now}
                   onOpen={() => open(s.id)}
                 />
               ))
@@ -125,7 +148,9 @@ export function Dashboard() {
         }
       >
         {state ? <FlowStrip rows={state.repos.map((r) => ({ repo: r.repo, chips: [] }))} /> : null}
-        {sessions ? <SessionTable sessions={sessions} /> : null}
+        {sessions ? <SessionTable sessions={sessions} selectedId={selectedId} onSelect={open} /> : null}
+        {/* Every kind shows the ad hoc view, titled by its kind, until its own detail view arrives. */}
+        {selected ? <AdHocView {...selected} /> : null}
       </Split>
     </>
   );
