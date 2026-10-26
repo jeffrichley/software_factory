@@ -71,6 +71,15 @@ def session_cache_path(main: Path, machine: str, cc_session_id: str) -> Path:
     return machine_dir(main, machine) / "sessions" / f"{cc_session_id}.json"
 
 
+def latest_session_ids(main: Path, machine: str) -> dict:
+    """The ids cached for this Machine's most recently active session in the repo, or {}."""
+    caches = sorted((machine_dir(main, machine) / "sessions").glob("*.json"), key=lambda p: p.stat().st_mtime)
+    try:
+        return json.loads(caches[-1].read_text()) if caches else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def queue_path(main: Path, machine: str) -> Path:
     """Events the server couldn't take yet, one JSON envelope per line, oldest first."""
     return machine_dir(main, machine) / "queue.jsonl"
@@ -104,7 +113,11 @@ def flush_queue(main: Path, machine: str, server_url: str) -> bool:
     lines = queued(main, machine)
     for i, line in enumerate(lines):
         try:
-            post_event(server_url, json.loads(line))
+            body = json.loads(line)
+        except ValueError:
+            continue  # a line half-written by a crash: drop it rather than block the queue for good
+        try:
+            post_event(server_url, body)
         except OSError:
             queue_path(main, machine).write_text("".join(f"{rest}\n" for rest in lines[i:]))
             return False

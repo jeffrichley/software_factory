@@ -71,25 +71,21 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
         event = envelope.event
-        name = event.get("hook_event_name")
         now = clock()
-        if name == "repo_uninstalled":
-            store.untrack_repo(envelope.repo, envelope.machine, now)
-            hub.publish(state())
-            return Reply(session_id=None)
-        # Every event tracks its repo, so a lost `repo_installed` can't hide a Tracked repo.
-        store.track_repo(envelope.repo, envelope.machine, envelope.repo_path, now)
-        if name == "repo_installed":
-            hub.publish(state())
-            return Reply(session_id=None)
-        session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
-        match name:
-            case "SessionStart":
-                store.resume_session(session_id, now)
-            case "SessionEnd":
-                store.end_session(session_id, now)
+        session_id = None
+        match event.get("hook_event_name"):
+            case "repo_installed":
+                store.track_repo(envelope.repo, envelope.machine, envelope.repo_path, now)
+            case "repo_uninstalled":
+                store.untrack_repo(envelope.repo, envelope.machine, now)
+            case name:
+                session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
+                if name == "SessionStart":
+                    store.resume_session(session_id, now)
+                elif name == "SessionEnd":
+                    store.end_session(session_id, now)
         hub.publish(state())
-        return Reply(session_id=str(session_id))
+        return Reply(session_id=None if session_id is None else str(session_id))
 
     @app.get("/api/health")
     async def health() -> dict:

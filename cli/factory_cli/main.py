@@ -14,17 +14,21 @@ from typing import Annotated
 import typer
 
 from .tracking import (
-    data_dir, factory_dir, flush_queue, github_repo, load_setup, machine_dir, main_worktree, marker_path, post_event,
-    queued, save_setup, send,
+    data_dir, factory_dir, flush_queue, github_repo, latest_session_ids, load_setup, machine_dir, main_worktree,
+    marker_path, post_event, queued, save_setup, send,
 )
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PORT = 47821
-# The oldest uv that reads committed `uv lock --script` lockfiles (ADR 0001); hooks and CLI need it.
-MIN_UV = (0, 6, 0)
+# uv 0.5.17 added script lockfiles (`uv lock --script`), which the CLI's committed lock needs (ADR 0001).
+MIN_UV = (0, 5, 17)
 # What /setup-matt-pocock-skills writes; its presence means the repo is configured for Matt's skills.
 SKILLS_CONFIG = "docs/agents/issue-tracker.md"
-START_SERVER = f"Start it on the box that hosts it with `factory server` (port {DEFAULT_PORT} unless --port)."
+ORIGIN_HEAD_WARNING = (
+    f"Warning: {SKILLS_CONFIG} isn't on origin/HEAD, so Job worktrees (branched from there) won't see the skills "
+    "config. Commit and push it (if it is pushed, run `git fetch` and `git remote set-head origin --auto`)."
+)
+START_SERVER = f"Start it on the Machine that hosts it with `factory server` (port {DEFAULT_PORT} unless --port)."
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -75,12 +79,6 @@ def skills_config_pushed(main: Path) -> bool:
     return done.returncode == 0
 
 
-ORIGIN_HEAD_WARNING = (
-    f"Warning: {SKILLS_CONFIG} isn't on origin/HEAD, so Job worktrees (branched from there) won't see "
-    "the skills config. Commit and push it."
-)
-
-
 def server_version(server_url: str) -> str | None:
     """The server's version, or None when it can't be reached."""
     try:
@@ -92,15 +90,6 @@ def server_version(server_url: str) -> str | None:
 
 def tracking_event(name: str, main: Path, machine: str, repo: str) -> dict:
     return {"machine": machine, "repo": repo, "repo_path": str(main), "ids": {}, "event": {"hook_event_name": name}}
-
-
-def current_ids(main: Path, machine: str) -> dict:
-    """The ids of this Machine's most recently active session in the repo: the one running this command."""
-    caches = sorted((machine_dir(main, machine) / "sessions").glob("*.json"), key=lambda p: p.stat().st_mtime)
-    try:
-        return json.loads(caches[-1].read_text()) if caches else {}
-    except (OSError, ValueError):
-        return {}
 
 
 def print_status(setup: dict, main: Path | None) -> None:
@@ -128,8 +117,9 @@ def print_status(setup: dict, main: Path | None) -> None:
             typer.echo(f"Warning: the server runs Factory {version} but this Machine has {factory_version()}.")
 
     if main and marker_path(main, machine).exists():
-        ids = current_ids(main, machine)
-        typer.echo(f"Session {ids.get('session_id') or '—'}, Job {ids.get('job_id') or '—'}")
+        # Run from a slash command, the latest session is the one running it; from a plain shell it's only the latest.
+        ids = latest_session_ids(main, machine)
+        typer.echo(f"Latest session {ids.get('session_id') or '—'}, Job {ids.get('job_id') or '—'}")
         if waiting := len(queued(main, machine)):
             typer.echo(f"{waiting} event(s) queued for the server.")
         if not skills_config_pushed(main):

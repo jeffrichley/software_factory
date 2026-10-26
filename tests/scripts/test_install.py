@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import commit, configure_skills, git, push, run_factory
+from conftest import configure_skills, git, run_factory
 
 
 def set_up_machine(env, cwd, url, name="wsl"):
@@ -88,6 +88,20 @@ def test_a_queued_install_is_delivered_before_the_uninstall(env, repo, server):
     set_up_machine(env, repo, server.url)
     server.close()
     run_factory(env, repo, "install")
+    server.restart()
+
+    done = run_factory(env, repo, "uninstall")
+
+    assert done.returncode == 0, done.stderr
+    assert server.events() == ["repo_installed", "repo_uninstalled"]
+
+
+def test_a_half_written_queue_line_does_not_block_the_queue(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    server.close()
+    run_factory(env, repo, "install")
+    with (repo / ".factory" / "machines" / "wsl" / "queue.jsonl").open("a") as f:
+        f.write('{"machine": "ws\n')
     server.restart()
 
     done = run_factory(env, repo, "uninstall")
@@ -189,7 +203,7 @@ def test_status_shows_tracking_reachability_and_current_ids(env, repo, server):
     assert done.returncode == 0, done.stderr
     assert "Tracked on 'wsl'" in done.stdout
     assert "Server reachable" in done.stdout
-    assert "Session 41, Job 9" in done.stdout
+    assert "Latest session 41, Job 9" in done.stdout
     assert "origin/HEAD" not in done.stdout
 
 

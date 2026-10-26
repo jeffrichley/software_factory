@@ -138,7 +138,7 @@ def test_uninstall_ends_only_that_machines_live_sessions_in_the_repo(client):
 
     state = client.get("/api/state").json()
     assert [(s["machine"], s["repo"]) for s in state["sessions"]] == [("mac", "jeff/widgets"), ("wsl", "jeff/gadgets")]
-    assert state["repos"] == [{"repo": "jeff/gadgets", "machines": ["wsl"]}, {"repo": "jeff/widgets", "machines": ["mac"]}]
+    assert state["repos"] == [{"repo": "jeff/widgets", "machines": ["mac"]}]
 
 
 def test_a_repo_no_machine_tracks_leaves_the_dashboard(client):
@@ -147,12 +147,6 @@ def test_a_repo_no_machine_tracks_leaves_the_dashboard(client):
     client.post("/api/events", json=tracking_event("repo_uninstalled"))
 
     assert client.get("/api/state").json()["repos"] == []
-
-
-def test_a_session_event_tracks_its_repo_even_if_the_install_event_was_lost(client):
-    client.post("/api/events", json=hook_event("SessionStart"))
-
-    assert client.get("/api/state").json()["repos"] == [{"repo": "jeff/widgets", "machines": ["wsl"]}]
 
 
 def test_health_reports_the_server_version(client):
