@@ -66,20 +66,31 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
     app = FastAPI(title="Factory server", version=SERVER_VERSION)
 
     def state() -> dict:
-        return {"server_version": SERVER_VERSION, "sessions": store.live_sessions()}
+        return {"server_version": SERVER_VERSION, "repos": store.tracked_repos(), "sessions": store.live_sessions()}
 
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
         event = envelope.event
         now = clock()
-        session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
+        session_id = None
         match event.get("hook_event_name"):
-            case "SessionStart":
-                store.resume_session(session_id, now)
-            case "SessionEnd":
-                store.end_session(session_id, now)
+            case "repo_installed":
+                store.track_repo(envelope.repo, envelope.machine, envelope.repo_path, now)
+            case "repo_uninstalled":
+                store.untrack_repo(envelope.repo, envelope.machine, now)
+            case name:
+                session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
+                if name == "SessionStart":
+                    store.resume_session(session_id, now)
+                elif name == "SessionEnd":
+                    store.end_session(session_id, now)
         hub.publish(state())
-        return Reply(session_id=str(session_id))
+        return Reply(session_id=None if session_id is None else str(session_id))
+
+    @app.get("/api/health")
+    async def health() -> dict:
+        """For `factory status` / `dashboard`: is the server up, and which version."""
+        return {"server_version": SERVER_VERSION}
 
     @app.get("/api/state")
     async def get_state() -> dict:

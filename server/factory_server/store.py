@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   ended_at TEXT,
   UNIQUE (machine, cc_session_id)
 );
+CREATE TABLE IF NOT EXISTS tracking (
+  repo TEXT NOT NULL,
+  machine TEXT NOT NULL,
+  repo_path TEXT NOT NULL,
+  installed_at TEXT NOT NULL,
+  PRIMARY KEY (repo, machine)
+);
 """
 
 
@@ -58,3 +65,28 @@ class Store:
             "SELECT id, machine, repo, state, state_since FROM sessions WHERE ended_at IS NULL ORDER BY id"
         ).fetchall()
         return [{**dict(r), "id": str(r["id"])} for r in rows]
+
+    def track_repo(self, repo: str, machine: str, repo_path: str, now: datetime) -> None:
+        """This Machine tracks the repo; tracking it again keeps the first install time."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO tracking (repo, machine, repo_path, installed_at) VALUES (?, ?, ?, ?)"
+                " ON CONFLICT (repo, machine) DO UPDATE SET repo_path = excluded.repo_path",
+                (repo, machine, repo_path, iso(now)),
+            )
+
+    def untrack_repo(self, repo: str, machine: str, now: datetime) -> None:
+        """The Machine stops tracking the repo: its live sessions there end (and stay in history)."""
+        with self.db:
+            self.db.execute("DELETE FROM tracking WHERE repo = ? AND machine = ?", (repo, machine))
+            self.db.execute(
+                "UPDATE sessions SET ended_at = ? WHERE repo = ? AND machine = ? AND ended_at IS NULL",
+                (iso(now), repo, machine),
+            )
+
+    def tracked_repos(self) -> list[dict]:
+        rows = self.db.execute("SELECT repo, machine FROM tracking ORDER BY repo, machine").fetchall()
+        repos: dict[str, list[str]] = {}
+        for r in rows:
+            repos.setdefault(r["repo"], []).append(r["machine"])
+        return [{"repo": repo, "machines": machines} for repo, machines in repos.items()]

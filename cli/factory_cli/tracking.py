@@ -7,9 +7,11 @@ import json
 import os
 import re
 import subprocess
+import urllib.request
 from pathlib import Path
 
 PLUGIN_ID = "factory-software-factory"  # <plugin>-<marketplace>, as Claude Code names plugin data dirs
+POST_TIMEOUT_S = 2
 
 
 def data_dir() -> Path:
@@ -59,9 +61,82 @@ def marker_path(main: Path, machine: str) -> Path:
     return factory_dir(main) / "machines" / f"{machine}.json"
 
 
+def machine_dir(main: Path, machine: str) -> Path:
+    """This Machine's own directory beside its marker: session cache and event queue."""
+    return factory_dir(main) / "machines" / machine
+
+
 def session_cache_path(main: Path, machine: str, cc_session_id: str) -> Path:
     """The ids the server last replied with for a Claude Code session, under this Machine's own directory."""
-    return factory_dir(main) / "machines" / machine / "sessions" / f"{cc_session_id}.json"
+    return machine_dir(main, machine) / "sessions" / f"{cc_session_id}.json"
+
+
+def latest_session_ids(main: Path, machine: str) -> dict:
+    """The ids cached for this Machine's most recently active session in the repo, or {}."""
+    caches = sorted((machine_dir(main, machine) / "sessions").glob("*.json"), key=lambda p: p.stat().st_mtime)
+    try:
+        return json.loads(caches[-1].read_text()) if caches else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def queue_path(main: Path, machine: str) -> Path:
+    """Events the server couldn't take yet, one JSON envelope per line, oldest first."""
+    return machine_dir(main, machine) / "queue.jsonl"
+
+
+def post_event(server_url: str, body: dict) -> dict:
+    """POST one envelope to the server and return its reply; raises OSError when it can't be reached."""
+    req = urllib.request.Request(
+        f"{server_url}/api/events", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=POST_TIMEOUT_S) as resp:
+        return json.loads(resp.read())
+
+
+def enqueue(main: Path, machine: str, body: dict) -> None:
+    q = queue_path(main, machine)
+    q.parent.mkdir(parents=True, exist_ok=True)
+    with q.open("a") as f:
+        f.write(json.dumps(body) + "\n")
+
+
+def queued(main: Path, machine: str) -> list[str]:
+    try:
+        return queue_path(main, machine).read_text().splitlines()
+    except OSError:
+        return []
+
+
+def flush_queue(main: Path, machine: str, server_url: str) -> bool:
+    """Deliver queued events in order; True once none are left. Stops at the first failure, keeping the rest."""
+    lines = queued(main, machine)
+    for i, line in enumerate(lines):
+        try:
+            body = json.loads(line)
+        except ValueError:
+            continue  # a line half-written by a crash: drop it rather than block the queue for good
+        try:
+            post_event(server_url, body)
+        except OSError:
+            queue_path(main, machine).write_text("".join(f"{rest}\n" for rest in lines[i:]))
+            return False
+    queue_path(main, machine).unlink(missing_ok=True)
+    return True
+
+
+def send(main: Path, machine: str, server_url: str, body: dict) -> dict | None:
+    """Deliver any queued events, then this one; queue it when the server can't be reached.
+
+    Returns the server's reply, or None when the event was queued.
+    """
+    if flush_queue(main, machine, server_url):
+        try:
+            return post_event(server_url, body)
+        except OSError:
+            pass
+    enqueue(main, machine, body)
+    return None
 
 
 def github_repo(main: Path) -> str | None:
