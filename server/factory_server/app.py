@@ -66,20 +66,35 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
     app = FastAPI(title="Factory server", version=SERVER_VERSION)
 
     def state() -> dict:
-        return {"server_version": SERVER_VERSION, "sessions": store.live_sessions()}
+        return {"server_version": SERVER_VERSION, "repos": store.tracked_repos(), "sessions": store.live_sessions()}
 
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
         event = envelope.event
+        name = event.get("hook_event_name")
         now = clock()
+        if name == "repo_uninstalled":
+            store.untrack_repo(envelope.repo, envelope.machine, now)
+            hub.publish(state())
+            return Reply(session_id=None)
+        # Every event tracks its repo, so a lost `repo_installed` can't hide a Tracked repo.
+        store.track_repo(envelope.repo, envelope.machine, envelope.repo_path, now)
+        if name == "repo_installed":
+            hub.publish(state())
+            return Reply(session_id=None)
         session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
-        match event.get("hook_event_name"):
+        match name:
             case "SessionStart":
                 store.resume_session(session_id, now)
             case "SessionEnd":
                 store.end_session(session_id, now)
         hub.publish(state())
         return Reply(session_id=str(session_id))
+
+    @app.get("/api/health")
+    async def health() -> dict:
+        """For `factory status` / `dashboard`: is the server up, and which version."""
+        return {"server_version": SERVER_VERSION}
 
     @app.get("/api/state")
     async def get_state() -> dict:

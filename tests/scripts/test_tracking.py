@@ -53,8 +53,9 @@ def test_the_hook_posts_each_event_stamped_and_sends_back_cached_ids(env, repo, 
     assert run_hook(env, start).returncode == 0
     assert run_hook(env, event(repo, "PreToolUse", tool_name="Bash")).returncode == 0
 
-    first, second = (r["body"] for r in server.received)
-    assert server.received[0]["path"] == "/api/events"
+    installed, first, second = (r["body"] for r in server.received)
+    assert installed["event"] == {"hook_event_name": "repo_installed"}
+    assert server.received[1]["path"] == "/api/events"
     assert first["event"] == start
     assert first["machine"] == "wsl"
     assert first["repo"] == "jeff/widgets"
@@ -73,7 +74,7 @@ def test_a_session_in_a_linked_worktree_reports_against_the_main_tree(env, repo,
 
     assert run_hook(env, event(wt)).returncode == 0
 
-    assert server.received[0]["body"]["repo_path"] == str(repo.resolve())
+    assert server.received[-1]["body"]["repo_path"] == str(repo.resolve())
 
 
 def test_the_hook_passes_inject_back_as_additional_context(env, repo, server):
@@ -108,3 +109,14 @@ def test_install_refuses_a_repo_without_a_github_remote(env, repo, server):
     assert done.returncode != 0
     assert "GitHub" in done.stdout + done.stderr
     assert not (repo / ".factory").exists()
+
+
+def test_the_next_hook_event_delivers_a_queued_install_first(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    server.close()
+    run_factory(env, repo, "install")
+    server.restart()
+
+    assert run_hook(env, event(repo)).returncode == 0
+
+    assert server.events() == ["repo_installed", "SessionStart"]

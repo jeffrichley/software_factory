@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { SessionTable, TopBar, type SessionState } from "../ds";
+import { FlowStrip, SessionTable, TopBar, type SessionState } from "../ds";
 
 /** The server's dashboard state (GET /api/state, and each SSE `state` event). */
 interface FactoryState {
   server_version: string;
+  /** Tracked repos, each with the Machines that track it. */
+  repos: { repo: string; machines: string[] }[];
   sessions: { id: string; machine: string; repo: string; state: SessionState; state_since: string }[];
 }
 
@@ -35,6 +37,7 @@ export function Dashboard() {
     <>
       <TopBar />
       <main className="page">
+        {state ? <FlowStrip rows={state.repos.map((r) => ({ repo: r.repo, chips: [] }))} /> : null}
         {sessions ? <SessionTable sessions={sessions} /> : null}
       </main>
     </>

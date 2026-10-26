@@ -105,3 +105,55 @@ def test_a_resumed_session_comes_back(client, clock):
 
     [row] = client.get("/api/state").json()["sessions"]
     assert row["state_since"] == "2026-10-26T12:01:00Z"
+
+
+def tracking_event(name: str, machine: str = "wsl", repo: str = "jeff/widgets") -> dict:
+    """`repo_installed` / `repo_uninstalled`, sent by `factory install` / `uninstall`, not by a hook."""
+    return {"machine": machine, "repo": repo, "repo_path": f"/home/jeff/{repo.split('/')[1]}", "event": {"hook_event_name": name}}
+
+
+def test_an_installed_repo_appears_at_once(client):
+    reply = client.post("/api/events", json=tracking_event("repo_installed"))
+
+    assert reply.status_code == 200
+    assert reply.json()["session_id"] is None
+    assert client.get("/api/state").json()["repos"] == [{"repo": "jeff/widgets", "machines": ["wsl"]}]
+
+
+def test_a_repo_lists_every_machine_that_tracks_it(client):
+    client.post("/api/events", json=tracking_event("repo_installed", machine="wsl"))
+    client.post("/api/events", json=tracking_event("repo_installed", machine="mac"))
+    client.post("/api/events", json=tracking_event("repo_installed", machine="mac"))
+
+    assert client.get("/api/state").json()["repos"] == [{"repo": "jeff/widgets", "machines": ["mac", "wsl"]}]
+
+
+def test_uninstall_ends_only_that_machines_live_sessions_in_the_repo(client):
+    for machine in ("wsl", "mac"):
+        client.post("/api/events", json=tracking_event("repo_installed", machine=machine))
+        client.post("/api/events", json=hook_event("SessionStart", session=f"{machine}-1", machine=machine))
+    client.post("/api/events", json=hook_event("SessionStart", session="other", repo="jeff/gadgets"))
+
+    client.post("/api/events", json=tracking_event("repo_uninstalled", machine="wsl"))
+
+    state = client.get("/api/state").json()
+    assert [(s["machine"], s["repo"]) for s in state["sessions"]] == [("mac", "jeff/widgets"), ("wsl", "jeff/gadgets")]
+    assert state["repos"] == [{"repo": "jeff/gadgets", "machines": ["wsl"]}, {"repo": "jeff/widgets", "machines": ["mac"]}]
+
+
+def test_a_repo_no_machine_tracks_leaves_the_dashboard(client):
+    client.post("/api/events", json=tracking_event("repo_installed"))
+
+    client.post("/api/events", json=tracking_event("repo_uninstalled"))
+
+    assert client.get("/api/state").json()["repos"] == []
+
+
+def test_a_session_event_tracks_its_repo_even_if_the_install_event_was_lost(client):
+    client.post("/api/events", json=hook_event("SessionStart"))
+
+    assert client.get("/api/state").json()["repos"] == [{"repo": "jeff/widgets", "machines": ["wsl"]}]
+
+
+def test_health_reports_the_server_version(client):
+    assert client.get("/api/health").json() == {"server_version": client.get("/api/state").json()["server_version"]}
