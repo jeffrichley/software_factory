@@ -22,6 +22,31 @@ CREATE TABLE IF NOT EXISTS tracking (
   installed_at TEXT NOT NULL,
   PRIMARY KEY (repo, machine)
 );
+CREATE TABLE IF NOT EXISTS work_items (
+  repo TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  state TEXT NOT NULL,
+  url TEXT NOT NULL,
+  kind TEXT,
+  PRIMARY KEY (repo, number)
+);
+CREATE TABLE IF NOT EXISTS pull_requests (
+  repo TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  state TEXT NOT NULL,
+  draft INTEGER NOT NULL,
+  url TEXT NOT NULL,
+  PRIMARY KEY (repo, number)
+);
+CREATE TABLE IF NOT EXISTS skill_runs (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL REFERENCES sessions (id),
+  skill TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  number INTEGER NOT NULL
+);
 """
 
 
@@ -90,3 +115,52 @@ class Store:
         for r in rows:
             repos.setdefault(r["repo"], []).append(r["machine"])
         return [{"repo": repo, "machines": machines} for repo, machines in repos.items()]
+
+    def save_poll(self, repo: str, items: list[dict], pulls: list[dict]) -> None:
+        """The repo's Work items and PRs as of the latest poll, replacing the previous poll's."""
+        with self.db:
+            self.db.execute("DELETE FROM work_items WHERE repo = ?", (repo,))
+            self.db.executemany(
+                "INSERT INTO work_items (repo, number, title, state, url, kind)"
+                " VALUES (:repo, :number, :title, :state, :url, :kind)",
+                [{**item, "repo": repo} for item in items],
+            )
+            self.db.execute("DELETE FROM pull_requests WHERE repo = ?", (repo,))
+            self.db.executemany(
+                "INSERT INTO pull_requests (repo, number, title, state, draft, url)"
+                " VALUES (:repo, :number, :title, :state, :draft, :url)",
+                [{**pull, "repo": repo} for pull in pulls],
+            )
+
+    def work_items(self) -> list[dict]:
+        """Work items of repos some Machine still tracks."""
+        rows = self.db.execute(
+            "SELECT repo, number, title, state, url, kind FROM work_items"
+            " WHERE repo IN (SELECT repo FROM tracking) ORDER BY repo, number"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def pull_requests(self) -> list[dict]:
+        """PRs of repos some Machine still tracks."""
+        rows = self.db.execute(
+            "SELECT repo, number, title, state, draft, url FROM pull_requests"
+            " WHERE repo IN (SELECT repo FROM tracking) ORDER BY repo, number"
+        ).fetchall()
+        return [{**dict(r), "draft": bool(r["draft"])} for r in rows]
+
+    def record_skill_run(self, session_id: int, skill: str, repo: str, number: int) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO skill_runs (session_id, skill, repo, number) VALUES (?, ?, ?, ?)",
+                (session_id, skill, repo, number),
+            )
+
+    def live_skill_runs(self) -> list[dict]:
+        """Skill runs in live sessions against a Work item, with the item's kind (None until polled or unknown)."""
+        rows = self.db.execute(
+            "SELECT r.session_id, r.skill, r.repo, r.number, w.kind FROM skill_runs r"
+            " JOIN sessions s ON s.id = r.session_id"
+            " LEFT JOIN work_items w ON w.repo = r.repo AND w.number = r.number"
+            " WHERE s.ended_at IS NULL ORDER BY r.id"
+        ).fetchall()
+        return [{**dict(r), "session_id": str(r["session_id"])} for r in rows]

@@ -2,8 +2,10 @@
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator, Callable
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,12 +13,17 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .github import GitHub
+from .github import GitHub, read_issues
 from .store import Store
+from .work_items import expected_kinds, pull_requests, skill_run, work_items
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 SERVER_VERSION: str = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
 DASHBOARD_DIR = PLUGIN_ROOT / "dashboard" / "dist"
+POLL_EVERY = timedelta(minutes=1)
+POLL_CHECK_SECONDS = 5
+
+log = logging.getLogger(__name__)
 
 
 class Envelope(BaseModel):
@@ -60,13 +67,77 @@ class Broadcaster:
 
 
 def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> FastAPI:
-    # github is unused until the poller arrives; it is injected now so the seam is fixed.
     store = Store(db_path)
     hub = Broadcaster()
-    app = FastAPI(title="Factory server", version=SERVER_VERSION)
+    polled_at: dict[str, datetime] = {}
 
     def state() -> dict:
-        return {"server_version": SERVER_VERSION, "repos": store.tracked_repos(), "sessions": store.live_sessions()}
+        return {
+            "server_version": SERVER_VERSION,
+            "repos": store.tracked_repos(),
+            "sessions": store.live_sessions(),
+            "work_items": store.work_items(),
+            "pull_requests": store.pull_requests(),
+            "mismatches": mismatches(),
+        }
+
+    def mismatches() -> list[dict]:
+        """Skill runs in live sessions against the wrong kind of Work item."""
+        found = []
+        for run in store.live_skill_runs():
+            expected = expected_kinds(run["skill"], run["kind"])
+            if expected:
+                found.append({**run, "expected": expected})
+        return found
+
+    def due() -> list[str]:
+        """Tracked repos not polled in the last minute, marked as polled now; a repo no Machine tracks is never due.
+
+        A failed read still counts, so GitHub is retried a minute later rather than hammered.
+        """
+        now = clock()
+        repos = [r["repo"] for r in store.tracked_repos() if repo_due(r["repo"], now)]
+        polled_at.update(dict.fromkeys(repos, now))
+        return repos
+
+    def repo_due(repo: str, now: datetime) -> bool:
+        return repo not in polled_at or now - polled_at[repo] >= POLL_EVERY
+
+    def save(repo: str, issues: list[dict]) -> None:
+        store.save_poll(repo, work_items(repo, issues), pull_requests(issues))
+        hub.publish(state())
+
+    def poll() -> None:
+        """Read every due repo from GitHub. A failed read keeps the last poll's state."""
+        for repo in due():
+            try:
+                issues = read_issues(github, repo)
+            except Exception:
+                log.exception("GitHub poll of %s failed", repo)
+                continue
+            save(repo, issues)
+
+    async def poll_forever() -> None:
+        """poll(), with each `gh api` read off the event loop."""
+        while True:
+            for repo in due():
+                try:
+                    issues = await asyncio.to_thread(read_issues, github, repo)
+                except Exception:
+                    log.exception("GitHub poll of %s failed", repo)
+                    continue
+                save(repo, issues)
+            await asyncio.sleep(POLL_CHECK_SECONDS)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        task = asyncio.create_task(poll_forever())
+        yield
+        task.cancel()
+
+    app = FastAPI(title="Factory server", version=SERVER_VERSION, lifespan=lifespan)
+    # Tests drive the poller by hand with a fake clock, instead of running the background loop.
+    app.state.poll = poll
 
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
@@ -80,6 +151,9 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
                 store.untrack_repo(envelope.repo, envelope.machine, now)
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
+                if run := skill_run(event):
+                    skill, number = run
+                    store.record_skill_run(session_id, skill, envelope.repo, number)
                 if name == "SessionEnd":
                     store.end_session(session_id, now)
                 else:
