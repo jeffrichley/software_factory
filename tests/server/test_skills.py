@@ -219,6 +219,7 @@ def test_edits_to_the_skill_table_apply_without_a_restart(table_client):
         ("version = 1\n[[skill]]\nname = \"ship\"\nrole = \"Spec Job\"\nmattpocock_skills = \"~1.4\"\n", "~1.4"),
         ("version = 2\n[[skill]]\nname = \"ship\"\nrole = \"Spec Job\"\n", "version 2"),
         ("[[skill]]\nname = \"ship\"\nrole = \"Spec Job\"\n", "version"),
+        ("version = 1\n[[skill]]\nname = \"ship\"\nrole = \"Spec Job\"\nwork_items = [\"Epic\"]\n", "work_items"),
     ],
 )
 def test_a_broken_table_is_logged_and_the_last_good_one_kept(table_client, caplog, broken, error):

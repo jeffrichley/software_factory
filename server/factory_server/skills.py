@@ -8,6 +8,9 @@ import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import get_args
+
+from .work_items import Kind
 
 log = logging.getLogger("factory_server")
 
@@ -25,6 +28,8 @@ class SkillRole:
     role: str
     # The session kind the skill gives: its Job role, its planning kind, or None for a Phase signal.
     kind: str | None
+    # The kinds of Work item the skill is meant for; started against another kind, it is a Mismatch.
+    work_items: tuple[Kind, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -38,6 +43,27 @@ def bare_name(skill: str) -> str | None:
     """The name a skill has in the table: Matt's skills with or without their plugin prefix; None for another plugin's."""
     plugin, _, name = skill.rpartition(":")
     return name if plugin in ("", MATT) else None
+
+
+def skill_invocation(event: dict) -> tuple[str, str | None] | None:
+    """The skill an event starts and its args: typed as `/<skill>` (UserPromptExpansion) or invoked by the model
+    (PreToolUse(Skill))."""
+    match event.get("hook_event_name"):
+        case "UserPromptExpansion" if event.get("expansion_type", "slash_command") == "slash_command":
+            skill, args = event.get("command_name"), event.get("command_args")
+        case "PreToolUse" if event.get("tool_name") == "Skill":
+            tool_input = event.get("tool_input") or {}
+            skill, args = tool_input.get("skill"), tool_input.get("args")
+        case _:
+            return None
+    return (skill, args) if skill else None
+
+
+def work_item_named(args: str | None, repo: str) -> int | None:
+    """The Work item a skill's args name: a bare `#N`, or an issue URL in the session's own repo."""
+    issue_ref = re.compile(rf"(?:^|\s)#(\d+)\b|github\.com/{re.escape(repo)}/issues/(\d+)\b")
+    m = issue_ref.search(args or "")
+    return int(m[1] or m[2]) if m else None
 
 
 def version_key(version: str, width: int) -> tuple[int, ...]:
@@ -83,9 +109,12 @@ def parse_table(text: str) -> list[Entry]:
             raise ValueError(f"{name}: a planning skill needs a kind, and only a planning skill has one")
         if spec := entry.get("mattpocock_skills"):
             check_range(spec)
+        work_items = entry.get("work_items", [])
+        if not isinstance(work_items, list) or not set(work_items) <= set(get_args(Kind)):
+            raise ValueError(f"{name}: work_items must list kinds of Work item, from {list(get_args(Kind))}")
         # The one place a role becomes a session kind.
         session_kind = {"planning": kind, "Phase signal": None}.get(role, role)
-        entries.append(Entry(name, SkillRole(role, session_kind), spec))
+        entries.append(Entry(name, SkillRole(role, session_kind, tuple(work_items)), spec))
     return entries
 
 
