@@ -222,3 +222,6 @@ transcripts/
 
 # Agent worktrees
 .claude/worktrees/
+
+# The built dashboard is committed (no Node needed on any Machine); CI checks it matches its source.
+!dashboard/dist/

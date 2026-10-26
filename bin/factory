@@ -1,0 +1,18 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#   "typer>=0.15",
+#   "fastapi>=0.115",
+#   "uvicorn>=0.32",
+# ]
+# ///
+"""The `factory` CLI entry point; the code lives in cli/factory_cli."""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "cli"))
+from factory_cli.main import app  # noqa: E402
+
+app()

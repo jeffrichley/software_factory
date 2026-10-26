@@ -1,0 +1,110 @@
+"""Seam 2: `factory setup` / `factory install` and the hook, black-box."""
+
+import json
+
+from conftest import git, run_factory, run_hook
+
+
+def set_up_machine(env, cwd, url, name="wsl"):
+    done = run_factory(env, cwd, "setup", "--machine", name, "--server", url)
+    assert done.returncode == 0, done.stderr
+
+
+def event(repo, name="SessionStart", session="cc-1", **fields):
+    return {"hook_event_name": name, "session_id": session, "cwd": str(repo), **fields}
+
+
+def test_install_writes_only_a_git_ignored_per_machine_marker(env, repo, server):
+    set_up_machine(env, repo, server.url)
+
+    done = run_factory(env, repo, "install")
+
+    assert done.returncode == 0, done.stderr
+    assert (repo / ".factory" / ".gitignore").read_text().strip() == "*"
+    marker = json.loads((repo / ".factory" / "machines" / "wsl.json").read_text())
+    assert marker["factory_version"] == "0.1.0"
+    assert marker["installed_at"]
+    assert git(repo, "status", "--porcelain") == ""
+
+
+def test_install_refuses_before_setup(env, repo):
+    done = run_factory(env, repo, "install")
+
+    assert done.returncode != 0
+    assert "factory setup" in done.stdout + done.stderr
+    assert not (repo / ".factory").exists()
+
+
+def test_the_hook_reports_nothing_from_an_untracked_repo(env, repo, server):
+    set_up_machine(env, repo, server.url)
+
+    done = run_hook(env, event(repo))
+
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == ""
+    assert server.received == []
+
+
+def test_the_hook_posts_each_event_stamped_and_sends_back_cached_ids(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    start = event(repo, source="startup")
+
+    assert run_hook(env, start).returncode == 0
+    assert run_hook(env, event(repo, "PreToolUse", tool_name="Bash")).returncode == 0
+
+    first, second = (r["body"] for r in server.received)
+    assert server.received[0]["path"] == "/api/events"
+    assert first["event"] == start
+    assert first["machine"] == "wsl"
+    assert first["repo"] == "jeff/widgets"
+    assert first["repo_path"] == str(repo.resolve())
+    assert first["mattpocock_skills_version"] == "1.3.1"
+    assert first["ids"] == {}
+    assert second["ids"] == {"session_id": "7", "job_id": None}
+    assert "mattpocock_skills_version" not in second
+
+
+def test_a_session_in_a_linked_worktree_reports_against_the_main_tree(env, repo, server, tmp_path):
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    wt = tmp_path / "widgets-ticket-3"
+    git(repo, "worktree", "add", "-q", str(wt))
+
+    assert run_hook(env, event(wt)).returncode == 0
+
+    assert server.received[0]["body"]["repo_path"] == str(repo.resolve())
+
+
+def test_the_hook_passes_inject_back_as_additional_context(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    server.reply = {**server.reply, "inject": "Work in your own worktree."}
+
+    done = run_hook(env, event(repo, "UserPromptExpansion", command_name="implement"))
+
+    assert json.loads(done.stdout) == {
+        "hookSpecificOutput": {"hookEventName": "UserPromptExpansion", "additionalContext": "Work in your own worktree."}
+    }
+
+
+def test_the_hook_exits_cleanly_when_the_server_is_down(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    server.close()
+
+    done = run_hook(env, event(repo))
+
+    assert done.returncode == 0
+    assert done.stdout == ""
+
+
+def test_install_refuses_a_repo_without_a_github_remote(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    git(repo, "remote", "set-url", "origin", "https://gitlab.com/jeff/widgets.git")
+
+    done = run_factory(env, repo, "install")
+
+    assert done.returncode != 0
+    assert "GitHub" in done.stdout + done.stderr
+    assert not (repo / ".factory").exists()
