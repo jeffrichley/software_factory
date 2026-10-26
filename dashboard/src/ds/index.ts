@@ -1,0 +1,19 @@
+/** The Factory dashboard design system. Build UI only from these exports and tokens.css. */
+import "./tokens.css";
+import "./components.css";
+
+export * from "./types";
+export * from "./format";
+export * from "./flow";
+export * from "./graph";
+export * from "./motion";
+export * from "./components/Icon";
+export * from "./components/Unknown";
+export * from "./components/Panel";
+export * from "./components/StateBadge";
+export * from "./components/StateChip";
+export * from "./components/FlowStrip";
+export * from "./components/MachinePill";
+export * from "./components/InboxCards";
+export * from "./components/PhaseTrack";
+export * from "./components/Graph";

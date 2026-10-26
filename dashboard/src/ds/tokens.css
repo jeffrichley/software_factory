@@ -1,0 +1,219 @@
+/*
+ * Factory design tokens, extracted from prototype variant E.
+ * Dark is variant E as built; light is derived from it with the same roles.
+ * Theme follows the OS unless <html data-theme="light|dark"> overrides it.
+ * Components use only these variables — never raw colours or sizes.
+ */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/400-italic.css";
+@import "@fontsource/ibm-plex-sans-condensed/500.css";
+@import "@fontsource/ibm-plex-sans-condensed/600.css";
+@import "@fontsource/ibm-plex-sans-condensed/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/ibm-plex-mono/700.css";
+
+:root {
+  /* type */
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --fs-2xs: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 20px;
+  --fs-xl: 28px;
+  --fs-2xl: 40px;
+  --fs-3xl: 64px;
+
+  /* spacing */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* radii */
+  --r-xs: 2px;
+  --r-sm: 4px;
+  --r: 6px;
+  --r-lg: 10px;
+  --r-pill: 999px;
+
+  /* layout */
+  --top-h: 64px;
+  --inbox-w: 360px;
+  --flow-label: 132px;
+  --chip-h: 24px;
+
+  /* motion */
+  --dur: 200ms;
+  --dur-glide: 400ms;
+  --dur-pulse: 1.4s;
+  --dur-flash: 2s;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.8, 0.3);
+
+  /* colour — dark (variant E) */
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --surface-sunken: #0f1114;
+  --surface: #13161b;
+  --surface-2: #1a1e25;
+  --surface-3: #232833;
+  --line: #2a303a;
+  --line-2: #3b4250;
+  --line-hover: #7a8496;
+  --text: #eceff3;
+  --text-2: #aeb5c1;
+  --text-3: #8a919d;
+  --text-strong: #ffffff;
+
+  --needs: #ffb224;
+  --needs-hover: #ffc552;
+  --needs-ink: #1c1300;
+  --needs-bg: #2a1e07;
+  --needs-line: #7a5512;
+  --needs-text: #ffe2a8;
+  --needs-soft: #ffd27a;
+  --needs-label: #d9b36a;
+  --needs-glow: rgb(255 178 36 / 0.3);
+
+  --working: #62abff;
+  --working-bg: #0f2038;
+  --working-line: #21406b;
+
+  --done: #36d3c0;
+  --done-bg: #0c2826;
+  --done-line: #1f5a53;
+
+  --stale: #8b929e;
+  --stale-bg: #1b1d21;
+
+  --pass: #45d483;
+  --fail: #ff6b6b;
+  --fail-soft: #ff9a9a;
+  --fail-bg: #2a1212;
+  --fail-line: #7a2c2c;
+
+  --edge-resolved: #4a5263;
+  --edge-waiting: #6b7385;
+  --fog: #9aa3b2;
+  --fog-opacity: 0.14;
+  --flash: #ffffff;
+  --flash-opacity: 0.16;
+  --cell-bg: rgb(255 255 255 / 0.025);
+  --shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+}
+
+/* colour — light (derived) */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --surface-sunken: #eef0f3;
+    --surface: #ffffff;
+    --surface-2: #f2f4f7;
+    --surface-3: #e5e9ef;
+    --line: #dde1e7;
+    --line-2: #c3c9d2;
+    --line-hover: #8a93a3;
+    --text: #14171c;
+    --text-2: #4a5260;
+    --text-3: #687080;
+    --text-strong: #000000;
+
+    --needs: #ffb224;
+    --needs-hover: #ffc552;
+    --needs-ink: #1c1300;
+    --needs-bg: #fff4dc;
+    --needs-line: #e2b04e;
+    --needs-text: #5c3b00;
+    --needs-soft: #8a5a00;
+    --needs-label: #85601a;
+    --needs-glow: rgb(255 178 36 / 0.4);
+
+    --working: #1f6fd1;
+    --working-bg: #e4eefc;
+    --working-line: #a9c8f0;
+
+    --done: #0b8577;
+    --done-bg: #e0f5f2;
+    --done-line: #8fd3c9;
+
+    --stale: #6b7380;
+    --stale-bg: #eef0f3;
+
+    --pass: #198a4c;
+    --fail: #d43c3c;
+    --fail-soft: #b42f2f;
+    --fail-bg: #fdeaea;
+    --fail-line: #efb0b0;
+
+    --edge-resolved: #8a93a3;
+    --edge-waiting: #a0a8b5;
+    --fog: #6b7380;
+    --fog-opacity: 0.12;
+    --flash: #ffffff;
+    --flash-opacity: 0.3;
+    --cell-bg: rgb(0 0 0 / 0.03);
+    --shadow: 0 12px 32px rgb(20 23 28 / 0.15);
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface-sunken: #eef0f3;
+  --surface: #ffffff;
+  --surface-2: #f2f4f7;
+  --surface-3: #e5e9ef;
+  --line: #dde1e7;
+  --line-2: #c3c9d2;
+  --line-hover: #8a93a3;
+  --text: #14171c;
+  --text-2: #4a5260;
+  --text-3: #687080;
+  --text-strong: #000000;
+
+  --needs: #ffb224;
+  --needs-hover: #ffc552;
+  --needs-ink: #1c1300;
+  --needs-bg: #fff4dc;
+  --needs-line: #e2b04e;
+  --needs-text: #5c3b00;
+  --needs-soft: #8a5a00;
+  --needs-label: #85601a;
+  --needs-glow: rgb(255 178 36 / 0.4);
+
+  --working: #1f6fd1;
+  --working-bg: #e4eefc;
+  --working-line: #a9c8f0;
+
+  --done: #0b8577;
+  --done-bg: #e0f5f2;
+  --done-line: #8fd3c9;
+
+  --stale: #6b7380;
+  --stale-bg: #eef0f3;
+
+  --pass: #198a4c;
+  --fail: #d43c3c;
+  --fail-soft: #b42f2f;
+  --fail-bg: #fdeaea;
+  --fail-line: #efb0b0;
+
+  --edge-resolved: #8a93a3;
+  --edge-waiting: #a0a8b5;
+  --fog: #6b7380;
+  --fog-opacity: 0.12;
+  --flash: #ffffff;
+  --flash-opacity: 0.3;
+  --cell-bg: rgb(0 0 0 / 0.03);
+  --shadow: 0 12px 32px rgb(20 23 28 / 0.15);
+}
