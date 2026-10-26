@@ -80,10 +80,11 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
                 store.untrack_repo(envelope.repo, envelope.machine, now)
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
-                if name == "SessionStart":
-                    store.resume_session(session_id, now)
-                elif name == "SessionEnd":
+                if name == "SessionEnd":
                     store.end_session(session_id, now)
+                else:
+                    # A resumed session, or one still running when its repo was uninstalled and reinstalled.
+                    store.resume_session(session_id, now)
         hub.publish(state())
         return Reply(session_id=None if session_id is None else str(session_id))
 

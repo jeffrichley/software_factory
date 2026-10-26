@@ -58,7 +58,7 @@ def test_install_does_not_warn_when_the_config_is_on_origin_head(env, repo, serv
     assert "origin/HEAD" not in output(run_factory(env, repo, "install"))
 
 
-def test_installing_again_changes_nothing_and_prints_status(env, repo, server):
+def test_installing_again_changes_nothing_but_tells_the_server_again(env, repo, server):
     set_up_machine(env, repo, server.url)
     run_factory(env, repo, "install")
     marker = (repo / ".factory" / "machines" / "wsl.json").read_text()
@@ -67,7 +67,7 @@ def test_installing_again_changes_nothing_and_prints_status(env, repo, server):
 
     assert done.returncode == 0, done.stderr
     assert (repo / ".factory" / "machines" / "wsl.json").read_text() == marker
-    assert server.events() == ["repo_installed"]
+    assert server.events() == ["repo_installed", "repo_installed"]
     assert "Tracked on 'wsl'" in done.stdout
     assert "reachable" in done.stdout
 
@@ -82,6 +82,20 @@ def test_install_succeeds_with_the_server_down_and_queues_the_event(env, repo, s
     assert (repo / ".factory" / "machines" / "wsl.json").exists()
     assert "queued" in output(done)
     assert git(repo, "status", "--porcelain") == ""
+
+
+def test_installing_again_with_the_server_down_queues_the_event(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    server.close()
+
+    done = run_factory(env, repo, "install")
+
+    assert done.returncode == 0, done.stderr
+    assert "queued" in output(done)
+    server.restart()
+    run_factory(env, repo, "uninstall")
+    assert server.events() == ["repo_installed", "repo_installed", "repo_uninstalled"]
 
 
 def test_a_queued_install_is_delivered_before_the_uninstall(env, repo, server):
