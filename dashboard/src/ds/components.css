@@ -252,3 +252,21 @@ a { color: inherit; }
 .gfog-node { display: grid; grid-template-rows: auto 1fr; }
 .fgraph-scroll { overflow-x: auto; }
 .fgraph-canvas { margin: 0 auto; }
+
+/* ---------- Top bar ---------- */
+.top { position: sticky; top: 0; z-index: 20; height: var(--top-h); display: flex; align-items: center; gap: var(--s5); padding: 0 var(--s5);
+  background: var(--bg); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 10px; font: 700 var(--fs-lg)/1 var(--font-display); letter-spacing: .02em; white-space: nowrap; }
+.brand-mark { position: relative; width: 22px; height: 22px; border: 2px solid var(--text); border-radius: 3px; }
+.brand-mark::after { content: ""; position: absolute; inset: 4px; background: var(--needs); }
+
+/* ---------- Session table ---------- */
+.tri { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.tri th, .tri td { padding: 12px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; }
+.tri thead th { position: sticky; top: var(--top-h); z-index: 3; background: var(--bg); font: 600 var(--fs-xs)/1.2 var(--font-mono); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-3); border-bottom: 1px solid var(--line-2); }
+.tri .c-state { width: 150px; }
+.tri .c-mach { width: 110px; }
+.tri .c-time { width: 120px; }
+.tmain { font: 600 var(--fs-md)/1.3 var(--font-mono); }
+.page { padding: var(--s5); }

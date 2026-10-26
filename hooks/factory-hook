@@ -1,0 +1,85 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
+"""The Factory hook: runs on every Claude Code event in every session, so it stays
+stdlib-only and never blocks or fails the session (ADR 0001).
+
+Exits at once unless this Machine tracks the repo; otherwise POSTs the event, unchanged,
+stamped with Machine, repo and the session's cached ids, and caches the reply's ids.
+"""
+
+import json
+import os
+import sys
+import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "cli"))
+from factory_cli.tracking import load_setup, machine_dir, main_worktree, marker_path  # noqa: E402
+
+POST_TIMEOUT_S = 2
+# Events whose hookSpecificOutput.additionalContext Claude Code reads.
+CONTEXT_EVENTS = {
+    "SessionStart", "SubagentStart", "UserPromptSubmit", "UserPromptExpansion",
+    "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SubagentStop",
+}
+REPLY_IDS = ("session_id", "job_id", "step_id")
+
+
+def mattpocock_skills_version() -> str | None:
+    claude = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    try:
+        installed = json.loads((claude / "plugins" / "installed_plugins.json").read_text())
+        return installed["plugins"]["mattpocock-skills@mattpocock"][0]["version"]
+    except (OSError, ValueError, LookupError, TypeError):
+        return None
+
+
+def post(url: str, body: dict) -> dict:
+    req = urllib.request.Request(
+        f"{url}/api/events", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=POST_TIMEOUT_S) as resp:
+        return json.loads(resp.read())
+
+
+def main() -> None:
+    event = json.load(sys.stdin)
+    setup = load_setup()
+    main_tree = main_worktree(event.get("cwd") or os.getcwd())
+    if not setup or not main_tree:
+        return
+    machine = setup["machine"]
+    try:
+        marker = json.loads(marker_path(main_tree, machine).read_text())
+    except (OSError, ValueError):
+        return
+
+    cache = machine_dir(main_tree, machine) / "sessions" / f"{event['session_id']}.json"
+    try:
+        ids = json.loads(cache.read_text())
+    except (OSError, ValueError):
+        ids = {}
+    body = {"machine": machine, "repo": marker["repo"], "repo_path": str(main_tree), "ids": ids, "event": event}
+    if event.get("hook_event_name") == "SessionStart":
+        body["mattpocock_skills_version"] = mattpocock_skills_version()
+
+    try:
+        reply = post(setup["server_url"], body)
+    except (OSError, ValueError):
+        return  # server down: never block the session (queueing arrives with #22)
+
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({k: reply[k] for k in REPLY_IDS if k in reply}))
+    name = event.get("hook_event_name")
+    if reply.get("inject") and name in CONTEXT_EVENTS:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": name, "additionalContext": reply["inject"]}}))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:  # noqa: BLE001 - a hook must never fail the session
+        pass

@@ -4,7 +4,8 @@ React + TypeScript + Vite. Look and behaviour follow prototype variant E (branch
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173 — the design-system gallery (?theme=light|dark)
+npm run dev        # http://localhost:5173 — the dashboard (needs `factory server` on :47821); ?gallery for the design-system gallery (&theme=light|dark)
+npm run build      # rebuilds dist/, which is committed: rebuild and commit it with every source change
 npm run typecheck
 npm test
 ```

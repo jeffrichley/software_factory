@@ -1,0 +1,13 @@
+{
+  "name": "software-factory",
+  "description": "The Factory: a layer around Matt Pocock's skills that tracks agent work across repos and Machines.",
+  "owner": { "name": "Jeff Richley" },
+  "allowCrossMarketplaceDependenciesOn": ["mattpocock"],
+  "plugins": [
+    {
+      "name": "factory",
+      "description": "Runs Matt Pocock's skills, unmodified, across repos and Machines, and shows what every agent is doing on one live dashboard.",
+      "source": "./"
+    }
+  ]
+}

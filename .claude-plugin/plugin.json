@@ -1,0 +1,10 @@
+{
+  "name": "factory",
+  "description": "Runs Matt Pocock's skills, unmodified, across repos and Machines, and shows what every agent is doing on one live dashboard.",
+  "version": "0.1.0",
+  "author": { "name": "Jeff Richley" },
+  "homepage": "https://github.com/jeffrichley/software_factory",
+  "repository": "https://github.com/jeffrichley/software_factory",
+  "license": "MIT",
+  "dependencies": [{ "name": "mattpocock-skills", "marketplace": "mattpocock" }]
+}
