@@ -146,6 +146,14 @@ def setup(
     typer.echo(f"  {alias_hint()}")
 
 
+def announce(setup: dict, main: Path, repo: str) -> None:
+    """Send `repo_installed`, queueing it when the server can't be reached."""
+    url = setup["server_url"]
+    if send(main, setup["machine"], url, tracking_event("repo_installed", main, setup["machine"], repo)) is None:
+        typer.echo(f"Server unreachable at {url}; the repo will appear on the dashboard once it's back "
+                   f"(event queued). {START_SERVER}")
+
+
 @app.command()
 def install() -> None:
     """Turn the current repo on for this Machine."""
@@ -154,6 +162,8 @@ def install() -> None:
     machine = setup["machine"]
     marker = marker_path(main, machine)
     if marker.exists():
+        # Tell the server again (a no-op there), so a repo whose first event was lost still shows up.
+        announce(setup, main, json.loads(marker.read_text())["repo"])
         print_status(setup, main)
         return
     if not (main / SKILLS_CONFIG).exists():
@@ -174,9 +184,7 @@ def install() -> None:
         "repo": repo,
     }, indent=2))
     typer.echo(f"Tracking {main} on '{machine}'.")
-    if send(main, machine, setup["server_url"], tracking_event("repo_installed", main, machine, repo)) is None:
-        typer.echo(f"Server unreachable at {setup['server_url']}; the repo will appear on the dashboard once it's back "
-                   f"(event queued). {START_SERVER}")
+    announce(setup, main, repo)
     if not skills_config_pushed(main):
         typer.echo(ORIGIN_HEAD_WARNING)
 

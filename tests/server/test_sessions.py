@@ -151,3 +151,26 @@ def test_a_repo_no_machine_tracks_leaves_the_dashboard(client):
 
 def test_health_reports_the_server_version(client):
     assert client.get("/api/health").json() == {"server_version": client.get("/api/state").json()["server_version"]}
+
+
+def test_a_running_session_comes_back_after_its_repo_is_reinstalled(client, clock):
+    client.post("/api/events", json=tracking_event("repo_installed"))
+    first = client.post("/api/events", json=hook_event("SessionStart")).json()
+    client.post("/api/events", json=tracking_event("repo_uninstalled"))
+    client.post("/api/events", json=tracking_event("repo_installed"))
+    clock.advance(30)
+
+    again = client.post("/api/events", json=hook_event("PreToolUse", tool_name="Bash")).json()
+
+    assert again["session_id"] == first["session_id"]
+    [row] = client.get("/api/state").json()["sessions"]
+    assert (row["state"], row["state_since"]) == ("Working", "2026-10-26T12:00:30Z")
+
+
+def test_an_ended_session_stays_ended_on_its_own_session_end(client):
+    client.post("/api/events", json=hook_event("SessionStart"))
+    client.post("/api/events", json=hook_event("SessionEnd", reason="exit"))
+
+    client.post("/api/events", json=hook_event("SessionEnd", reason="exit"))
+
+    assert client.get("/api/state").json()["sessions"] == []

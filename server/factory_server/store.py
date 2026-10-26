@@ -49,7 +49,7 @@ class Store:
         return row["id"]
 
     def resume_session(self, session_id: int, now: datetime) -> None:
-        """A resumed session reuses its id: bring an ended row back, Working from now."""
+        """An ended session that is active again keeps its id: bring its row back, Working from now."""
         with self.db:
             self.db.execute(
                 "UPDATE sessions SET ended_at = NULL, state = 'Working', state_since = ? WHERE id = ? AND ended_at IS NOT NULL",
