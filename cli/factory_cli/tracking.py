@@ -49,13 +49,19 @@ def main_worktree(cwd: str | Path) -> Path | None:
     return common.parent.resolve() if common.name == ".git" else None
 
 
-def machine_dir(main: Path, machine: str) -> Path:
-    """This Machine's session cache and event queue."""
-    return main / ".factory" / "machines" / machine
+def factory_dir(main: Path) -> Path:
+    """`.factory/` in the main working tree: per-Machine tracking, git-ignored by its own `.gitignore`."""
+    return main / ".factory"
 
 
 def marker_path(main: Path, machine: str) -> Path:
-    return main / ".factory" / "machines" / f"{machine}.json"
+    """This Machine's marker: present means the repo is Tracked on this Machine."""
+    return factory_dir(main) / "machines" / f"{machine}.json"
+
+
+def session_cache_path(main: Path, machine: str, cc_session_id: str) -> Path:
+    """The ids the server last replied with for a Claude Code session, under this Machine's own directory."""
+    return factory_dir(main) / "machines" / machine / "sessions" / f"{cc_session_id}.json"
 
 
 def github_repo(main: Path) -> str | None:

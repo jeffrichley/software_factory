@@ -20,6 +20,7 @@ import {
   PhaseTrack,
   SectionHeading,
   SessionTable,
+  TopBar,
   StateBadge,
   StateChip,
   StaleNote,
@@ -193,11 +194,14 @@ export function Gallery() {
           </div>
         </Section>
 
-        <Section id="sessions" title="Session table" note="One row per Tracked session; empty until a session starts in a Tracked repo.">
+        <Section id="sessions" title="Top bar & session table" note="One row per Tracked session, in every state; empty until a session starts in a Tracked repo.">
+          <TopBar />
           <SessionTable
             sessions={[
-              { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", inStateMs: 42_000 },
-              { id: "2", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Working", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
+              { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", inStateMs: 3 * 60_000 },
+              { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", inStateMs: 42_000 },
+              { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
+              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", inStateMs: 14 * 60_000 },
             ]}
           />
           <SessionTable sessions={[]} />

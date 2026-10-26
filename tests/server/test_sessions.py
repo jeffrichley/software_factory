@@ -94,3 +94,14 @@ def sse_states(lines):
     for line in lines:
         if line.startswith("data: "):
             yield json.loads(line.removeprefix("data: "))
+
+
+def test_a_resumed_session_comes_back(client, clock):
+    client.post("/api/events", json=hook_event("SessionStart"))
+    client.post("/api/events", json=hook_event("SessionEnd", reason="exit"))
+    clock.advance(60)
+
+    client.post("/api/events", json=hook_event("SessionStart", source="resume"))
+
+    [row] = client.get("/api/state").json()["sessions"]
+    assert row["state_since"] == "2026-10-26T12:01:00Z"

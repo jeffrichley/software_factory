@@ -73,8 +73,11 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
         event = envelope.event
         now = clock()
         session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
-        if event.get("hook_event_name") == "SessionEnd":
-            store.end_session(session_id, now)
+        match event.get("hook_event_name"):
+            case "SessionStart":
+                store.resume_session(session_id, now)
+            case "SessionEnd":
+                store.end_session(session_id, now)
         hub.publish(state())
         return Reply(session_id=str(session_id))
 

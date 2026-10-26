@@ -17,7 +17,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "cli"))
-from factory_cli.tracking import load_setup, machine_dir, main_worktree, marker_path  # noqa: E402
+from factory_cli.tracking import load_setup, main_worktree, marker_path, session_cache_path  # noqa: E402
 
 POST_TIMEOUT_S = 2
 # Events whose hookSpecificOutput.additionalContext Claude Code reads.
@@ -57,7 +57,7 @@ def main() -> None:
     except (OSError, ValueError):
         return
 
-    cache = machine_dir(main_tree, machine) / "sessions" / f"{event['session_id']}.json"
+    cache = session_cache_path(main_tree, machine, event["session_id"])
     try:
         ids = json.loads(cache.read_text())
     except (OSError, ValueError):

@@ -97,3 +97,14 @@ def test_the_hook_exits_cleanly_when_the_server_is_down(env, repo, server):
 
     assert done.returncode == 0
     assert done.stdout == ""
+
+
+def test_install_refuses_a_repo_without_a_github_remote(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    git(repo, "remote", "set-url", "origin", "https://gitlab.com/jeff/widgets.git")
+
+    done = run_factory(env, repo, "install")
+
+    assert done.returncode != 0
+    assert "GitHub" in done.stdout + done.stderr
+    assert not (repo / ".factory").exists()

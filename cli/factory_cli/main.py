@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from .tracking import data_dir, github_repo, load_setup, machine_dir, main_worktree, marker_path, save_setup
+from .tracking import data_dir, factory_dir, github_repo, load_setup, main_worktree, marker_path, save_setup
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PORT = 47821
@@ -48,14 +48,17 @@ def install() -> None:
     if marker.exists():
         typer.echo(f"Already tracked on '{machine}': {main}")
         return
-    factory_dir = main / ".factory"
-    factory_dir.mkdir(exist_ok=True)
-    (factory_dir / ".gitignore").write_text("*\n")
-    machine_dir(main, machine).parent.mkdir(exist_ok=True)
+    repo = github_repo(main)
+    if not repo:
+        fail("The Factory reads Work items only from GitHub, and origin isn't a GitHub remote.")
+    factory_dir(main).mkdir(exist_ok=True)
+    (factory_dir(main) / ".gitignore").write_text("*\n")
+    marker.parent.mkdir(exist_ok=True)
     marker.write_text(json.dumps({
         "installed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "factory_version": factory_version(),
-        "repo": github_repo(main) or main.name,
+        # Stored so the hook needn't ask git on every event.
+        "repo": repo,
     }, indent=2))
     typer.echo(f"Tracking {main} on '{machine}'.")
 
