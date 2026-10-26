@@ -11,7 +11,9 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .activity import running_skill, tool_headline
 from .github import GitHub
+from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name
 from .store import Store
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +29,8 @@ class Envelope(BaseModel):
     repo_path: str
     ids: dict = {}
     event: dict
+    # Sent with SessionStart only: the installed mattpocock-skills version, for the skill table's version ranges.
+    mattpocock_skills_version: str | None = None
 
 
 class Reply(BaseModel):
@@ -59,14 +63,44 @@ class Broadcaster:
             self.queues.discard(q)
 
 
-def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> FastAPI:
+def skill_started(event: dict) -> str | None:
+    """The skill an event starts: typed as `/<skill>` (UserPromptExpansion) or invoked by the model (PreToolUse(Skill))."""
+    match event.get("hook_event_name"):
+        case "UserPromptExpansion" if event.get("expansion_type", "slash_command") == "slash_command":
+            return event.get("command_name") or None
+        case "PreToolUse" if event.get("tool_name") == "Skill":
+            return (event.get("tool_input") or {}).get("skill") or None
+    return None
+
+
+def create_app(
+    db_path: Path, github: GitHub, clock: Callable[[], datetime], skill_table: Path = DEFAULT_SKILL_TABLE
+) -> FastAPI:
     # github is unused until the poller arrives; it is injected now so the seam is fixed.
     store = Store(db_path)
+    skills = SkillTable(skill_table)
     hub = Broadcaster()
     app = FastAPI(title="Factory server", version=SERVER_VERSION)
 
     def state() -> dict:
         return {"server_version": SERVER_VERSION, "repos": store.tracked_repos(), "sessions": store.live_sessions()}
+
+    def observe(session_id: int, event: dict, now: datetime) -> None:
+        """Kind, headline and timeline from what the session does."""
+        if skill := skill_started(event):
+            skill = bare_name(skill) or skill  # Matt's skills are named without their plugin prefix
+            # A subagent's skills (an implementer's tdd) belong to its parent's Job: they never reclassify the session.
+            if "agent_id" not in event:
+                row = store.session(session_id)
+                role = skills.role(skill, row["mattpocock_skills_version"])
+                if role and role.kind:
+                    store.classify(session_id, role.kind, skill)
+                elif row["kind"] == "ad hoc":
+                    # A Phase signal or a skill the table doesn't know: the session stays ad hoc, labelled with it.
+                    store.classify(session_id, "ad hoc", skill)
+            store.record_action(session_id, running_skill(skill), now)
+        elif event.get("hook_event_name") == "PreToolUse":
+            store.record_action(session_id, tool_headline(event), now)
 
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
@@ -85,6 +119,9 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
                 else:
                     # A resumed session, or one still running when its repo was uninstalled and reinstalled.
                     store.resume_session(session_id, now)
+                if name == "SessionStart":
+                    store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
+                observe(session_id, event, now)
         hub.publish(state())
         return Reply(session_id=None if session_id is None else str(session_id))
 

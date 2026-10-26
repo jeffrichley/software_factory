@@ -20,4 +20,5 @@ export * from "./components/Graph";
 export * from "./components/HeaderCount";
 export * from "./components/Tag";
 export * from "./components/SessionTable";
+export * from "./components/SessionDetail";
 export * from "./components/TopBar";

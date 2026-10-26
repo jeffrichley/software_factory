@@ -240,14 +240,21 @@ def server(
     port: Annotated[int, typer.Option(help="Port to listen on.")] = DEFAULT_PORT,
     host: Annotated[str, typer.Option(help="Interface to bind; 0.0.0.0 serves the whole local network.")] = "0.0.0.0",
     db: Annotated[Path | None, typer.Option(help="SQLite file.")] = None,
+    skill_table: Annotated[
+        Path | None, typer.Option(help="Skill table (TOML). Default: server/skills.toml in the data dir if present, else the shipped one.")
+    ] = None,
 ) -> None:
     """Run the Factory server in the foreground."""
     import uvicorn
 
     sys.path.insert(0, str(PLUGIN_ROOT / "server"))
-    from factory_server import GhCli, create_app
+    from factory_server import DEFAULT_SKILL_TABLE, GhCli, create_app
 
     db = db or data_dir() / "server" / "factory.db"
     db.parent.mkdir(parents=True, exist_ok=True)
-    typer.echo(f"Factory server on http://{host}:{port} (state in {db})")
-    uvicorn.run(create_app(db_path=db, github=GhCli(), clock=lambda: datetime.now(UTC)), host=host, port=port)
+    # An edited copy in the data dir survives plugin updates; the shipped table is the fallback.
+    edited = data_dir() / "server" / "skills.toml"
+    skill_table = skill_table or (edited if edited.is_file() else DEFAULT_SKILL_TABLE)
+    typer.echo(f"Factory server on http://{host}:{port} (state in {db}, skill table {skill_table})")
+    app_ = create_app(db_path=db, github=GhCli(), clock=lambda: datetime.now(UTC), skill_table=skill_table)
+    uvicorn.run(app_, host=host, port=port)

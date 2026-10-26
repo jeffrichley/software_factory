@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  Detail,
   DoneCard,
+  Hint,
   DoneUnseenCount,
   HiddenNeedsBadge,
   NeedsCount,
@@ -19,7 +21,9 @@ import {
   PhaseName,
   PhaseTrack,
   SectionHeading,
+  SessionHeader,
   SessionTable,
+  Timeline,
   TopBar,
   StateBadge,
   StateChip,
@@ -31,7 +35,7 @@ import {
   type Phase,
   type StateChipProps,
 } from "../ds";
-import { flowRows, mapItems, mapFog, needsCards, specItems, ticketItems } from "./fixtures";
+import { adhocActions, flowRows, mapItems, mapFog, needsCards, specItems, ticketItems } from "./fixtures";
 import "./gallery.css";
 
 type Theme = "system" | "light" | "dark";
@@ -118,6 +122,7 @@ export function Gallery() {
   const [hidden, setHidden] = useState<Set<string>>(new Set(["win-ps"]));
   const [selected, setSelected] = useState<string | undefined>("api");
   const [mapSel, setMapSel] = useState<string | undefined>();
+  const [selectedRow, setSelectedRow] = useState<string | undefined>("2");
   const toggle = (m: string) => setHidden((h) => { const n = new Set(h); if (n.has(m)) n.delete(m); else n.add(m); return n; });
   const glideRows = flowRows.map((r, i) =>
     i === 0 ? { ...r, chips: r.chips.map((c) => (c.id === "glide" ? { ...c, phase: PHASES[glidePhase] as Phase } : c)) } : r,
@@ -128,7 +133,7 @@ export function Gallery() {
       <header className="g-top">
         <div className="g-brand"><span className="g-mark" aria-hidden="true" />Factory <small>design system</small></div>
         <nav className="g-nav" aria-label="Sections">
-          {["tokens", "states", "sessions", "machines", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
+          {["tokens", "states", "sessions", "detail", "machines", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
         </nav>
         <div className="g-theme" role="group" aria-label="Theme">
           {(["system", "light", "dark"] as const).map((t) => (
@@ -197,14 +202,29 @@ export function Gallery() {
         <Section id="sessions" title="Top bar & session table" note="One row per Tracked session, in every state; empty until a session starts in a Tracked repo.">
           <TopBar />
           <SessionTable
+            selectedId={selectedRow}
+            onSelect={setSelectedRow}
             sessions={[
-              { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", inStateMs: 3 * 60_000 },
-              { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", inStateMs: 42_000 },
-              { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
-              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", inStateMs: 14 * 60_000 },
+              { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", kind: "Ticket Job", skill: "implement", now: "waiting on permission — Bash", inStateMs: 3 * 60_000 },
+              { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", kind: "ad hoc", skill: "deploy-preview", now: "running skill `deploy-preview`", inStateMs: 42_000 },
+              { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", kind: "research", skill: "research", now: "pushed findings to research/runtime.md", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
+              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", kind: "ad hoc", skill: null, now: null, inStateMs: 14 * 60_000 },
+              { id: "5", machine: "mac-studio", repo: "jeff/gateway", state: "Working", kind: "Wayfinder", skill: "wayfinder", now: "reading docs/agents/a-very-long-path/that/ellipsizes/in/the/headline/column/of/the/session/table.md", inStateMs: 7 * 60_000 },
             ]}
           />
           <SessionTable sessions={[]} />
+        </Section>
+
+        <Section id="detail" title="Session detail (ad hoc)" note="Header with state, time in state and the now: headline; a timeline of the last actions, the latest marked.">
+          <Detail label="Ad hoc session detail">
+            <SessionHeader machine="desk-wsl" repo="worlds" kind="ad hoc" state="Working" inStateMs={4 * 60_000} now="reading src/render/chunk.ts" title="Ad hoc session" />
+            <Panel title={`Last ${adhocActions.length} actions`}><Timeline actions={adhocActions} /></Panel>
+            <Hint>Ad hoc sessions run no skill the Factory knows, so there is no Job, Step or Phase.</Hint>
+          </Detail>
+          <Detail label="Ad hoc session detail, just started">
+            <SessionHeader machine="mac-mini" repo="gateway" kind="ad hoc" state="Done" inStateMs={30_000} now={null} title={<>Ad hoc session · running skill <code className="mono">deploy-preview</code></>} />
+            <Panel title="Last actions"><Hint>No actions yet.</Hint></Panel>
+          </Detail>
         </Section>
 
         <Section id="machines" title="Machine pills & header counts" note="Click a pill to toggle it; hidden Machines still count their Needs you.">
