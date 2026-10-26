@@ -13,6 +13,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOK = ROOT / "hooks" / "factory-hook"
+HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 FACTORY = ROOT / "bin" / "factory"
 # Resolved once, so a test can change PATH (to fake or hide uv) for the CLI without losing the uv that runs it.
 UV = shutil.which("uv")

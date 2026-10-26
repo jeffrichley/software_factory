@@ -1,8 +1,10 @@
 """Seam 2: `factory setup` / `factory install` and the hook, black-box."""
 
 import json
+import socket
+import time
 
-from conftest import git, run_factory, run_hook
+from conftest import HOOKS_JSON, git, run_factory, run_hook
 
 
 def set_up_machine(env, cwd, url, name="wsl"):
@@ -120,3 +122,37 @@ def test_the_next_hook_event_delivers_a_queued_install_first(env, repo, server):
     assert run_hook(env, event(repo)).returncode == 0
 
     assert server.events() == ["repo_installed", "SessionStart"]
+
+
+def test_with_the_server_down_the_hook_queues_each_event_with_its_cached_ids(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    run_hook(env, event(repo))
+    server.close()
+    server.received.clear()
+
+    assert run_hook(env, event(repo, "PreToolUse", tool_name="Bash")).returncode == 0
+    assert run_hook(env, event(repo, "Stop")).returncode == 0
+    server.restart()
+    assert run_hook(env, event(repo, "UserPromptSubmit")).returncode == 0
+
+    assert server.events() == ["PreToolUse", "Stop", "UserPromptSubmit"]
+    assert all(r["body"]["ids"] == {"session_id": "7", "job_id": None} for r in server.received)
+    assert not (repo / ".factory" / "machines" / "wsl" / "queue.jsonl").exists()
+
+
+def test_the_hook_exits_within_its_time_budget_when_the_server_never_answers(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    server.close()
+    # Takes the connection but never replies: the slowest way for the server to be down.
+    with socket.create_server(("127.0.0.1", int(server.url.rsplit(":", 1)[1]))):
+        started = time.monotonic()
+        done = run_hook(env, event(repo))
+        elapsed = time.monotonic() - started
+
+    budget = json.loads(HOOKS_JSON.read_text())["hooks"]["SessionStart"][0]["hooks"][0]["timeout"]
+    assert done.returncode == 0
+    assert elapsed < budget
+    queue = (repo / ".factory" / "machines" / "wsl" / "queue.jsonl").read_text().splitlines()
+    assert [json.loads(line)["event"]["hook_event_name"] for line in queue] == ["SessionStart"]

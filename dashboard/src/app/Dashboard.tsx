@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { FlowStrip, SessionTable, TopBar, type SessionState } from "../ds";
+import { FlowStrip, MachinePill, MachinePills, SessionTable, TopBar, type SessionState } from "../ds";
 
 /** The server's dashboard state (GET /api/state, and each SSE `state` event). */
 interface FactoryState {
   server_version: string;
+  /** Machines that track a repo or have a live session; a silent one has sent nothing for a while. */
+  machines: { machine: string; sessions: number; last_seen: string; silent: boolean }[];
   /** Tracked repos, each with the Machines that track it. */
   repos: { repo: string; machines: string[] }[];
-  sessions: { id: string; machine: string; repo: string; state: SessionState; state_since: string }[];
+  /** A session on a silent Machine is Stale, with stale_reason "Machine silent". */
+  sessions: { id: string; machine: string; repo: string; state: SessionState; state_since: string; stale_reason?: string }[];
 }
 
 /** Live dashboard state: the SSE stream sends the full state on connect and on every change. */
@@ -32,10 +35,16 @@ function useNow(everyMs: number): number {
 export function Dashboard() {
   const state = useFactoryState();
   const now = useNow(1000);
-  const sessions = state?.sessions.map((s) => ({ ...s, inStateMs: now - Date.parse(s.state_since) }));
+  const sessions = state?.sessions.map((s) => ({ ...s, staleReason: s.stale_reason, inStateMs: now - Date.parse(s.state_since) }));
   return (
     <>
-      <TopBar />
+      <TopBar>
+        <MachinePills>
+          {state?.machines.map((m) => (
+            <MachinePill key={m.machine} name={m.machine} sessions={m.sessions} silentForMs={m.silent ? now - Date.parse(m.last_seen) : undefined} />
+          ))}
+        </MachinePills>
+      </TopBar>
       <main className="page">
         {state ? <FlowStrip rows={state.repos.map((r) => ({ repo: r.repo, chips: [] }))} /> : null}
         {sessions ? <SessionTable sessions={sessions} /> : null}

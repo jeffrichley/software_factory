@@ -12,6 +12,7 @@ import {
   Icon,
   InboxHeader,
   MachinePill,
+  MachinePills,
   NeedsYouCard,
   NowLine,
   Panel,
@@ -201,19 +202,19 @@ export function Gallery() {
               { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", inStateMs: 3 * 60_000 },
               { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", inStateMs: 42_000 },
               { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
-              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", inStateMs: 14 * 60_000 },
+              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", staleReason: "Machine silent", inStateMs: 14 * 60_000 },
             ]}
           />
           <SessionTable sessions={[]} />
         </Section>
 
         <Section id="machines" title="Machine pills & header counts" note="Click a pill to toggle it; hidden Machines still count their Needs you.">
-          <div className="g-row">
+          <MachinePills>
             <MachinePill name="mac-studio" sessions={5} hidden={hidden.has("mac-studio")} onToggle={() => toggle("mac-studio")} />
             <MachinePill name="wsl-desk" sessions={3} hidden={hidden.has("wsl-desk")} onToggle={() => toggle("wsl-desk")} />
             <MachinePill name="win-ps" sessions={1} hidden={hidden.has("win-ps")} onToggle={() => toggle("win-ps")} />
             <MachinePill name="mbp-travel" sessions={2} silentForMs={14 * 60_000} hidden={hidden.has("mbp-travel")} onToggle={() => toggle("mbp-travel")} />
-          </div>
+          </MachinePills>
           <div className="g-row">
             <NeedsCount count={3} />
             <NeedsCount count={0} />

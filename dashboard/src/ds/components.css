@@ -58,6 +58,7 @@ a { color: inherit; }
 @keyframes flash { 0%, 100% { opacity: 0; } 50% { opacity: var(--flash-opacity); } }
 
 /* ---------- Machine pill ---------- */
+.mpills { display: flex; gap: var(--s2); min-width: 0; }
 .mpill { display: inline-flex; align-items: center; gap: 8px; height: var(--pill-h); padding: 0 var(--s3); border-radius: var(--r-pill); border: 1px solid var(--line-2);
   background: var(--surface); color: var(--text); cursor: pointer; font-size: var(--fs-sm); white-space: nowrap; }
 .mpill .mdot { display: block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--pass); }

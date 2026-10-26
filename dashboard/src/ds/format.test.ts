@@ -20,6 +20,10 @@ describe("stateLook", () => {
     expect(stateLook("Working")).toEqual({ tone: "working", label: "Working" });
     expect(stateLook("Stale")).toEqual({ tone: "stale", label: "Stale" });
   });
+
+  it("says why a session is Stale", () => {
+    expect(stateLook("Stale", false, "Machine silent")).toEqual({ tone: "stale", label: "Stale · Machine silent" });
+  });
 });
 
 describe("phaseClass", () => {

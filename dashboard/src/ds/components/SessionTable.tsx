@@ -1,4 +1,4 @@
-import { formatDuration } from "../format";
+import { formatDuration, stateLook } from "../format";
 import type { SessionState } from "../types";
 import { StateBadge } from "./StateBadge";
 import { Empty } from "./Panel";
@@ -8,6 +8,8 @@ export interface SessionRowData {
   machine: string;
   repo: string;
   state: SessionState;
+  /** Why a Stale session can't be trusted, e.g. "Machine silent". */
+  staleReason?: string;
   /** ms the session has been in its state. */
   inStateMs: number;
 }
@@ -23,8 +25,8 @@ export function SessionTable({ sessions }: { sessions: SessionRowData[] }) {
       </thead>
       <tbody>
         {sessions.map((s) => (
-          <tr key={s.id} aria-label={`${s.state}: ${s.repo} on ${s.machine}`}>
-            <td><StateBadge state={s.state} /></td>
+          <tr key={s.id} aria-label={`${stateLook(s.state, false, s.staleReason).label}: ${s.repo} on ${s.machine}`}>
+            <td><StateBadge state={s.state} staleReason={s.staleReason} /></td>
             <td className="mono">{s.machine}</td>
             <td className="mono">{s.repo}</td>
             <td><span className="tmain">{formatDuration(s.inStateMs)}</span></td>

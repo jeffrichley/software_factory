@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS tracking (
   installed_at TEXT NOT NULL,
   PRIMARY KEY (repo, machine)
 );
+CREATE TABLE IF NOT EXISTS machines (
+  machine TEXT PRIMARY KEY,
+  last_seen TEXT NOT NULL
+);
 """
 
 
@@ -90,3 +94,24 @@ class Store:
         for r in rows:
             repos.setdefault(r["repo"], []).append(r["machine"])
         return [{"repo": repo, "machines": machines} for repo, machines in repos.items()]
+
+    def machine_seen(self, machine: str, now: datetime) -> None:
+        """Any event, queued ones included, is the Machine reporting."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO machines (machine, last_seen) VALUES (?, ?)"
+                " ON CONFLICT (machine) DO UPDATE SET last_seen = excluded.last_seen",
+                (machine, iso(now)),
+            )
+
+    def machines(self) -> list[dict]:
+        """Machines that track a repo or have a live session, each with its live session count."""
+        rows = self.db.execute(
+            "SELECT m.machine, m.last_seen,"
+            " (SELECT COUNT(*) FROM sessions s WHERE s.machine = m.machine AND s.ended_at IS NULL) AS sessions"
+            " FROM machines m"
+            " WHERE EXISTS (SELECT 1 FROM tracking t WHERE t.machine = m.machine)"
+            " OR EXISTS (SELECT 1 FROM sessions s WHERE s.machine = m.machine AND s.ended_at IS NULL)"
+            " ORDER BY m.machine"
+        ).fetchall()
+        return [dict(r) for r in rows]

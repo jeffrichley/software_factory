@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { formatDuration } from "../format";
 
 export interface MachinePillProps {
@@ -26,4 +27,9 @@ export function MachinePill({ name, sessions, silentForMs, hidden, onToggle }: M
       <span className="mmeta">{meta}</span>
     </button>
   );
+}
+
+/** The header's row of Machine pills, one per Machine. */
+export function MachinePills({ children }: { children?: ReactNode }) {
+  return <div className="mpills">{children}</div>;
 }

@@ -174,3 +174,55 @@ def test_an_ended_session_stays_ended_on_its_own_session_end(client):
     client.post("/api/events", json=hook_event("SessionEnd", reason="exit"))
 
     assert client.get("/api/state").json()["sessions"] == []
+
+
+def test_each_machine_shows_its_live_session_count_and_when_it_was_last_seen(client, clock):
+    client.post("/api/events", json=tracking_event("repo_installed", machine="mac"))
+    client.post("/api/events", json=hook_event("SessionStart", session="a"))
+    clock.advance(20)
+    client.post("/api/events", json=hook_event("SessionStart", session="b"))
+    client.post("/api/events", json=hook_event("SessionStart", session="c"))
+    client.post("/api/events", json=hook_event("SessionEnd", session="c", reason="exit"))
+
+    assert client.get("/api/state").json()["machines"] == [
+        {"machine": "mac", "sessions": 0, "last_seen": "2026-10-26T12:00:00Z", "silent": False},
+        {"machine": "wsl", "sessions": 2, "last_seen": "2026-10-26T12:00:20Z", "silent": False},
+    ]
+
+
+def test_a_machine_with_no_events_for_five_minutes_is_silent_and_its_sessions_stale(client, clock):
+    client.post("/api/events", json=hook_event("SessionStart", session="w", machine="wsl"))
+    clock.advance(60)
+    client.post("/api/events", json=hook_event("SessionStart", session="m", machine="mac"))
+    clock.advance(4 * 60)
+
+    state = client.get("/api/state").json()
+
+    assert [(m["machine"], m["silent"]) for m in state["machines"]] == [("mac", False), ("wsl", True)]
+    wsl, mac = state["sessions"]
+    assert (wsl["state"], wsl["stale_reason"], wsl["state_since"]) == ("Stale", "Machine silent", "2026-10-26T12:00:00Z")
+    assert mac["state"] == "Working"
+    assert "stale_reason" not in mac
+
+
+def test_a_silent_machine_reporting_again_brings_its_sessions_back(client, clock):
+    client.post("/api/events", json=hook_event("SessionStart"))
+    clock.advance(10 * 60)
+
+    client.post("/api/events", json=hook_event("PreToolUse", tool_name="Bash"))
+
+    state = client.get("/api/state").json()
+    assert state["machines"][0]["silent"] is False
+    assert [(s["state"], s["state_since"]) for s in state["sessions"]] == [("Working", "2026-10-26T12:00:00Z")]
+
+
+def test_the_stream_pushes_state_when_a_machine_goes_silent(tmp_path, clock):
+    client = TestClient(create_app(db_path=tmp_path / "f.db", github=FakeGitHub(), clock=clock, refresh_s=0.05))
+    client.post("/api/events", json=hook_event("SessionStart"))
+    with client.stream("GET", "/api/stream") as stream:
+        events = sse_states(stream.iter_lines())
+        assert next(events)["sessions"][0]["state"] == "Working"
+
+        clock.advance(5 * 60)
+
+        assert next(events)["sessions"][0]["state"] == "Stale"
