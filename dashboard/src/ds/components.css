@@ -270,3 +270,13 @@ a { color: inherit; }
 .tri .c-time { width: 120px; }
 .tmain { font: 600 var(--fs-md)/1.3 var(--font-mono); }
 .page { padding: var(--s5); }
+
+/* ---------- Body: inbox beside the focus area (variant E) ---------- */
+.split { display: grid; grid-template-columns: var(--inbox-w) minmax(0, 1fr); min-height: calc(100vh - var(--top-h)); }
+.split > * { min-width: 0; padding: var(--s5); }
+.inbox { background: var(--surface-sunken); border-right: 1px solid var(--line); }
+.split-main { display: grid; gap: var(--s5); align-content: start; }
+@media (max-width: 900px) {
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .inbox { border-right: 0; border-bottom: 1px solid var(--line); }
+}

@@ -71,7 +71,8 @@ export interface NeedsYouCardProps {
   reason: NeedsReason;
   waitingMs: number;
   repo: string;
-  kind: string;
+  /** Session kind; null while unknown. */
+  kind: string | null;
   workItem: WorkItemRef | null;
   machine: string;
   session: string;
@@ -94,7 +95,7 @@ export function NeedsYouCard(p: NeedsYouCardProps) {
       </header>
       <div className="nb">
         <span className="nwhat">
-          <b>{p.repo}</b> · {p.kind} · <WorkItemLink item={p.workItem} />
+          <b>{p.repo}</b> · {p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} />
         </span>
         <NeedsBody reason={p.reason} />
         <dl className="where">
@@ -117,7 +118,8 @@ export function NeedsYouCard(p: NeedsYouCardProps) {
 }
 
 export interface DoneCardProps {
-  kind: string;
+  /** Session kind; null while unknown. */
+  kind: string | null;
   workItem: WorkItemRef | null;
   repo: string;
   machine: string;
@@ -131,7 +133,7 @@ export interface DoneCardProps {
 export function DoneCard(p: DoneCardProps) {
   return (
     <div className="dcard">
-      <span className="dt">{p.kind} · <WorkItemLink item={p.workItem} /></span>
+      <span className="dt">{p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} /></span>
       <span className="dm">{p.repo} · {p.machine} · {formatDuration(p.agoMs)} ago</span>
       <NowLine now={p.now} />
       <div className="nact">
@@ -139,6 +141,15 @@ export function DoneCard(p: DoneCardProps) {
         <button type="button" className="btn" onClick={p.onSeen}><Icon name="check" />Mark seen</button>
       </div>
     </div>
+  );
+}
+
+/** The dashboard's left panel: the Needs you inbox, then Done-unseen. */
+export function Inbox({ children }: { children: ReactNode }) {
+  return (
+    <section className="inbox" aria-label="Needs you inbox">
+      {children}
+    </section>
   );
 }
 

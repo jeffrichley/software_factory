@@ -8,6 +8,8 @@ export interface SessionRowData {
   machine: string;
   repo: string;
   state: SessionState;
+  /** Done has been seen by the human. */
+  seen?: boolean;
   /** ms the session has been in its state. */
   inStateMs: number;
 }
@@ -24,7 +26,7 @@ export function SessionTable({ sessions }: { sessions: SessionRowData[] }) {
       <tbody>
         {sessions.map((s) => (
           <tr key={s.id} aria-label={`${s.state}: ${s.repo} on ${s.machine}`}>
-            <td><StateBadge state={s.state} /></td>
+            <td><StateBadge state={s.state} seen={s.seen} /></td>
             <td className="mono">{s.machine}</td>
             <td className="mono">{s.repo}</td>
             <td><span className="tmain">{formatDuration(s.inStateMs)}</span></td>

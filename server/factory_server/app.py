@@ -6,11 +6,12 @@ from collections.abc import AsyncIterator, Callable
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import states
 from .github import GitHub
 from .store import Store
 
@@ -85,8 +86,17 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
                 else:
                     # A resumed session, or one still running when its repo was uninstalled and reinstalled.
                     store.resume_session(session_id, now)
+                    states.apply(store, session_id, event, now)
         hub.publish(state())
         return Reply(session_id=None if session_id is None else str(session_id))
+
+    @app.post("/api/sessions/{session_id}/seen")
+    async def seen(session_id: int) -> dict:
+        """The human opened the session's detail: its Done is seen."""
+        if not store.mark_seen(session_id):
+            raise HTTPException(status_code=404, detail="no such session")
+        hub.publish(state())
+        return {"ok": True}
 
     @app.get("/api/health")
     async def health() -> dict:

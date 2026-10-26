@@ -10,6 +10,7 @@ import {
   FlowStrip,
   GraphView,
   Icon,
+  Inbox,
   InboxHeader,
   MachinePill,
   NeedsYouCard,
@@ -20,6 +21,7 @@ import {
   PhaseTrack,
   SectionHeading,
   SessionTable,
+  Split,
   TopBar,
   StateBadge,
   StateChip,
@@ -201,6 +203,7 @@ export function Gallery() {
               { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", inStateMs: 3 * 60_000 },
               { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", inStateMs: 42_000 },
               { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
+              { id: "5", machine: "mac-studio", repo: "jeff/gadgets", state: "Done", seen: true, inStateMs: 5 * 60_000 },
               { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", inStateMs: 14 * 60_000 },
             ]}
           />
@@ -267,6 +270,18 @@ export function Gallery() {
               <Empty>Everything Done has been seen.</Empty>
             </div>
           </div>
+          <Split
+            side={
+              <Inbox>
+                <InboxHeader count={1} />
+                <NeedsYouCard reason={{ kind: "permission", tool: "Bash", command: "git push" }} waitingMs={12_000} repo="jeff/widgets" kind={null} workItem={null} machine="wsl-desk" session="0196viHB" terminal={null} resumeCommand="claude --resume 0196viHB" />
+                <SectionHeading icon="check" tone="done">Done — unseen · 1</SectionHeading>
+                <DoneCard kind={null} workItem={null} repo="jeff/gadgets" machine="mac-studio" agoMs={3 * 60_000} now={null} />
+              </Inbox>
+            }
+          >
+            <p className="muted g-small">The dashboard body: the inbox on the left (kind and Work item unknown here), the focus area beside it.</p>
+          </Split>
         </Section>
 
         <Section id="panels" title="Panel & section">
