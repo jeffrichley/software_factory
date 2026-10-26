@@ -3,14 +3,16 @@
 A session Needs you while any prompt waits on the human: a permission prompt, an
 AskUserQuestion question, a plan approval or an MCP elicitation, from the main session or
 any of its subagents (subagent events carry the parent's session_id and their own agent_id).
-Each prompt clears on its own resolution (the matching PostToolUse/PostToolUseFailure, or
-ElicitationResult); later activity is the backstop. With no prompt waiting, the session shows
-its base state: Working, Done after Stop, or Needs you after StopFailure.
+Each prompt clears on its own resolution: the PostToolUse/PostToolUseFailure with its
+tool_use_id, or ElicitationResult. Backstops: typing into the session clears every prompt; the
+end of a turn (Stop, SubagentStop) clears that turn's; later tool activity clears a prompt only
+when no open call holds it, since parallel calls run beside a waiting one. With no prompt
+waiting, the session shows its base state: Working, Done after Stop, or Needs you after StopFailure.
 """
 
 from datetime import datetime
 
-from .store import Store
+from .store import MAIN, Store
 
 # Tools whose call is itself a prompt for the human.
 ASK_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
@@ -40,28 +42,29 @@ def running_background_tasks(event: dict) -> bool:
 
 def apply(store: Store, session_id: int, event: dict, now: datetime) -> None:
     """Apply one hook event's effect on the session's state."""
-    agent = event.get("agent_id") or ""
+    subagent = event.get("agent_id") or MAIN
     tool_use_id = event.get("tool_use_id")
     match event.get("hook_event_name"):
         case "PreToolUse":
-            # Backstop: this agent has moved on, so its earlier prompts were resolved.
-            store.clear_prompts(session_id, agent=agent, keep=tool_use_id)
             if tool_use_id:
-                store.open_tool_use(session_id, agent, tool_use_id, event.get("tool_name", ""), event.get("tool_input") or {})
+                store.open_tool_use(session_id, subagent, tool_use_id, event.get("tool_name", ""), event.get("tool_input") or {})
+            store.clear_loose_prompts(session_id, subagent)
             if event.get("tool_name") in ASK_TOOLS:
-                store.add_prompt(session_id, agent, tool_use_id, ask_reason(event), now)
+                store.add_prompt(session_id, subagent, tool_use_id, ask_reason(event), now)
             store.set_base(session_id, "Working")
         case "PermissionRequest":
-            key = store.find_tool_use(session_id, agent, event.get("tool_name", ""), event.get("tool_input") or {})
-            # A question or plan approval asking permission stays the question it already is.
-            store.add_prompt(session_id, agent, key, permission_reason(event), now)
+            # No tool_use_id on this event: tie it to the open call it asks about. A question or plan
+            # approval asking permission stays the question it already is.
+            key = store.find_tool_use(session_id, subagent, event.get("tool_name", ""), event.get("tool_input") or {})
+            store.add_prompt(session_id, subagent, key, permission_reason(event), now)
         case "PostToolUse" | "PostToolUseFailure":
             if tool_use_id:
                 store.close_tool_use(session_id, tool_use_id)
-            store.clear_prompts(session_id, agent=agent)
+                store.clear_prompts(session_id, key=tool_use_id)
+            store.clear_loose_prompts(session_id, subagent)
             store.set_base(session_id, "Working")
         case "Elicitation":
-            store.add_prompt(session_id, agent, elicitation_key(event), {"kind": "question", "text": event.get("message", "")}, now)
+            store.add_prompt(session_id, subagent, elicitation_key(event), {"kind": "question", "text": event.get("message", "")}, now)
         case "ElicitationResult":
             store.clear_prompts(session_id, key=elicitation_key(event))
         case "UserPromptSubmit":
@@ -74,14 +77,14 @@ def apply(store: Store, session_id: int, event: dict, now: datetime) -> None:
         case "Stop":
             # The main turn ended, so its own prompts are over; a subagent still running may yet ask.
             if running_background_tasks(event):
-                store.clear_prompts(session_id, agent="")
+                store.end_turn(session_id, MAIN)
                 store.set_base(session_id, "Working")
             else:
-                store.clear_prompts(session_id)
+                store.end_turn(session_id)
                 store.set_base(session_id, "Done")
         case "SubagentStop":
             # Never Done: only the subagent finished. Its prompts are over.
-            store.clear_prompts(session_id, agent=agent)
+            store.end_turn(session_id, subagent)
         case "StopFailure":
             store.set_base(session_id, "Needs you", {"kind": "error", "type": event.get("error") or "unknown"})
     store.settle(session_id, now)

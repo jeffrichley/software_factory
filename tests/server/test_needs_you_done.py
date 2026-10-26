@@ -70,19 +70,62 @@ def test_an_mcp_elicitation_needs_you_with_its_message_until_its_result(client):
     assert session(client)["state"] == "Working"
 
 
-def test_a_prompt_with_no_resolution_clears_when_the_session_moves_on(client):
-    post(client, "PreToolUse", tool_use_id="toolu_1", **bash("rm -rf build"))
+def read(tool_use_id: str) -> dict:
+    return {"tool_use_id": tool_use_id, "tool_name": "Read", "tool_input": {"file_path": "/x"}, "tool_response": {}}
+
+
+def test_a_prompt_tied_to_no_open_call_clears_when_the_session_moves_on(client):
+    post(client, "PermissionRequest", **bash("rm -rf build"))
     post(client, "PermissionRequest", **bash("rm -rf build"))
     assert session(client)["state"] == "Needs you"
 
-    post(client, "PreToolUse", tool_use_id="toolu_2", tool_name="Read", tool_input={"file_path": "/x"})
+    post(client, "PreToolUse", **read("toolu_2"))
+
     assert session(client)["state"] == "Working"
 
+
+def test_typing_into_the_session_clears_every_prompt(client):
     post(client, "PreToolUse", tool_use_id="toolu_3", **bash("rm -rf dist"))
     post(client, "PermissionRequest", **bash("rm -rf dist"))
+
     post(client, "UserPromptSubmit", prompt="no, keep dist")
 
     assert (session(client)["state"], session(client)["reason"]) == ("Working", None)
+
+
+def test_a_sibling_tool_call_leaves_a_waiting_permission_prompt_in_place(client):
+    post(client, "PreToolUse", tool_use_id="toolu_a", **bash("git push"))
+    post(client, "PreToolUse", **read("toolu_b"))
+    post(client, "PermissionRequest", **bash("git push"))
+
+    post(client, "PostToolUse", **read("toolu_b"))
+    post(client, "PreToolUse", **read("toolu_c"))
+    post(client, "PostToolUseFailure", error="Exit code 1", **read("toolu_c"))
+
+    assert session(client)["reason"] == {"kind": "permission", "tool": "Bash", "command": "git push"}
+    post(client, "PostToolUse", tool_use_id="toolu_a", tool_response={}, **bash("git push"))
+    assert session(client)["state"] == "Working"
+
+
+def test_a_sibling_tool_call_leaves_a_waiting_question_in_place(client):
+    post(client, "PreToolUse", tool_use_id="toolu_q", tool_name="AskUserQuestion", tool_input={"questions": [{"question": "Ship it?"}]})
+    post(client, "PreToolUse", **read("toolu_b"))
+    post(client, "PostToolUse", **read("toolu_b"))
+
+    assert session(client)["reason"] == {"kind": "question", "text": "Ship it?"}
+
+
+def test_two_concurrent_calls_to_one_tool_each_get_their_own_prompt(client):
+    post(client, "PreToolUse", tool_use_id="toolu_1", **bash("make deploy"))
+    post(client, "PreToolUse", tool_use_id="toolu_2", **bash("make deploy"))
+    post(client, "PermissionRequest", **bash("make deploy"))
+    post(client, "PermissionRequest", **bash("make deploy"))
+
+    post(client, "PostToolUse", tool_use_id="toolu_2", tool_response={}, **bash("make deploy"))
+    assert session(client)["state"] == "Needs you"
+
+    post(client, "PostToolUse", tool_use_id="toolu_1", tool_response={}, **bash("make deploy"))
+    assert session(client)["state"] == "Working"
 
 
 def test_waiting_time_counts_from_the_first_prompt(client, clock):

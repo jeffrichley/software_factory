@@ -38,7 +38,11 @@ export function NowLine({ now }: { now: string | null }) {
   );
 }
 
-function NeedsBody({ reason }: { reason: NeedsReason }): ReactNode {
+/** Title and icon when the reason isn't known: shown as unknown, never guessed. */
+const UNKNOWN_REASON: [string, IconName] = ["Needs you", "alert"];
+
+function NeedsBody({ reason }: { reason: NeedsReason | null }): ReactNode {
+  if (!reason) return <p className="needs-q"><Unknown /></p>;
   switch (reason.kind) {
     case "permission":
       return (
@@ -68,7 +72,8 @@ function NeedsBody({ reason }: { reason: NeedsReason }): ReactNode {
 }
 
 export interface NeedsYouCardProps {
-  reason: NeedsReason;
+  /** Why the session Needs you; null while unknown. */
+  reason: NeedsReason | null;
   waitingMs: number;
   repo: string;
   /** Session kind; null while unknown. */
@@ -85,7 +90,7 @@ export interface NeedsYouCardProps {
 
 /** One entry in the Needs you inbox. */
 export function NeedsYouCard(p: NeedsYouCardProps) {
-  const [title, icon] = REASON[p.reason.kind];
+  const [title, icon] = p.reason ? REASON[p.reason.kind] : UNKNOWN_REASON;
   return (
     <article className={`ncard${p.selected ? " sel" : ""}`} aria-label={`${title} from ${p.session}`}>
       <header>
@@ -126,10 +131,9 @@ export interface DoneCardProps {
   agoMs: number;
   now: string | null;
   onOpen?: () => void;
-  onSeen?: () => void;
 }
 
-/** One Done-unseen entry under the inbox. */
+/** One Done-unseen entry under the inbox. It becomes seen when the human opens it or types into the session. */
 export function DoneCard(p: DoneCardProps) {
   return (
     <div className="dcard">
@@ -138,7 +142,6 @@ export function DoneCard(p: DoneCardProps) {
       <NowLine now={p.now} />
       <div className="nact">
         <button type="button" className="btn" onClick={p.onOpen}>Open</button>
-        <button type="button" className="btn" onClick={p.onSeen}><Icon name="check" />Mark seen</button>
       </div>
     </div>
   );
@@ -147,7 +150,7 @@ export function DoneCard(p: DoneCardProps) {
 /** The dashboard's left panel: the Needs you inbox, then Done-unseen. */
 export function Inbox({ children }: { children: ReactNode }) {
   return (
-    <section className="inbox" aria-label="Needs you inbox">
+    <section className="inbox" aria-label="Needs you and Done unseen">
       {children}
     </section>
   );

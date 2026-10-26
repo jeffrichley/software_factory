@@ -59,6 +59,9 @@ function useNow(everyMs: number): number {
 
 const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => {});
 
+/** How much of a Claude Code session id a card shows; the resume command carries all of it. */
+const SESSION_ID_CHARS = 8;
+
 export function Dashboard() {
   const state = useFactoryState();
   const now = useNow(1000);
@@ -66,12 +69,12 @@ export function Dashboard() {
   const sessions = state?.sessions.map((s) => ({ ...s, inStateMs: now - Date.parse(s.state_since) }));
   const { needs, doneUnseen } = inboxOf(sessions ?? []);
 
+  const seen = (id: string) => void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
   /** Opening a session's detail makes its Done seen (the detail view itself comes with session kinds). */
   const open = (id: string) => {
     setSelected(id);
-    void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
+    seen(id);
   };
-  const seen = (id: string) => void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
 
   return (
     <>
@@ -84,13 +87,13 @@ export function Dashboard() {
               needs.map((s) => (
                 <NeedsYouCard
                   key={s.id}
-                  reason={s.reason ?? { kind: "question", text: "" }}
+                  reason={s.reason}
                   waitingMs={s.inStateMs}
                   repo={s.repo}
                   kind={null}
                   workItem={null}
                   machine={s.machine}
-                  session={s.cc_session_id.slice(0, 8)}
+                  session={s.cc_session_id.slice(0, SESSION_ID_CHARS)}
                   terminal={null}
                   resumeCommand={resumeCommand(s.cc_session_id)}
                   selected={s.id === selected}
@@ -113,7 +116,6 @@ export function Dashboard() {
                   agoMs={s.inStateMs}
                   now={null}
                   onOpen={() => open(s.id)}
-                  onSeen={() => seen(s.id)}
                 />
               ))
             ) : (

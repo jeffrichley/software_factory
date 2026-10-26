@@ -24,11 +24,12 @@ CREATE TABLE IF NOT EXISTS tracking (
   PRIMARY KEY (repo, machine)
 );
 -- A prompt waiting on the human (permission, question, plan approval, elicitation), in the main
--- session (agent '') or one of its subagents. key is the tool_use_id or elicitation it belongs to.
+-- session (subagent '') or one of its subagents (by agent_id). key is the tool_use_id or
+-- elicitation it belongs to; NULL when a PermissionRequest matched no open call.
 CREATE TABLE IF NOT EXISTS prompts (
   id INTEGER PRIMARY KEY,
   session_id INTEGER NOT NULL,
-  agent TEXT NOT NULL,
+  subagent TEXT NOT NULL,
   key TEXT,
   reason TEXT NOT NULL,
   since TEXT NOT NULL
@@ -37,13 +38,16 @@ CREATE TABLE IF NOT EXISTS prompts (
 -- tool_use_id, so its prompt is tied to the open call it asks about.
 CREATE TABLE IF NOT EXISTS tool_uses (
   session_id INTEGER NOT NULL,
-  agent TEXT NOT NULL,
+  subagent TEXT NOT NULL,
   tool_use_id TEXT NOT NULL,
   tool_name TEXT NOT NULL,
   tool_input TEXT NOT NULL,
   PRIMARY KEY (session_id, tool_use_id)
 );
 """
+
+# The `subagent` value for the main session itself.
+MAIN = ""
 
 # Columns added to sessions after its first release; added in place to an older database.
 SESSION_COLUMNS = {
@@ -130,51 +134,69 @@ class Store:
         with self.db:
             return self.db.execute("UPDATE sessions SET seen = 1 WHERE id = ?", (session_id,)).rowcount > 0
 
-    def open_tool_use(self, session_id: int, agent: str, tool_use_id: str, tool_name: str, tool_input: dict) -> None:
+    def open_tool_use(self, session_id: int, subagent: str, tool_use_id: str, tool_name: str, tool_input: dict) -> None:
         with self.db:
             self.db.execute(
                 "INSERT OR REPLACE INTO tool_uses VALUES (?, ?, ?, ?, ?)",
-                (session_id, agent, tool_use_id, tool_name, json.dumps(tool_input, sort_keys=True)),
+                (session_id, subagent, tool_use_id, tool_name, json.dumps(tool_input, sort_keys=True)),
             )
 
     def close_tool_use(self, session_id: int, tool_use_id: str) -> None:
         with self.db:
             self.db.execute("DELETE FROM tool_uses WHERE session_id = ? AND tool_use_id = ?", (session_id, tool_use_id))
 
-    def find_tool_use(self, session_id: int, agent: str, tool_name: str, tool_input: dict) -> str | None:
-        """The open call a PermissionRequest asks about: the latest with that tool, same input preferred."""
+    def find_tool_use(self, session_id: int, subagent: str, tool_name: str, tool_input: dict) -> str | None:
+        """The open call a PermissionRequest asks about: that tool, same input preferred, then one
+        no prompt holds yet (so concurrent calls to one tool each get theirs), then the latest."""
         row = self.db.execute(
-            "SELECT tool_use_id FROM tool_uses WHERE session_id = ? AND agent = ? AND tool_name = ?"
-            " ORDER BY tool_input = ? DESC, rowid DESC LIMIT 1",
-            (session_id, agent, tool_name, json.dumps(tool_input, sort_keys=True)),
+            "SELECT tool_use_id FROM tool_uses t WHERE session_id = ? AND subagent = ? AND tool_name = ?"
+            " ORDER BY tool_input = ? DESC,"
+            " EXISTS (SELECT 1 FROM prompts p WHERE p.session_id = t.session_id AND p.key = t.tool_use_id),"
+            " rowid DESC LIMIT 1",
+            (session_id, subagent, tool_name, json.dumps(tool_input, sort_keys=True)),
         ).fetchone()
         return row["tool_use_id"] if row else None
 
-    def add_prompt(self, session_id: int, agent: str, key: str | None, reason: dict, now: datetime) -> None:
-        """A prompt starts waiting, unless one already waits for the same call."""
+    def add_prompt(self, session_id: int, subagent: str, key: str | None, reason: dict, now: datetime) -> None:
+        """A prompt starts waiting, unless the same one already waits (same call, or same ask with no call)."""
+        reason_json = json.dumps(reason)
         with self.db:
-            if key is not None and self.db.execute(
-                "SELECT 1 FROM prompts WHERE session_id = ? AND key = ?", (session_id, key)
+            if self.db.execute(
+                "SELECT 1 FROM prompts WHERE session_id = ? AND (key = ? OR (? IS NULL AND key IS NULL AND subagent = ? AND reason = ?))",
+                (session_id, key, key, subagent, reason_json),
             ).fetchone():
                 return
             self.db.execute(
-                "INSERT INTO prompts (session_id, agent, key, reason, since) VALUES (?, ?, ?, ?, ?)",
-                (session_id, agent, key, json.dumps(reason), iso(now)),
+                "INSERT INTO prompts (session_id, subagent, key, reason, since) VALUES (?, ?, ?, ?, ?)",
+                (session_id, subagent, key, reason_json, iso(now)),
             )
 
-    def clear_prompts(
-        self, session_id: int, *, agent: str | None = None, key: str | None = None, keep: str | None = None
-    ) -> None:
-        """Resolve waiting prompts: all of them, or one agent's, or the one for `key`; never `keep`'s."""
-        sql, args = "DELETE FROM prompts WHERE session_id = ?", [session_id]
-        if agent is not None:
-            sql, args = sql + " AND agent = ?", [*args, agent]
-        if key is not None:
-            sql, args = sql + " AND key = ?", [*args, key]
-        if keep is not None:
-            sql, args = sql + " AND key IS NOT ?", [*args, keep]
+    def clear_prompts(self, session_id: int, *, key: str | None = None) -> None:
+        """Resolve waiting prompts: the one for `key`, or all of them."""
         with self.db:
-            self.db.execute(sql, args)
+            if key is None:
+                self.db.execute("DELETE FROM prompts WHERE session_id = ?", (session_id,))
+            else:
+                self.db.execute("DELETE FROM prompts WHERE session_id = ? AND key = ?", (session_id, key))
+
+    def clear_loose_prompts(self, session_id: int, subagent: str) -> None:
+        """Backstop on later tool activity: drop this subagent's prompts that no open call holds.
+        Elicitations wait inside a call of their own and clear on their result."""
+        with self.db:
+            self.db.execute(
+                "DELETE FROM prompts WHERE session_id = ? AND subagent = ? AND (key IS NULL OR (key NOT LIKE 'elicitation:%'"
+                " AND key NOT IN (SELECT tool_use_id FROM tool_uses WHERE session_id = ?)))",
+                (session_id, subagent, session_id),
+            )
+
+    def end_turn(self, session_id: int, subagent: str | None = None) -> None:
+        """A turn ended (the main session's, or a subagent's; None = every one): its prompts and calls are over."""
+        with self.db:
+            for table in ("prompts", "tool_uses"):
+                if subagent is None:
+                    self.db.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
+                else:
+                    self.db.execute(f"DELETE FROM {table} WHERE session_id = ? AND subagent = ?", (session_id, subagent))
 
     def settle(self, session_id: int, now: datetime) -> None:
         """The shown state: Needs you for the oldest waiting prompt, else the base state; since = last change."""

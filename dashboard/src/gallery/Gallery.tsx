@@ -273,8 +273,9 @@ export function Gallery() {
           <Split
             side={
               <Inbox>
-                <InboxHeader count={1} />
+                <InboxHeader count={2} />
                 <NeedsYouCard reason={{ kind: "permission", tool: "Bash", command: "git push" }} waitingMs={12_000} repo="jeff/widgets" kind={null} workItem={null} machine="wsl-desk" session="0196viHB" terminal={null} resumeCommand="claude --resume 0196viHB" />
+                <NeedsYouCard reason={null} waitingMs={50_000} repo="jeff/widgets" kind={null} workItem={null} machine="mac-studio" session="7f3e21c0" terminal={null} resumeCommand="claude --resume 7f3e21c0" />
                 <SectionHeading icon="check" tone="done">Done — unseen · 1</SectionHeading>
                 <DoneCard kind={null} workItem={null} repo="jeff/gadgets" machine="mac-studio" agoMs={3 * 60_000} now={null} />
               </Inbox>

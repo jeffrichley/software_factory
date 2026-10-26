@@ -1,28 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { inboxOf, resumeCommand } from "./inbox";
 
-const at = (state: "Working" | "Needs you" | "Done" | "Stale", since: string, seen = false, id = since) => ({
-  id,
-  state,
-  state_since: `2026-10-26T12:${since}:00Z`,
-  seen,
-});
+const row = (id: string, state: "Working" | "Needs you" | "Done" | "Stale", seen = false) => ({ id, state, seen });
 
 describe("inboxOf", () => {
-  it("lists Needs you longest waiting first, and only unseen Done, latest first", () => {
+  it("splits out Needs you and unseen Done, keeping the server's order", () => {
     const sessions = [
-      at("Working", "00"),
-      at("Needs you", "05"),
-      at("Done", "01"),
-      at("Needs you", "02"),
-      at("Done", "03", true),
-      at("Done", "04"),
+      row("n2", "Needs you"),
+      row("n1", "Needs you"),
+      row("w", "Working"),
+      row("d1", "Done"),
+      row("seen", "Done", true),
+      row("d2", "Done"),
+      row("s", "Stale"),
     ];
 
     const { needs, doneUnseen } = inboxOf(sessions);
 
-    expect(needs.map((s) => s.id)).toEqual(["02", "05"]);
-    expect(doneUnseen.map((s) => s.id)).toEqual(["04", "01"]);
+    expect(needs.map((s) => s.id)).toEqual(["n2", "n1"]);
+    expect(doneUnseen.map((s) => s.id)).toEqual(["d1", "d2"]);
   });
 });
 
