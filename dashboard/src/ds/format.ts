@@ -1,4 +1,4 @@
-import type { SessionState, Tone } from "./types";
+import type { Phase, SessionState, Tone } from "./types";
 
 /** Time in state, as variant E shows it: 42s · 7m · 2h 14m. */
 export function formatDuration(ms: number): string {
@@ -20,4 +20,10 @@ export function stateLook(state: SessionState, seen = false): { tone: Tone; labe
     case "Done":
       return seen ? { tone: "done-seen", label: "Done" } : { tone: "done", label: "Done · unseen" };
   }
+}
+
+/** CSS class for a Step's Phase (null = unknown) or a planning / ad hoc session. */
+export function phaseClass(phase: Phase | null | "planning"): string {
+  if (phase === "planning") return "fplan";
+  return phase ? `ph-${phase.toLowerCase()}` : "ph-unknown";
 }

@@ -1,7 +1,8 @@
 /*
  * Factory design tokens, extracted from prototype variant E.
- * Dark is variant E as built; light is derived from it with the same roles.
- * Theme follows the OS unless <html data-theme="light|dark"> overrides it.
+ * Dark is variant E as built; light is derived from it with the same roles,
+ * written once as light-dark(light, dark). Theme follows the OS unless
+ * <html data-theme="light|dark"> overrides it.
  * Components use only these variables — never raw colours or sizes.
  */
 @import "@fontsource/ibm-plex-sans/400.css";
@@ -21,7 +22,11 @@
   --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
   --font-body: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --fs-4xs: 9px;
+  --fs-3xs: 10px;
   --fs-2xs: 11px;
+  --fs-graph: 13px;
+  --fs-node: 15px;
   --fs-xs: 12px;
   --fs-sm: 14px;
   --fs-md: 16px;
@@ -41,6 +46,7 @@
 
   /* radii */
   --r-xs: 2px;
+  --r-badge: 3px;
   --r-sm: 4px;
   --r: 6px;
   --r-lg: 10px;
@@ -51,6 +57,9 @@
   --inbox-w: 360px;
   --flow-label: 132px;
   --chip-h: 24px;
+  --control-h: 40px;
+  --pill-h: 34px;
+  --tip-w: 320px;
 
   /* motion */
   --dur: 200ms;
@@ -60,160 +69,66 @@
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-in: cubic-bezier(0.5, 0, 0.8, 0.3);
 
-  /* colour — dark (variant E) */
-  color-scheme: dark;
-  --bg: #0b0d10;
-  --surface-sunken: #0f1114;
-  --surface: #13161b;
-  --surface-2: #1a1e25;
-  --surface-3: #232833;
-  --line: #2a303a;
-  --line-2: #3b4250;
-  --line-hover: #7a8496;
-  --text: #eceff3;
-  --text-2: #aeb5c1;
-  --text-3: #8a919d;
-  --text-strong: #ffffff;
+  /* colour — light-dark(light, dark); dark is variant E, light is derived */
+  color-scheme: light dark;
+  --bg: light-dark(#f6f7f9, #0b0d10);
+  --surface-sunken: light-dark(#eef0f3, #0f1114);
+  --surface: light-dark(#ffffff, #13161b);
+  --surface-2: light-dark(#f2f4f7, #1a1e25);
+  --surface-3: light-dark(#e5e9ef, #232833);
+  --line: light-dark(#dde1e7, #2a303a);
+  --line-2: light-dark(#c3c9d2, #3b4250);
+  --line-hover: light-dark(#8a93a3, #7a8496);
+  --text: light-dark(#14171c, #eceff3);
+  --text-2: light-dark(#4a5260, #aeb5c1);
+  --text-3: light-dark(#687080, #8a919d);
+  --text-strong: light-dark(#000000, #ffffff);
 
   --needs: #ffb224;
   --needs-hover: #ffc552;
   --needs-ink: #1c1300;
-  --needs-bg: #2a1e07;
-  --needs-line: #7a5512;
-  --needs-text: #ffe2a8;
-  --needs-soft: #ffd27a;
-  --needs-label: #d9b36a;
-  --needs-glow: rgb(255 178 36 / 0.3);
+  /* amber as text on a surface (the fill colour is too light on light surfaces) */
+  --needs-fg: light-dark(#9a6200, #ffb224);
+  --needs-bg: light-dark(#fff4dc, #2a1e07);
+  --needs-line: light-dark(#e2b04e, #7a5512);
+  --needs-text: light-dark(#5c3b00, #ffe2a8);
+  --needs-soft: light-dark(#8a5a00, #ffd27a);
+  --needs-label: light-dark(#85601a, #d9b36a);
+  --needs-glow: light-dark(rgb(255 178 36 / 0.4), rgb(255 178 36 / 0.3));
 
-  --working: #62abff;
-  --working-bg: #0f2038;
-  --working-line: #21406b;
+  --working: light-dark(#1f6fd1, #62abff);
+  --working-bg: light-dark(#e4eefc, #0f2038);
+  --working-line: light-dark(#a9c8f0, #21406b);
 
-  --done: #36d3c0;
-  --done-bg: #0c2826;
-  --done-line: #1f5a53;
+  --done: light-dark(#0b8577, #36d3c0);
+  --done-bg: light-dark(#e0f5f2, #0c2826);
+  --done-line: light-dark(#8fd3c9, #1f5a53);
 
-  --stale: #8b929e;
-  --stale-bg: #1b1d21;
+  --stale: light-dark(#6b7380, #8b929e);
+  --stale-bg: light-dark(#eef0f3, #1b1d21);
 
-  --pass: #45d483;
-  --fail: #ff6b6b;
-  --fail-soft: #ff9a9a;
-  --fail-bg: #2a1212;
-  --fail-line: #7a2c2c;
+  --pass: light-dark(#198a4c, #45d483);
+  --fail: light-dark(#d43c3c, #ff6b6b);
+  --fail-soft: light-dark(#b42f2f, #ff9a9a);
+  --fail-bg: light-dark(#fdeaea, #2a1212);
+  --fail-line: light-dark(#efb0b0, #7a2c2c);
 
-  --edge-resolved: #4a5263;
-  --edge-waiting: #6b7385;
-  --fog: #9aa3b2;
+  --edge-resolved: light-dark(#8a93a3, #4a5263);
+  --edge-waiting: light-dark(#a0a8b5, #6b7385);
+  --fog: light-dark(#6b7380, #9aa3b2);
   --fog-opacity: 0.14;
   --flash: #ffffff;
   --flash-opacity: 0.16;
-  --cell-bg: rgb(255 255 255 / 0.025);
+  --cell-bg: light-dark(rgb(0 0 0 / 0.03), rgb(255 255 255 / 0.025));
   --shadow: 0 12px 32px rgb(0 0 0 / 0.5);
 }
 
-/* colour — light (derived) */
+/* Explicit theme overrides the OS. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* Non-colour values that differ by theme (light-dark() takes colours only). */
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-    --bg: #f6f7f9;
-    --surface-sunken: #eef0f3;
-    --surface: #ffffff;
-    --surface-2: #f2f4f7;
-    --surface-3: #e5e9ef;
-    --line: #dde1e7;
-    --line-2: #c3c9d2;
-    --line-hover: #8a93a3;
-    --text: #14171c;
-    --text-2: #4a5260;
-    --text-3: #687080;
-    --text-strong: #000000;
-
-    --needs: #ffb224;
-    --needs-hover: #ffc552;
-    --needs-ink: #1c1300;
-    --needs-bg: #fff4dc;
-    --needs-line: #e2b04e;
-    --needs-text: #5c3b00;
-    --needs-soft: #8a5a00;
-    --needs-label: #85601a;
-    --needs-glow: rgb(255 178 36 / 0.4);
-
-    --working: #1f6fd1;
-    --working-bg: #e4eefc;
-    --working-line: #a9c8f0;
-
-    --done: #0b8577;
-    --done-bg: #e0f5f2;
-    --done-line: #8fd3c9;
-
-    --stale: #6b7380;
-    --stale-bg: #eef0f3;
-
-    --pass: #198a4c;
-    --fail: #d43c3c;
-    --fail-soft: #b42f2f;
-    --fail-bg: #fdeaea;
-    --fail-line: #efb0b0;
-
-    --edge-resolved: #8a93a3;
-    --edge-waiting: #a0a8b5;
-    --fog: #6b7380;
-    --fog-opacity: 0.12;
-    --flash: #ffffff;
-    --flash-opacity: 0.3;
-    --cell-bg: rgb(0 0 0 / 0.03);
-    --shadow: 0 12px 32px rgb(20 23 28 / 0.15);
-  }
+  :root:not([data-theme="dark"]) { --fog-opacity: 0.12; --flash-opacity: 0.3; --shadow: 0 12px 32px rgb(20 23 28 / 0.15); }
 }
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #f6f7f9;
-  --surface-sunken: #eef0f3;
-  --surface: #ffffff;
-  --surface-2: #f2f4f7;
-  --surface-3: #e5e9ef;
-  --line: #dde1e7;
-  --line-2: #c3c9d2;
-  --line-hover: #8a93a3;
-  --text: #14171c;
-  --text-2: #4a5260;
-  --text-3: #687080;
-  --text-strong: #000000;
-
-  --needs: #ffb224;
-  --needs-hover: #ffc552;
-  --needs-ink: #1c1300;
-  --needs-bg: #fff4dc;
-  --needs-line: #e2b04e;
-  --needs-text: #5c3b00;
-  --needs-soft: #8a5a00;
-  --needs-label: #85601a;
-  --needs-glow: rgb(255 178 36 / 0.4);
-
-  --working: #1f6fd1;
-  --working-bg: #e4eefc;
-  --working-line: #a9c8f0;
-
-  --done: #0b8577;
-  --done-bg: #e0f5f2;
-  --done-line: #8fd3c9;
-
-  --stale: #6b7380;
-  --stale-bg: #eef0f3;
-
-  --pass: #198a4c;
-  --fail: #d43c3c;
-  --fail-soft: #b42f2f;
-  --fail-bg: #fdeaea;
-  --fail-line: #efb0b0;
-
-  --edge-resolved: #8a93a3;
-  --edge-waiting: #a0a8b5;
-  --fog: #6b7380;
-  --fog-opacity: 0.12;
-  --flash: #ffffff;
-  --flash-opacity: 0.3;
-  --cell-bg: rgb(0 0 0 / 0.03);
-  --shadow: 0 12px 32px rgb(20 23 28 / 0.15);
-}
+:root[data-theme="light"] { --fog-opacity: 0.12; --flash-opacity: 0.3; --shadow: 0 12px 32px rgb(20 23 28 / 0.15); }

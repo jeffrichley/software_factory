@@ -1,6 +1,6 @@
 import { motion as m } from "framer-motion";
-import { useState } from "react";
-import { stateLook } from "../format";
+import { useLayoutEffect, useRef, useState } from "react";
+import { phaseClass, stateLook } from "../format";
 import { glide } from "../motion";
 import type { Phase, SessionState } from "../types";
 import { Icon, type IconName } from "./Icon";
@@ -27,15 +27,24 @@ export interface StateChipProps {
   onOpen?: () => void;
 }
 
-function phaseClass(phase: StateChipProps["phase"]) {
-  if (phase === "planning") return "fplan";
-  return phase ? `ph-${phase.toLowerCase()}` : "ph-unknown";
-}
-
 /** Flow-strip chip for one Step or planning session: coloured by state, pulses when it Needs you, glides between Phases. */
 export function StateChip(p: StateChipProps) {
   const { tone, label: stateLabel } = stateLook(p.state, p.seen);
   const [tip, setTip] = useState<DOMRect | null>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);
+  const chipRef = useRef<HTMLButtonElement>(null);
+  // Keep the tooltip inside the viewport, using its real width.
+  useLayoutEffect(() => {
+    const el = tipRef.current;
+    if (!tip || !el) return;
+    el.style.left = `${Math.max(8, Math.min(window.innerWidth - el.offsetWidth - 8, tip.left))}px`;
+    el.style.top = `${tip.bottom + 8}px`;
+  }, [tip]);
+  // Cells clip their chips; while a chip glides to a new cell, let it show.
+  const gliding = (el: HTMLElement, on: boolean) => {
+    el.classList.toggle("gliding", on);
+    el.closest(".flow")?.classList.toggle("animating", on);
+  };
   const stateTxt = stateLabel + (p.staleReason ? ` · ${p.staleReason}` : "") + (p.blocked ? " · blocked" : "");
   const phaseTxt = p.phase === "planning" ? `${p.groupName ?? "Planning"} session` : p.phase ? `Phase: ${p.phase}` : "Phase unknown";
   return (
@@ -45,6 +54,9 @@ export function StateChip(p: StateChipProps) {
         layout="position"
         layoutId={p.id}
         transition={glide}
+        ref={chipRef}
+        onLayoutAnimationStart={() => chipRef.current && gliding(chipRef.current, true)}
+        onLayoutAnimationComplete={() => chipRef.current && gliding(chipRef.current, false)}
         className={`fchip fs-${tone} ${phaseClass(p.phase)}${p.selected ? " sel" : ""}`}
         aria-label={`${p.name} — ${phaseTxt}, ${stateTxt}, ${p.machine}`}
         onClick={p.onOpen}
@@ -59,7 +71,7 @@ export function StateChip(p: StateChipProps) {
         <span className="fl">{p.label}</span>
       </m.button>
       {tip ? (
-        <span className="ftip" role="tooltip" style={{ left: Math.max(8, Math.min(window.innerWidth - 328, tip.left)), top: tip.bottom + 8 }}>
+        <span className="ftip" role="tooltip" ref={tipRef}>
           <span className="ft-tt">{p.name}</span>
           {p.groupName ? <span className="ft-tg">{p.groupName}</span> : null}
           <span className="ft-tp">{phaseTxt}</span>

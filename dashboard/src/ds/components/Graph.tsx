@@ -11,10 +11,11 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { useMemo } from "react";
-import { formatDuration } from "../format";
+import { formatDuration, phaseClass } from "../format";
 import { classifyGraph, layoutGraph, type EdgeKind, type GraphItem } from "../graph";
 import type { Phase } from "../types";
 import { PhaseTrack } from "./PhaseTrack";
+import { Tag } from "./Tag";
 
 /** What a node shows, by kind: Spec Steps, Map Decision tickets, to-tickets output. */
 export type GraphNodeBody =
@@ -40,7 +41,9 @@ const SIZE: Record<GraphNodeBody["kind"], { width: number; height: number }> = {
   decision: { width: 280, height: 140 },
   ticket: { width: 220, height: 72 },
 };
-const FOG = { width: 200, height: 100, gap: 64 };
+const FOG = { width: 200, height: 100, gap: 64, rowGap: 12 };
+/** Space around the graph inside its frame. */
+const PAD = 24;
 
 function Badge({ text, cls = "" }: { text: string; cls?: string }) {
   return <span className={`gbadge ${cls}`}>{text}</span>;
@@ -51,7 +54,7 @@ function StepBody({ b, d }: { b: Extract<GraphNodeBody, { kind: "step" }>; d: No
     <>
       <span className="gt one">{b.ticket}</span>
       <span className="grow">
-        <span className={`np${b.phase ? ` ph-${b.phase.toLowerCase()}` : ""}`}>
+        <span className={`np ${phaseClass(b.phase)}`}>
           {b.phase ? b.phase : "Phase unknown"}
           {b.phase && b.phase !== "Merged" && b.phaseForMs !== undefined ? ` · ${formatDuration(b.phaseForMs)}` : ""}
         </span>
@@ -101,7 +104,7 @@ function TicketBody({ b, d }: { b: Extract<GraphNodeBody, { kind: "ticket" }>; d
 
 function FactoryNode({ data }: NodeProps<Node<NodeData>>) {
   const b = data.body;
-  const cls = ["gnode", data.frontier && "frontier", data.needs && "needs", data.muted && "muted"].filter(Boolean).join(" ");
+  const cls = ["gnode", b.kind, data.frontier && "frontier", data.needs && "needs", data.muted && "muted"].filter(Boolean).join(" ");
   return (
     <div className={cls} style={SIZE[b.kind]}>
       <Handle type="target" position={Position.Left} isConnectable={false} />
@@ -113,7 +116,7 @@ function FactoryNode({ data }: NodeProps<Node<NodeData>>) {
 
 function FogNode({ data }: NodeProps<Node<FogData>>) {
   return (
-    <div style={{ width: FOG.width, height: FOG.height, display: "grid", gridTemplateRows: "auto 1fr" }} role="img" aria-label={`Not yet specified: ${data.text}`}>
+    <div className="gfog-node" style={{ width: FOG.width, height: FOG.height }} role="img" aria-label={`Not yet specified: ${data.text}`}>
       <span className="gfog-h">{data.first ? "NOT YET SPECIFIED" : " "}</span>
       <div className="gfog">
         <span>{data.text}</span>
@@ -150,7 +153,7 @@ export interface GraphViewProps {
 
 /** The one graph style: left→right; solid = resolved, dashed grey = waiting, dashed red = blocking, dashed blue + FRONTIER = takeable now. */
 export function GraphView({ items, fog = [], selectedId, onSelect, label, legend = true }: GraphViewProps) {
-  const { nodes, edges, height } = useMemo(() => {
+  const { nodes, edges, width, height } = useMemo(() => {
     const { edges: ge, frontier } = classifyGraph(items);
     const size = items.reduce((s, n) => ({ width: Math.max(s.width, SIZE[n.body.kind].width), height: Math.max(s.height, SIZE[n.body.kind].height) }), { width: 0, height: 0 });
     const pos = layoutGraph(items, size);
@@ -170,40 +173,46 @@ export function GraphView({ items, fog = [], selectedId, onSelect, label, legend
     }));
     const maxX = Math.max(0, ...Object.values(pos).map((p) => p.x + size.width));
     const maxY = Math.max(0, ...Object.values(pos).map((p) => p.y + size.height));
-    const fogH = fog.length * (FOG.height + 12);
+    const fogH = fog.length * (FOG.height + FOG.rowGap);
     const top = Math.max(0, (maxY - fogH) / 2);
     fog.forEach((text, i) =>
-      nodes.push({ id: `fog-${i}`, type: "fog", position: { x: maxX + FOG.gap, y: top + i * (FOG.height + 12) }, data: { text, first: i === 0 } satisfies FogData, selectable: false }),
+      nodes.push({ id: `fog-${i}`, type: "fog", position: { x: maxX + FOG.gap, y: top + i * (FOG.height + FOG.rowGap) }, data: { text, first: i === 0 } satisfies FogData, selectable: false }),
     );
     const edges: Edge[] = ge.map((e) => ({ id: e.id, source: e.from, target: e.to, type: "factory", data: { kind: e.kind } }));
-    return { nodes, edges, height: Math.max(maxY, fogH) + 48 };
+    const width = (fog.length ? maxX + FOG.gap + FOG.width : maxX) + 2 * PAD;
+    return { nodes, edges, width, height: Math.max(maxY, fogH) + 2 * PAD };
   }, [items, fog, selectedId]);
 
   return (
     <div className="fgraph" role="group" aria-label={label}>
-      <div style={{ height }}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.08, maxZoom: 1 }}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={!!onSelect}
-          zoomOnScroll={false}
-          preventScrolling={false}
-          proOptions={{ hideAttribution: true }}
-          onNodeClick={(_, n) => n.type === "factory" && onSelect?.(n.id)}
-        />
+      {/* Drawn 1:1 like variant E; a wide graph scrolls sideways instead of shrinking. */}
+      <div className="fgraph-scroll">
+        <div className="fgraph-canvas" style={{ width, height }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            defaultViewport={{ x: PAD, y: PAD, zoom: 1 }}
+            panOnDrag={false}
+            zoomOnPinch={false}
+            zoomOnDoubleClick={false}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={!!onSelect}
+            zoomOnScroll={false}
+            preventScrolling={false}
+            proOptions={{ hideAttribution: true }}
+            onNodeClick={(_, n) => n.type === "factory" && onSelect?.(n.id)}
+          />
+        </div>
       </div>
       {legend ? (
         <div className="glegend">
           <span><span className="lg-line" />resolved</span>
           <span><span className="lg-line waiting" />waiting on dependency</span>
           <span><span className="lg-line blocking" />blocking</span>
-          <span><span className="tag tag-frontier">Frontier</span>takeable now</span>
+          <span><Tag tone="frontier">Frontier</Tag>takeable now</span>
         </div>
       ) : null}
     </div>

@@ -148,7 +148,7 @@ export function InboxHeader({ count }: { count: number }) {
       <span className={`n${count ? "" : " zero"}`}>{count}</span>
       <div>
         <h2>Needs you</h2>
-        <p>Oldest first. Each one is an agent waiting on you.</p>
+        <p>Oldest first. Each one is a session waiting on you.</p>
       </div>
     </div>
   );

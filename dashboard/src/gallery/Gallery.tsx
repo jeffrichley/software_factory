@@ -1,6 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   DoneCard,
+  DoneUnseenCount,
+  HiddenNeedsBadge,
+  NeedsCount,
+  Tag,
   Empty,
   Eyebrow,
   FlowStrip,
@@ -65,9 +69,9 @@ function Section({ id, title, note, children }: { id: string; title: string; not
   );
 }
 
-function Specimen({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean }) {
+function Specimen({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <figure className={`g-spec${wide ? " wide" : ""}`}>
+    <figure className="g-spec">
       <div className="g-spec-b">{children}</div>
       <figcaption>{label}</figcaption>
     </figure>
@@ -77,21 +81,21 @@ function Specimen({ label, children, wide }: { label: string; children: ReactNod
 const SWATCHES: [string, string[]][] = [
   ["Surfaces", ["--bg", "--surface-sunken", "--surface", "--surface-2", "--surface-3", "--line", "--line-2", "--line-hover"]],
   ["Text", ["--text-strong", "--text", "--text-2", "--text-3"]],
-  ["Needs you (amber)", ["--needs", "--needs-hover", "--needs-ink", "--needs-bg", "--needs-line", "--needs-text", "--needs-soft", "--needs-label"]],
+  ["Needs you (amber)", ["--needs", "--needs-hover", "--needs-ink", "--needs-fg", "--needs-bg", "--needs-line", "--needs-text", "--needs-soft", "--needs-label"]],
   ["Working (blue)", ["--working", "--working-bg", "--working-line"]],
   ["Done (teal)", ["--done", "--done-bg", "--done-line"]],
   ["Stale (grey, dashed)", ["--stale", "--stale-bg"]],
   ["Tests & graph", ["--pass", "--fail", "--fail-soft", "--fail-bg", "--fail-line", "--edge-resolved", "--edge-waiting", "--fog"]],
 ];
-const TYPE: [string, string, string][] = [
-  ["--fs-3xl", "64", "mono 700 — inbox count"],
-  ["--fs-2xl", "40", "display"],
-  ["--fs-xl", "28", "display 600 — detail title"],
-  ["--fs-lg", "20", "display 600 — Step title, question"],
-  ["--fs-md", "16", "body — default"],
-  ["--fs-sm", "14", "body — meta, cards"],
-  ["--fs-xs", "12", "mono — eyebrow, chips"],
-  ["--fs-2xs", "11", "mono — tags, column heads"],
+const TYPE: [string, string, string, string][] = [
+  ["--fs-3xl", "64", "--font-mono", "mono 700 — inbox count"],
+  ["--fs-2xl", "40", "--font-display", "display"],
+  ["--fs-xl", "28", "--font-display", "display 600 — detail title, inbox heading"],
+  ["--fs-lg", "20", "--font-display", "display 600 — Step title"],
+  ["--fs-md", "16", "--font-body", "body — default"],
+  ["--fs-sm", "14", "--font-body", "body — meta, cards"],
+  ["--fs-xs", "12", "--font-mono", "mono — eyebrow, chips"],
+  ["--fs-2xs", "11", "--font-mono", "mono — tags, column heads"],
 ];
 const SPACE = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7"];
 const RADII = ["--r-xs", "--r-sm", "--r", "--r-lg", "--r-pill"];
@@ -149,10 +153,9 @@ export function Gallery() {
           ))}
           <div className="g-grid2">
             <Panel title="Type scale · Plex Sans Condensed / Sans / Mono">
-              {TYPE.map(([v, px, use]) => (
-                <div key={v} className="g-type"><span style={{ fontSize: `var(${v})` }}>Aa {px}</span><code>{v}</code><span className="muted">{use}</span></div>
+              {TYPE.map(([v, px, font, use]) => (
+                <div key={v} className="g-type"><span style={{ fontSize: `var(${v})`, fontFamily: `var(${font})` }}>Aa {px}</span><code>{v}</code><span className="muted">{use}</span></div>
               ))}
-              <div className="g-type"><span style={{ font: "700 var(--fs-xl)/1 var(--font-display)", textTransform: "uppercase", letterSpacing: ".03em" }}>Needs you</span><code>--font-display</code></div>
               <div className="g-type"><span>Body copy reads like this.</span><code>--font-body</code></div>
               <div className="g-type"><span className="mono">ticket-20-design-system</span><code>--font-mono</code></div>
             </Panel>
@@ -165,10 +168,10 @@ export function Gallery() {
               </Panel>
               <Panel title="Motion">
                 <div className="g-row">
-                  <span className="g-motion"><span className="dot dot-needs pulse" /> pulse <code>--dur-pulse 1.4s</code></span>
-                  <span className="g-motion"><span className="g-flash fchip fs-needs"><span className="fl">flash</span></span><code>--dur-flash 2s</code></span>
-                  <span className="g-motion">glide <code>--dur-glide 400ms</code></span>
-                  <span className="g-motion">hover <code>--dur 200ms</code> <code>--ease-out</code></span>
+                  <span className="g-motion"><span className="dot dot-needs pulse" /> pulse <code>--dur-pulse</code></span>
+                  <span className="g-motion"><span className="g-flash fchip fs-needs"><span className="fl">flash</span></span><code>--dur-flash</code></span>
+                  <span className="g-motion">glide <code>--dur-glide</code></span>
+                  <span className="g-motion">hover <code>--dur</code> <code>--ease-out</code></span>
                 </div>
                 <p className="muted g-small">All motion stops under prefers-reduced-motion.</p>
               </Panel>
@@ -197,10 +200,10 @@ export function Gallery() {
             <MachinePill name="mbp-travel" sessions={2} silentForMs={14 * 60_000} hidden={hidden.has("mbp-travel")} onToggle={() => toggle("mbp-travel")} />
           </div>
           <div className="g-row">
-            <span className="count count-needs hot"><Icon name="alert" /><b>3</b>Needs you</span>
-            <span className="count count-needs"><b>0</b>Needs you</span>
-            <button type="button" className="count count-hidden"><Icon name="alert" />+1 Needs you on hidden Machines</button>
-            <span className="count"><span className="dot dot-done" /><b>2</b>Done unseen</span>
+            <NeedsCount count={3} />
+            <NeedsCount count={0} />
+            <HiddenNeedsBadge count={1} onShow={() => setHidden(new Set())} />
+            <DoneUnseenCount count={2} />
           </div>
         </Section>
 
@@ -246,7 +249,7 @@ export function Gallery() {
               <DoneCard kind="Ticket Job" workItem={{ name: "#24 Needs you and Done sounds", url: "#" }} repo="software_factory" machine="wsl-desk" agoMs={6 * 60_000} now="opened PR #41 — ready for review" />
               <DoneCard kind="ad hoc" workItem={null} repo="gateway" machine="mac-studio" agoMs={41 * 60_000} now={null} />
               <SectionHeading icon="check" tone="done">Done — unseen · 0</SectionHeading>
-              <Empty>Everything finished has been seen.</Empty>
+              <Empty>Everything Done has been seen.</Empty>
             </div>
           </div>
         </Section>
@@ -263,7 +266,7 @@ export function Gallery() {
           <SectionHeading icon="check" tone="done">Section heading · done tone</SectionHeading>
           <SectionHeading icon="alert" tone="needs">Section heading · needs tone</SectionHeading>
           <SectionHeading>Section heading · neutral</SectionHeading>
-          <div className="g-row"><span className="tag">Ticket</span><span className="tag tag-frontier">Frontier</span><span className="tag tag-blocked">Blocked by #19</span><span className="tag tag-struggle"><Icon name="flame" />Struggling · 4 test failures</span><span className="tag tag-needs">Needs you</span></div>
+          <div className="g-row"><Tag>Ticket</Tag><Tag tone="frontier">Frontier</Tag><Tag tone="blocked">Blocked by #19</Tag><Tag tone="struggle"><Icon name="flame" />Struggling · 4 test failures</Tag><Tag tone="needs">Needs you</Tag><Tag tone="unknown">Phase unknown</Tag></div>
           <div className="g-row"><button type="button" className="btn">Default button</button><button type="button" className="btn btn-needs"><Icon name="copy" />Needs-you action</button><button type="button" className="btn btn-on">Toggled on</button></div>
           <NowLine now="running tests: uv run pytest tests/server" />
         </Section>

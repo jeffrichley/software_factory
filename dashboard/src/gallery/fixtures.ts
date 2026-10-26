@@ -1,4 +1,4 @@
-import type { FlowRow, GraphNodeInput, NeedsYouCardProps } from "../ds";
+import { specInitials, type FlowRow, type GraphNodeInput, type NeedsYouCardProps } from "../ds";
 
 /** Fake data for the gallery only. */
 
@@ -9,9 +9,9 @@ export const flowRows: FlowRow[] = [
     repo: "software_factory",
     chips: [
       { ...base, id: "glide", label: "Glide demo", name: "#30 Phases and the flow strip", state: "Working", phase: "Green" },
-      { ...base, id: "f1", label: "Tracer bullet", name: "#19 Tracer bullet", state: "Needs you", phase: "Red", group: "TF", groupName: "Spec Job · The Factory" },
-      { ...base, id: "f2", label: "Design system", name: "#20 Design system", state: "Working", phase: "Refactor", group: "TF", groupName: "Spec Job · The Factory" },
-      { ...base, id: "f3", label: "Install for real", name: "#21 Install, uninstall and status", state: "Working", phase: "Exploring", group: "TF", groupName: "Spec Job · The Factory", blocked: true },
+      { ...base, id: "f1", label: "Tracer bullet", name: "#19 Tracer bullet", state: "Needs you", phase: "Red", group: specInitials("The Factory"), groupName: "Spec Job · The Factory" },
+      { ...base, id: "f2", label: "Design system", name: "#20 Design system", state: "Working", phase: "Refactor", group: specInitials("The Factory"), groupName: "Spec Job · The Factory" },
+      { ...base, id: "f3", label: "Install for real", name: "#21 Install, uninstall and status", state: "Working", phase: "Exploring", group: specInitials("The Factory"), groupName: "Spec Job · The Factory", blocked: true },
       { ...base, id: "f4", label: "Sounds", name: "#24 Needs you and Done sounds", state: "Done", phase: "Merged", machine: "wsl-desk" },
       { ...base, id: "f5", label: "Machine pills", name: "#22 Server down, Stale sessions", state: "Done", seen: true, phase: "Merged" },
       { ...base, id: "f6", label: "Cleanup", name: "#36 Worktree cleanup command", state: "Working", phase: null },
@@ -27,7 +27,7 @@ export const flowRows: FlowRow[] = [
       // A crowded cell: wraps to two lines, then clips.
       ...Array.from({ length: 9 }, (_, i) => ({
         ...base, repo: "gateway", id: `crowd-${i}`, label: `Ticket number ${i + 1} with a long name`, name: `#${50 + i} Ticket with a long name`,
-        state: i % 3 === 0 ? ("Needs you" as const) : ("Working" as const), phase: "Committed" as const, group: "GW", groupName: "Spec Job · Gateway",
+        state: i % 3 === 0 ? ("Needs you" as const) : ("Working" as const), phase: "Committed" as const, group: specInitials("Gateway"), groupName: "Spec Job · Gateway",
       })),
     ],
   },
@@ -53,7 +53,7 @@ export const specItems: GraphNodeInput[] = [
 ];
 
 export const mapItems: GraphNodeInput[] = [
-  { id: "d7", deps: [], resolved: true, body: { kind: "decision", name: "Choose where the dashboard gets its information", type: "grilling", mode: "HITL", status: { state: "closed", gist: "hooks → Factory server" } } },
+  { id: "d7", deps: [], resolved: true, muted: true, body: { kind: "decision", name: "Choose where the dashboard gets its information", type: "grilling", mode: "HITL", status: { state: "closed", gist: "hooks → Factory server" } } },
   { id: "d9", deps: ["d7"], resolved: false, claimed: true, body: { kind: "decision", name: "Choose how Needs you and Done are detected", type: "grilling", mode: "HITL", status: { state: "claimed", by: "sf-wayfinder (this session)" }, needs: true } },
   { id: "d10", deps: ["d7"], resolved: false, body: { kind: "decision", name: "Prototype the dashboard", type: "prototype", mode: "HITL/AFK", status: { state: "open" } } },
   { id: "d17", deps: ["d9"], resolved: false, blockedBy: "d9", body: { kind: "decision", name: "Prove the dashboard's shaky fields can be sourced", type: "research", mode: "AFK", status: { state: "open" }, blockedByName: "Choose how Needs you and Done…" } },

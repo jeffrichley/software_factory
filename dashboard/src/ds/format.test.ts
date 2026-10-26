@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, stateLook } from "./format";
+import { formatDuration, phaseClass, stateLook } from "./format";
 
 describe("formatDuration", () => {
   it("shows seconds under a minute, minutes under an hour, then hours and minutes", () => {
@@ -19,5 +19,13 @@ describe("stateLook", () => {
     expect(stateLook("Needs you")).toEqual({ tone: "needs", label: "Needs you" });
     expect(stateLook("Working")).toEqual({ tone: "working", label: "Working" });
     expect(stateLook("Stale")).toEqual({ tone: "stale", label: "Stale" });
+  });
+});
+
+describe("phaseClass", () => {
+  it("names the CSS class for a Phase, an unknown Phase and a planning session", () => {
+    expect(phaseClass("Red")).toBe("ph-red");
+    expect(phaseClass(null)).toBe("ph-unknown");
+    expect(phaseClass("planning")).toBe("fplan");
   });
 });

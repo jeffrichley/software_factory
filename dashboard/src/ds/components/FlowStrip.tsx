@@ -1,5 +1,7 @@
 import { LayoutGroup } from "framer-motion";
 import { FLOW_COLUMNS, flowColumn } from "../flow";
+import { phaseClass } from "../format";
+import type { Phase } from "../types";
 import { StateChip, type StateChipProps } from "./StateChip";
 
 export interface FlowRow {
@@ -7,8 +9,8 @@ export interface FlowRow {
   chips: StateChipProps[];
 }
 
-const colClass = (i: number) =>
-  i === 0 ? "fcol-unk" : i === FLOW_COLUMNS.length - 1 ? "fcol-plan" : `ph-${FLOW_COLUMNS[i].toLowerCase()}`;
+/** The first and last columns are not Phases and have their own look. */
+const edgeColumn = (i: number) => (i === 0 ? "fcol-unk" : i === FLOW_COLUMNS.length - 1 ? "fcol-plan" : null);
 
 /** One row per Tracked repo, one column per Phase; chips glide between columns. */
 export function FlowStrip({ rows }: { rows: FlowRow[] }) {
@@ -18,7 +20,7 @@ export function FlowStrip({ rows }: { rows: FlowRow[] }) {
         <div className="frow fhead">
           <div>Tracked repo</div>
           {FLOW_COLUMNS.map((c, i) => (
-            <div key={c} className={colClass(i)} title={c}>{c}</div>
+            <div key={c} className={edgeColumn(i) ?? phaseClass(c as Phase)} title={c}>{c}</div>
           ))}
         </div>
         {rows.map((r) => (
@@ -38,7 +40,7 @@ function FlowStripRow({ row }: { row: FlowRow }) {
         <span className="truncate mono" title={row.repo}>{row.repo}</span>
       </div>
       {cells.map((chips, i) => (
-        <FlowCell key={FLOW_COLUMNS[i]} className={i === 0 ? "fcol-unk" : i === FLOW_COLUMNS.length - 1 ? "fcol-plan" : ""} chips={chips} />
+        <FlowCell key={FLOW_COLUMNS[i]} className={edgeColumn(i) ?? ""} chips={chips} />
       ))}
     </div>
   );

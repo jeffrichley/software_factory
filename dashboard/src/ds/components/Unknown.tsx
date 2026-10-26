@@ -1,4 +1,5 @@
 import { Icon } from "./Icon";
+import { Tag } from "./Tag";
 
 /** The one way to show a value the Factory does not know: never guessed. */
 export function Unknown() {
@@ -19,7 +20,7 @@ export function UnknownPhase({ detail }: { detail?: string }) {
 }
 
 export function UnknownPhaseTag() {
-  return <span className="tag tag-unknown">Phase unknown</span>;
+  return <Tag tone="unknown">Phase unknown</Tag>;
 }
 
 /** Why a Stale session's state can't be trusted. */

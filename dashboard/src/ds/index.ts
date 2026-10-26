@@ -17,3 +17,5 @@ export * from "./components/MachinePill";
 export * from "./components/InboxCards";
 export * from "./components/PhaseTrack";
 export * from "./components/Graph";
+export * from "./components/HeaderCount";
+export * from "./components/Tag";
