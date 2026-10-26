@@ -1,5 +1,26 @@
 import { useEffect, useState } from "react";
-import { FlowStrip, MachinePill, MachinePills, SessionTable, TopBar, type SessionState } from "../ds";
+import {
+  AdHocView,
+  DoneCard,
+  Empty,
+  FlowStrip,
+  Icon,
+  Inbox,
+  InboxHeader,
+  MachinePill,
+  MachinePills,
+  NeedsYouCard,
+  SectionHeading,
+  SessionTable,
+  Split,
+  TopBar,
+  inboxOf,
+  resumeCommand,
+  type NeedsReason,
+  type SessionRowData,
+  type SessionState,
+  type TimelineEntry,
+} from "../ds";
 
 /** The server's dashboard state (GET /api/state, and each SSE `state` event). */
 interface FactoryState {
@@ -8,9 +29,37 @@ interface FactoryState {
   machines: { machine: string; sessions: number; last_seen: string; silent: boolean }[];
   /** Tracked repos, each with the Machines that track it. */
   repos: { repo: string; machines: string[] }[];
-  /** A Working session on a silent Machine is Stale, with stale_reason "Machine silent". */
-  sessions: { id: string; machine: string; repo: string; state: SessionState; state_since: string; stale_reason?: string }[];
+  /** Live Tracked sessions, Needs you first. */
+  sessions: {
+    id: string;
+    machine: string;
+    repo: string;
+    cc_session_id: string;
+    state: SessionState;
+    state_since: string;
+    /** A Working session on a silent Machine is Stale, with stale_reason "Machine silent". */
+    stale_reason?: string;
+    /** Why it Needs you; null otherwise. */
+    reason: NeedsReason | null;
+    /** Done has been seen. */
+    seen: boolean;
+    kind: string;
+    /** The skill that gave the session its kind. */
+    skill: string | null;
+    /** The latest skill the skill table doesn't know. */
+    unknown_skill: string | null;
+    now: string | null;
+    /** The last few actions, oldest first. */
+    actions: TimelineEntry[];
+  }[];
 }
+
+type Session = SessionRowData & {
+  ccSessionId: string;
+  reason: NeedsReason | null;
+  seen: boolean;
+  actions: TimelineEntry[];
+};
 
 /** Live dashboard state: the SSE stream sends the full state on connect and on every change. */
 function useFactoryState(): FactoryState | null {
@@ -32,12 +81,30 @@ function useNow(everyMs: number): number {
   return now;
 }
 
+const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => {});
+
+/** How much of a Claude Code session id a card shows; the resume command carries all of it. */
+const SESSION_ID_CHARS = 8;
+
 export function Dashboard() {
   const state = useFactoryState();
   const now = useNow(1000);
-  const sessions = state?.sessions.map(({ stale_reason, state_since, ...s }) => ({
-    ...s, staleReason: stale_reason, inStateMs: now - Date.parse(state_since),
+  const [selectedId, setSelectedId] = useState<string>();
+  const sessions: Session[] | undefined = state?.sessions.map((s) => ({
+    id: s.id, machine: s.machine, repo: s.repo, ccSessionId: s.cc_session_id, state: s.state, staleReason: s.stale_reason, reason: s.reason,
+    seen: s.seen, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, actions: s.actions,
+    inStateMs: now - Date.parse(s.state_since),
   }));
+  const selected = sessions?.find((s) => s.id === selectedId);
+  const { needs, doneUnseen } = inboxOf(sessions ?? []);
+
+  const seen = (id: string) => void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
+  /** Opening a session's detail, from its row or its inbox card, makes its Done seen. */
+  const open = (id: string) => {
+    setSelectedId(id);
+    seen(id);
+  };
+
   return (
     <>
       <TopBar>
@@ -47,10 +114,56 @@ export function Dashboard() {
           ))}
         </MachinePills>
       </TopBar>
-      <main className="page">
+      <Split
+        side={
+          <Inbox>
+            <InboxHeader count={needs.length} />
+            {needs.length ? (
+              needs.map((s) => (
+                <NeedsYouCard
+                  key={s.id}
+                  reason={s.reason}
+                  waitingMs={s.inStateMs}
+                  repo={s.repo}
+                  kind={s.kind}
+                  workItem={null}
+                  machine={s.machine}
+                  session={s.ccSessionId.slice(0, SESSION_ID_CHARS)}
+                  terminal={null}
+                  resumeCommand={resumeCommand(s.ccSessionId)}
+                  selected={s.id === selectedId}
+                  onCopy={copy}
+                  onOpen={() => open(s.id)}
+                />
+              ))
+            ) : (
+              <Empty><Icon name="check" /> Nothing needs you. New questions and permission prompts land here.</Empty>
+            )}
+            <SectionHeading icon="check" tone="done">Done — unseen · {doneUnseen.length}</SectionHeading>
+            {doneUnseen.length ? (
+              doneUnseen.map((s) => (
+                <DoneCard
+                  key={s.id}
+                  kind={s.kind}
+                  workItem={null}
+                  repo={s.repo}
+                  machine={s.machine}
+                  agoMs={s.inStateMs}
+                  now={s.now}
+                  onOpen={() => open(s.id)}
+                />
+              ))
+            ) : (
+              <Empty>Everything Done has been seen.</Empty>
+            )}
+          </Inbox>
+        }
+      >
         {state ? <FlowStrip rows={state.repos.map((r) => ({ repo: r.repo, chips: [] }))} /> : null}
-        {sessions ? <SessionTable sessions={sessions} /> : null}
-      </main>
+        {sessions ? <SessionTable sessions={sessions} selectedId={selectedId} onSelect={open} /> : null}
+        {/* Every kind shows the ad hoc view, titled by its kind, until its own detail view arrives. */}
+        {selected ? <AdHocView {...selected} /> : null}
+      </Split>
     </>
   );
 }

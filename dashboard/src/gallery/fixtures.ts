@@ -1,4 +1,4 @@
-import { specInitials, type FlowRow, type GraphNodeInput, type NeedsYouCardProps } from "../ds";
+import { specInitials, type FlowRow, type TimelineEntry, type GraphNodeInput, type NeedsYouCardProps } from "../ds";
 
 /** Fake data for the gallery only. */
 
@@ -65,4 +65,17 @@ export const ticketItems: GraphNodeInput[] = [
   { id: "t2", deps: ["t1"], resolved: false, body: { kind: "ticket", name: "#21 Install for real" } },
   { id: "t3", deps: ["t1"], resolved: false, body: { kind: "ticket", name: "#22 Server down, Stale" } },
   { id: "t4", deps: ["t2", "t3"], resolved: false, body: { kind: "ticket", name: "#25 Machine filter" } },
+];
+
+const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * m).toISOString();
+
+export const adhocActions: TimelineEntry[] = [
+  { at: at(9), text: "reading src/render/chunk.ts" },
+  { at: at(8), text: "searching for \"seamOffset\"" },
+  { at: at(6), text: "reading src/render/tileAtlas.ts" },
+  { at: at(5), text: "running skill `diagnosing-bugs`" },
+  { at: at(3), text: "editing src/render/chunk.ts" },
+  { at: at(2), text: "running cargo test" },
+  { at: at(1), text: "reading a/very/long/path/that/wraps/in/the/timeline/rather/than/overflowing/its/panel/at/narrow/widths.rs" },
+  { at: at(0), text: "reading src/render/chunk.ts" },
 ];

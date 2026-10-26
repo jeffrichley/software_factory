@@ -9,6 +9,12 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+/** A timeline entry's time, in local hours and minutes: 09:05. */
+export function formatClock(iso: string): string {
+  const t = new Date(iso);
+  return `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+}
+
 export interface StateLook {
   tone: Tone;
   label: string;

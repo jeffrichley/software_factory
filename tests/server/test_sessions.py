@@ -61,8 +61,16 @@ def test_a_started_session_appears_as_working(client, clock):
             "id": body["session_id"],
             "machine": "wsl",
             "repo": "jeff/widgets",
+            "cc_session_id": "cc-1",
             "state": "Working",
             "state_since": "2026-10-26T12:00:00Z",
+            "reason": None,
+            "seen": False,
+            "kind": "ad hoc",
+            "skill": None,
+            "unknown_skill": None,
+            "now": None,
+            "actions": [],
         }
     ]
 

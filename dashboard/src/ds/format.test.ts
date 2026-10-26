@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, phaseClass, stateLook } from "./format";
+import { formatClock, formatDuration, phaseClass, stateLook } from "./format";
 
 describe("formatDuration", () => {
   it("shows seconds under a minute, minutes under an hour, then hours and minutes", () => {
@@ -31,5 +31,12 @@ describe("phaseClass", () => {
     expect(phaseClass("Red")).toBe("ph-red");
     expect(phaseClass(null)).toBe("ph-unknown");
     expect(phaseClass("planning")).toBe("fplan");
+  });
+});
+
+describe("formatClock", () => {
+  it("shows a timeline time as local hours and minutes", () => {
+    expect(formatClock(new Date(2026, 9, 26, 9, 5, 42).toISOString())).toBe("09:05");
+    expect(formatClock(new Date(2026, 9, 26, 23, 59).toISOString())).toBe("23:59");
   });
 });

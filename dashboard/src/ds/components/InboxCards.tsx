@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { formatDuration } from "../format";
 import { Icon, type IconName } from "./Icon";
+import { NowLine } from "./NowLine";
 import { Unknown } from "./Unknown";
 
 export type NeedsReason =
@@ -29,16 +30,11 @@ export function WorkItemLink({ item }: { item: WorkItemRef | null }) {
   return item ? <a className="wi" href={item.url}>{item.name}</a> : <Unknown />;
 }
 
-export function NowLine({ now }: { now: string | null }) {
-  return (
-    <span className="now">
-      <span className="now-k">now:</span>
-      {now ?? <Unknown />}
-    </span>
-  );
-}
+/** Title and icon when the reason isn't known: shown as unknown, never guessed. */
+const UNKNOWN_REASON: [string, IconName] = ["Needs you", "alert"];
 
-function NeedsBody({ reason }: { reason: NeedsReason }): ReactNode {
+function NeedsBody({ reason }: { reason: NeedsReason | null }): ReactNode {
+  if (!reason) return <p className="needs-q"><Unknown /></p>;
   switch (reason.kind) {
     case "permission":
       return (
@@ -68,10 +64,12 @@ function NeedsBody({ reason }: { reason: NeedsReason }): ReactNode {
 }
 
 export interface NeedsYouCardProps {
-  reason: NeedsReason;
+  /** Why the session Needs you; null while unknown. */
+  reason: NeedsReason | null;
   waitingMs: number;
   repo: string;
-  kind: string;
+  /** Session kind; null while unknown. */
+  kind: string | null;
   workItem: WorkItemRef | null;
   machine: string;
   session: string;
@@ -84,7 +82,7 @@ export interface NeedsYouCardProps {
 
 /** One entry in the Needs you inbox. */
 export function NeedsYouCard(p: NeedsYouCardProps) {
-  const [title, icon] = REASON[p.reason.kind];
+  const [title, icon] = p.reason ? REASON[p.reason.kind] : UNKNOWN_REASON;
   return (
     <article className={`ncard${p.selected ? " sel" : ""}`} aria-label={`${title} from ${p.session}`}>
       <header>
@@ -94,7 +92,7 @@ export function NeedsYouCard(p: NeedsYouCardProps) {
       </header>
       <div className="nb">
         <span className="nwhat">
-          <b>{p.repo}</b> · {p.kind} · <WorkItemLink item={p.workItem} />
+          <b>{p.repo}</b> · {p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} />
         </span>
         <NeedsBody reason={p.reason} />
         <dl className="where">
@@ -117,28 +115,36 @@ export function NeedsYouCard(p: NeedsYouCardProps) {
 }
 
 export interface DoneCardProps {
-  kind: string;
+  /** Session kind; null while unknown. */
+  kind: string | null;
   workItem: WorkItemRef | null;
   repo: string;
   machine: string;
   agoMs: number;
   now: string | null;
   onOpen?: () => void;
-  onSeen?: () => void;
 }
 
-/** One Done-unseen entry under the inbox. */
+/** One Done-unseen entry under the inbox. It becomes seen when the human opens it or types into the session. */
 export function DoneCard(p: DoneCardProps) {
   return (
     <div className="dcard">
-      <span className="dt">{p.kind} · <WorkItemLink item={p.workItem} /></span>
+      <span className="dt">{p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} /></span>
       <span className="dm">{p.repo} · {p.machine} · {formatDuration(p.agoMs)} ago</span>
       <NowLine now={p.now} />
       <div className="nact">
         <button type="button" className="btn" onClick={p.onOpen}>Open</button>
-        <button type="button" className="btn" onClick={p.onSeen}><Icon name="check" />Mark seen</button>
       </div>
     </div>
+  );
+}
+
+/** The dashboard's left panel: the Needs you inbox, then Done-unseen. */
+export function Inbox({ children }: { children: ReactNode }) {
+  return (
+    <section className="inbox" aria-label="Needs you and Done unseen">
+      {children}
+    </section>
   );
 }
 
