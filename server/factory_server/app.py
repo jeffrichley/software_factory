@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from .github import GitHub, read_issues
 from .store import Store
-from .work_items import expected_kinds, pull_requests, skill_run, work_items
+from .work_items import expected_kinds, pull_requests, skill_start, work_items
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 SERVER_VERSION: str = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
@@ -48,22 +48,23 @@ class Broadcaster:
     """Fans each dashboard state change out to every open SSE stream."""
 
     def __init__(self) -> None:
-        self.queues: set[asyncio.Queue[dict]] = set()
+        self.queues: dict[asyncio.Queue[dict], asyncio.AbstractEventLoop] = {}
 
     def publish(self, state: dict) -> None:
-        for q in self.queues:
-            q.put_nowait(state)
+        """Safe from any thread: each queue is filled on its own stream's event loop."""
+        for q, loop in list(self.queues.items()):
+            loop.call_soon_threadsafe(q.put_nowait, state)
 
     async def stream(self, first: dict) -> AsyncIterator[str]:
         q: asyncio.Queue[dict] = asyncio.Queue()
-        self.queues.add(q)
+        self.queues[q] = asyncio.get_running_loop()
         try:
             state = first
             while True:
                 yield f"event: state\ndata: {json.dumps(state)}\n\n"
                 state = await q.get()
         finally:
-            self.queues.discard(q)
+            self.queues.pop(q, None)
 
 
 def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> FastAPI:
@@ -82,12 +83,12 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
         }
 
     def mismatches() -> list[dict]:
-        """Skill runs in live sessions against the wrong kind of Work item."""
+        """Skill starts in live sessions against the wrong kind of Work item."""
         found = []
-        for run in store.live_skill_runs():
-            expected = expected_kinds(run["skill"], run["kind"])
+        for start in store.live_skill_starts():
+            expected = expected_kinds(start["skill"], start["kind"])
             if expected:
-                found.append({**run, "expected": expected})
+                found.append({**start, "expected": expected})
         return found
 
     def due() -> list[str]:
@@ -103,30 +104,19 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
     def repo_due(repo: str, now: datetime) -> bool:
         return repo not in polled_at or now - polled_at[repo] >= POLL_EVERY
 
-    def save(repo: str, issues: list[dict]) -> None:
-        store.save_poll(repo, work_items(repo, issues), pull_requests(issues))
-        hub.publish(state())
-
-    def poll() -> None:
-        """Read every due repo from GitHub. A failed read keeps the last poll's state."""
+    def poll_once() -> None:
+        """Read every due repo from GitHub (blocking). A repo whose read or save fails keeps its last poll."""
         for repo in due():
             try:
                 issues = read_issues(github, repo)
+                store.save_poll(repo, work_items(repo, issues), pull_requests(issues))
+                hub.publish(state())
             except Exception:
                 log.exception("GitHub poll of %s failed", repo)
-                continue
-            save(repo, issues)
 
     async def poll_forever() -> None:
-        """poll(), with each `gh api` read off the event loop."""
         while True:
-            for repo in due():
-                try:
-                    issues = await asyncio.to_thread(read_issues, github, repo)
-                except Exception:
-                    log.exception("GitHub poll of %s failed", repo)
-                    continue
-                save(repo, issues)
+            await asyncio.to_thread(poll_once)
             await asyncio.sleep(POLL_CHECK_SECONDS)
 
     @asynccontextmanager
@@ -134,10 +124,12 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
         task = asyncio.create_task(poll_forever())
         yield
         task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
     app = FastAPI(title="Factory server", version=SERVER_VERSION, lifespan=lifespan)
-    # Tests drive the poller by hand with a fake clock, instead of running the background loop.
-    app.state.poll = poll
+    # Tests call the poller by hand with a fake clock, instead of running the background loop.
+    app.state.poll_once = poll_once
 
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
@@ -149,11 +141,13 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
                 store.track_repo(envelope.repo, envelope.machine, envelope.repo_path, now)
             case "repo_uninstalled":
                 store.untrack_repo(envelope.repo, envelope.machine, now)
+                polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
-                if run := skill_run(event):
-                    skill, number = run
-                    store.record_skill_run(session_id, skill, envelope.repo, number)
+                if start := skill_start(event, envelope.repo):
+                    skill, number = start
+                    typed = name == "UserPromptExpansion"
+                    store.record_skill_start(session_id, skill, envelope.repo, number, typed=typed)
                 if name == "SessionEnd":
                     store.end_session(session_id, now)
                 else:

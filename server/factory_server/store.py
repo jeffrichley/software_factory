@@ -1,6 +1,9 @@
 """SQLite state: stdlib sqlite3, no ORM."""
 
+import functools
 import sqlite3
+import threading
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -28,7 +31,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   title TEXT NOT NULL,
   state TEXT NOT NULL,
   url TEXT NOT NULL,
-  kind TEXT,
+  kind TEXT NOT NULL,
   PRIMARY KEY (repo, number)
 );
 CREATE TABLE IF NOT EXISTS pull_requests (
@@ -40,13 +43,14 @@ CREATE TABLE IF NOT EXISTS pull_requests (
   url TEXT NOT NULL,
   PRIMARY KEY (repo, number)
 );
-CREATE TABLE IF NOT EXISTS skill_runs (
+CREATE TABLE IF NOT EXISTS skill_starts (
   id INTEGER PRIMARY KEY,
   session_id INTEGER NOT NULL REFERENCES sessions (id),
   skill TEXT NOT NULL,
   repo TEXT NOT NULL,
   number INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS skill_starts_session ON skill_starts (session_id);
 """
 
 
@@ -54,12 +58,25 @@ def iso(t: datetime) -> str:
     return t.isoformat().replace("+00:00", "Z")
 
 
+def locked[**P, R](method: Callable[P, R]) -> Callable[P, R]:
+    """One caller at a time: the GitHub poller writes from a worker thread while requests use the event loop."""
+
+    @functools.wraps(method)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        with args[0].lock:  # type: ignore[attr-defined]
+            return method(*args, **kwargs)
+
+    return wrapper
+
+
 class Store:
     def __init__(self, path: Path) -> None:
+        self.lock = threading.RLock()
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
 
+    @locked
     def touch_session(self, machine: str, repo: str, cc_session_id: str, now: datetime) -> int:
         """The server's id for a Claude Code session, creating its row (Working) on first sight."""
         with self.db:
@@ -73,6 +90,7 @@ class Store:
         ).fetchone()
         return row["id"]
 
+    @locked
     def resume_session(self, session_id: int, now: datetime) -> None:
         """An ended session that is active again keeps its id: bring its row back, Working from now."""
         with self.db:
@@ -81,16 +99,19 @@ class Store:
                 (iso(now), session_id),
             )
 
+    @locked
     def end_session(self, session_id: int, now: datetime) -> None:
         with self.db:
             self.db.execute("UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL", (iso(now), session_id))
 
+    @locked
     def live_sessions(self) -> list[dict]:
         rows = self.db.execute(
             "SELECT id, machine, repo, state, state_since FROM sessions WHERE ended_at IS NULL ORDER BY id"
         ).fetchall()
         return [{**dict(r), "id": str(r["id"])} for r in rows]
 
+    @locked
     def track_repo(self, repo: str, machine: str, repo_path: str, now: datetime) -> None:
         """This Machine tracks the repo; tracking it again keeps the first install time."""
         with self.db:
@@ -100,6 +121,7 @@ class Store:
                 (repo, machine, repo_path, iso(now)),
             )
 
+    @locked
     def untrack_repo(self, repo: str, machine: str, now: datetime) -> None:
         """The Machine stops tracking the repo: its live sessions there end (and stay in history)."""
         with self.db:
@@ -109,6 +131,7 @@ class Store:
                 (iso(now), repo, machine),
             )
 
+    @locked
     def tracked_repos(self) -> list[dict]:
         rows = self.db.execute("SELECT repo, machine FROM tracking ORDER BY repo, machine").fetchall()
         repos: dict[str, list[str]] = {}
@@ -116,6 +139,7 @@ class Store:
             repos.setdefault(r["repo"], []).append(r["machine"])
         return [{"repo": repo, "machines": machines} for repo, machines in repos.items()]
 
+    @locked
     def save_poll(self, repo: str, items: list[dict], pulls: list[dict]) -> None:
         """The repo's Work items and PRs as of the latest poll, replacing the previous poll's."""
         with self.db:
@@ -132,6 +156,7 @@ class Store:
                 [{**pull, "repo": repo} for pull in pulls],
             )
 
+    @locked
     def work_items(self) -> list[dict]:
         """Work items of repos some Machine still tracks."""
         rows = self.db.execute(
@@ -140,6 +165,7 @@ class Store:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    @locked
     def pull_requests(self) -> list[dict]:
         """PRs of repos some Machine still tracks."""
         rows = self.db.execute(
@@ -148,19 +174,29 @@ class Store:
         ).fetchall()
         return [{**dict(r), "draft": bool(r["draft"])} for r in rows]
 
-    def record_skill_run(self, session_id: int, skill: str, repo: str, number: int) -> None:
+    @locked
+    def record_skill_start(self, session_id: int, skill: str, repo: str, number: int, typed: bool) -> None:
+        """A skill started against a Work item. The Skill tool call that follows a typed `/skill` is the same start."""
         with self.db:
+            if not typed:
+                latest = self.db.execute(
+                    "SELECT skill, repo, number FROM skill_starts WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+                    (session_id,),
+                ).fetchone()
+                if latest and tuple(latest) == (skill, repo, number):
+                    return
             self.db.execute(
-                "INSERT INTO skill_runs (session_id, skill, repo, number) VALUES (?, ?, ?, ?)",
+                "INSERT INTO skill_starts (session_id, skill, repo, number) VALUES (?, ?, ?, ?)",
                 (session_id, skill, repo, number),
             )
 
-    def live_skill_runs(self) -> list[dict]:
-        """Skill runs in live sessions against a Work item, with the item's kind (None until polled or unknown)."""
+    @locked
+    def live_skill_starts(self) -> list[dict]:
+        """Skill starts in live sessions, with the Work item's kind (None until polled, or not a Work item)."""
         rows = self.db.execute(
-            "SELECT r.session_id, r.skill, r.repo, r.number, w.kind FROM skill_runs r"
-            " JOIN sessions s ON s.id = r.session_id"
-            " LEFT JOIN work_items w ON w.repo = r.repo AND w.number = r.number"
-            " WHERE s.ended_at IS NULL ORDER BY r.id"
+            "SELECT k.session_id, k.skill, k.repo, k.number, w.kind FROM skill_starts k"
+            " JOIN sessions s ON s.id = k.session_id"
+            " LEFT JOIN work_items w ON w.repo = k.repo AND w.number = k.number"
+            " WHERE s.ended_at IS NULL ORDER BY k.id"
         ).fetchall()
         return [{**dict(r), "session_id": str(r["session_id"])} for r in rows]

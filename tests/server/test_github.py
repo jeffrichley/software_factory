@@ -74,7 +74,7 @@ def client(tmp_path, clock, github) -> TestClient:
 
 def poll(client: TestClient) -> None:
     """What the server's background loop does every few seconds: poll each Tracked repo that is due."""
-    client.app.state.poll()
+    client.app.state.poll_once()
 
 
 def tracking(client, name: str, machine: str = "wsl", repo: str = "jeff/widgets") -> None:
@@ -150,7 +150,7 @@ def test_a_repo_no_machine_tracks_is_never_polled(client, github):
 
 
 def test_a_failed_read_keeps_the_last_poll_and_retries_a_minute_later(client, github, clock):
-    github.issues["jeff/widgets"] = [issue(1, "Before")]
+    github.issues["jeff/widgets"] = [issue(1, "Before", labels=("wayfinder:map",))]
     install(client)
     poll(client)
 
@@ -160,14 +160,14 @@ def test_a_failed_read_keeps_the_last_poll_and_retries_a_minute_later(client, gi
     assert [w["title"] for w in client.get("/api/state").json()["work_items"]] == ["Before"]
 
     github.down = False
-    github.issues["jeff/widgets"] = [issue(1, "After")]
+    github.issues["jeff/widgets"] = [issue(1, "After", labels=("wayfinder:map",))]
     clock.advance(60)
     poll(client)
     assert [w["title"] for w in client.get("/api/state").json()["work_items"]] == ["After"]
 
 
 def test_every_page_of_issues_is_read(client, github):
-    github.issues["jeff/widgets"] = [issue(n) for n in range(1, 151)]
+    github.issues["jeff/widgets"] = [issue(n, labels=("wayfinder:map",)) for n in range(1, 151)]
     install(client)
 
     poll(client)
@@ -176,7 +176,7 @@ def test_every_page_of_issues_is_read(client, github):
 
 
 def test_a_poll_pushes_the_new_state_to_the_dashboard(client, github):
-    github.issues["jeff/widgets"] = [issue(7, "Seven")]
+    github.issues["jeff/widgets"] = [issue(7, "Seven", labels=("wayfinder:map",))]
     install(client)
 
     with client.stream("GET", "/api/stream") as stream:
@@ -216,6 +216,7 @@ def test_work_item_kinds_come_from_github_structure(client, github):
 
     poll(client)
 
+    # 8 is not a Work item, so it isn't listed: never guessed.
     assert kinds(client) == {
         1: "Map",
         2: "Decision ticket",  # a Map's child, labelled with its wayfinder type
@@ -224,7 +225,6 @@ def test_work_item_kinds_come_from_github_structure(client, github):
         5: "Ticket",  # a Spec's child
         6: "Spec",  # split into Tickets by to-tickets
         7: "Ticket",
-        8: None,  # not a Work item: shown as unknown, never guessed
     }
 
 
@@ -243,13 +243,37 @@ def test_without_sub_issues_the_parent_comes_from_the_childs_body(client, github
     assert kinds(client) == {1: "Map", 2: "Decision ticket", 3: "Spec", 4: "Ticket", 5: "Ticket"}
 
 
-def test_a_child_of_an_issue_that_is_not_a_work_item_has_no_kind(client, github):
+def test_a_child_of_an_issue_that_is_not_a_work_item_is_not_one_either(client, github):
     github.issues["jeff/widgets"] = [issue(1), issue(2, parent=1), issue(3, parent=99)]
     install(client)
 
     poll(client)
 
-    assert kinds(client) == {1: None, 2: None, 3: None}
+    assert kinds(client) == {}
+
+
+def test_a_parent_named_anywhere_in_the_body_counts(client, github):
+    github.issues["jeff/widgets"] = [
+        issue(1, labels=("wayfinder:map",)),
+        issue(2, body="Some context first.\n\nPart of #1\n"),
+        issue(3, body=SPEC_BODY),
+        issue(4, body="Intro.\n\n## Parent\n\n#3\n"),
+        issue(5, body="This is not Part of #1, it only mentions it."),
+    ]
+    install(client)
+
+    poll(client)
+
+    assert kinds(client) == {1: "Map", 2: "Decision ticket", 3: "Spec", 4: "Ticket"}
+
+
+def test_a_maps_child_that_quotes_spec_headings_is_still_a_decision_ticket(client, github):
+    github.issues["jeff/widgets"] = [issue(1, labels=("wayfinder:map",)), issue(2, parent=1, body=SPEC_BODY)]
+    install(client)
+
+    poll(client)
+
+    assert kinds(client) == {1: "Map", 2: "Decision ticket"}
 
 
 def test_pull_requests_are_not_work_items(client, github):
@@ -418,3 +442,53 @@ def test_pull_request_state_is_kept_current(client, github, clock):
         "draft": False,
         "url": "https://github.com/jeff/widgets/pull/10",
     }
+
+
+def test_a_repo_retracked_within_the_minute_is_polled_at_once(client, github):
+    install(client)
+    poll(client)
+    uninstall(client)
+
+    install(client)
+    poll(client)
+
+    assert len(github.reads) == 2
+
+
+def test_a_bad_issue_payload_skips_that_repo_and_the_rest_still_poll(client, github, clock):
+    github.issues["jeff/widgets"] = [issue(1, "Before", labels=("wayfinder:map",))]
+    install(client, repo="jeff/widgets")
+    install(client, repo="jeff/gadgets")
+    poll(client)
+
+    github.issues["jeff/widgets"] = [{"number": 1}]  # no title, labels or url
+    github.issues["jeff/gadgets"] = [issue(2, labels=("wayfinder:map",), repo="jeff/gadgets")]
+    clock.advance(60)
+    poll(client)
+
+    items = client.get("/api/state").json()["work_items"]
+    assert [(w["repo"], w["number"], w["title"]) for w in items] == [
+        ("jeff/gadgets", 2, "Issue 2"),
+        ("jeff/widgets", 1, "Before"),
+    ]
+
+
+def test_a_typed_skill_and_its_skill_tool_call_are_one_start(client, planned):
+    typed(client, "implement", "#4")
+    hook(client, "PreToolUse", tool_name="Skill", tool_use_id="t1",
+         tool_input={"skill": "mattpocock-skills:implement", "args": "#4"})
+
+    assert len(mismatches(client)) == 1
+
+
+def test_typing_the_same_skill_twice_is_two_starts(client, planned):
+    typed(client, "implement", "#4")
+    typed(client, "implement", "#4")
+
+    assert len(mismatches(client)) == 2
+
+
+def test_an_issue_url_names_a_work_item_only_in_the_sessions_own_repo(client, planned):
+    typed(client, "implement", "https://github.com/someone/else/issues/4")
+
+    assert mismatches(client) == []
