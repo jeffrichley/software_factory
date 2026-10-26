@@ -1,0 +1,134 @@
+/*
+ * Factory design tokens, extracted from prototype variant E.
+ * Dark is variant E as built; light is derived from it with the same roles,
+ * written once as light-dark(light, dark). Theme follows the OS unless
+ * <html data-theme="light|dark"> overrides it.
+ * Components use only these variables — never raw colours or sizes.
+ */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/400-italic.css";
+@import "@fontsource/ibm-plex-sans-condensed/500.css";
+@import "@fontsource/ibm-plex-sans-condensed/600.css";
+@import "@fontsource/ibm-plex-sans-condensed/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/ibm-plex-mono/700.css";
+
+:root {
+  /* type */
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --fs-4xs: 9px;
+  --fs-3xs: 10px;
+  --fs-2xs: 11px;
+  --fs-graph: 13px;
+  --fs-node: 15px;
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 20px;
+  --fs-xl: 28px;
+  --fs-2xl: 40px;
+  --fs-3xl: 64px;
+
+  /* spacing */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* radii */
+  --r-xs: 2px;
+  --r-badge: 3px;
+  --r-sm: 4px;
+  --r: 6px;
+  --r-lg: 10px;
+  --r-pill: 999px;
+
+  /* layout */
+  --top-h: 64px;
+  --inbox-w: 360px;
+  --flow-label: 132px;
+  --chip-h: 24px;
+  --control-h: 40px;
+  --pill-h: 34px;
+  --tip-w: 320px;
+
+  /* motion */
+  --dur: 200ms;
+  --dur-glide: 400ms;
+  --dur-pulse: 1.4s;
+  --dur-flash: 2s;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.8, 0.3);
+
+  /* colour — light-dark(light, dark); dark is variant E, light is derived */
+  color-scheme: light dark;
+  --bg: light-dark(#f6f7f9, #0b0d10);
+  --surface-sunken: light-dark(#eef0f3, #0f1114);
+  --surface: light-dark(#ffffff, #13161b);
+  --surface-2: light-dark(#f2f4f7, #1a1e25);
+  --surface-3: light-dark(#e5e9ef, #232833);
+  --line: light-dark(#dde1e7, #2a303a);
+  --line-2: light-dark(#c3c9d2, #3b4250);
+  --line-hover: light-dark(#8a93a3, #7a8496);
+  --text: light-dark(#14171c, #eceff3);
+  --text-2: light-dark(#4a5260, #aeb5c1);
+  --text-3: light-dark(#687080, #8a919d);
+  --text-strong: light-dark(#000000, #ffffff);
+
+  --needs: #ffb224;
+  --needs-hover: #ffc552;
+  --needs-ink: #1c1300;
+  /* amber as text on a surface (the fill colour is too light on light surfaces) */
+  --needs-fg: light-dark(#9a6200, #ffb224);
+  --needs-bg: light-dark(#fff4dc, #2a1e07);
+  --needs-line: light-dark(#e2b04e, #7a5512);
+  --needs-text: light-dark(#5c3b00, #ffe2a8);
+  --needs-soft: light-dark(#8a5a00, #ffd27a);
+  --needs-label: light-dark(#85601a, #d9b36a);
+  --needs-glow: light-dark(rgb(255 178 36 / 0.4), rgb(255 178 36 / 0.3));
+
+  --working: light-dark(#1f6fd1, #62abff);
+  --working-bg: light-dark(#e4eefc, #0f2038);
+  --working-line: light-dark(#a9c8f0, #21406b);
+
+  --done: light-dark(#0b8577, #36d3c0);
+  --done-bg: light-dark(#e0f5f2, #0c2826);
+  --done-line: light-dark(#8fd3c9, #1f5a53);
+
+  --stale: light-dark(#6b7380, #8b929e);
+  --stale-bg: light-dark(#eef0f3, #1b1d21);
+
+  --pass: light-dark(#198a4c, #45d483);
+  --fail: light-dark(#d43c3c, #ff6b6b);
+  --fail-soft: light-dark(#b42f2f, #ff9a9a);
+  --fail-bg: light-dark(#fdeaea, #2a1212);
+  --fail-line: light-dark(#efb0b0, #7a2c2c);
+
+  --edge-resolved: light-dark(#8a93a3, #4a5263);
+  --edge-waiting: light-dark(#a0a8b5, #6b7385);
+  --fog: light-dark(#6b7380, #9aa3b2);
+  --fog-opacity: 0.14;
+  --flash: #ffffff;
+  --flash-opacity: 0.16;
+  --cell-bg: light-dark(rgb(0 0 0 / 0.03), rgb(255 255 255 / 0.025));
+  --shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+}
+
+/* Explicit theme overrides the OS. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* Non-colour values that differ by theme (light-dark() takes colours only). */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { --fog-opacity: 0.12; --flash-opacity: 0.3; --shadow: 0 12px 32px rgb(20 23 28 / 0.15); }
+}
+:root[data-theme="light"] { --fog-opacity: 0.12; --flash-opacity: 0.3; --shadow: 0 12px 32px rgb(20 23 28 / 0.15); }

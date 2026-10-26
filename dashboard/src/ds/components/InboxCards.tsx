@@ -1,0 +1,155 @@
+import type { ReactNode } from "react";
+import { formatDuration } from "../format";
+import { Icon, type IconName } from "./Icon";
+import { Unknown } from "./Unknown";
+
+export type NeedsReason =
+  | { kind: "permission"; tool: string; command: string }
+  | { kind: "question"; text: string }
+  | { kind: "hitl"; ticket: string; questions?: string[] }
+  | { kind: "escalation"; reason: string }
+  | { kind: "error"; type: string }
+  | { kind: "no-pr" };
+
+const REASON: Record<NeedsReason["kind"], [string, IconName]> = {
+  permission: ["Permission prompt", "shield"],
+  question: ["Question", "question"],
+  hitl: ["HITL ticket", "flag"],
+  escalation: ["Escalation", "flag"],
+  error: ["Stopped on error", "alert"],
+  "no-pr": ["Ended without a PR", "alert"],
+};
+
+export interface WorkItemRef {
+  name: string;
+  url: string;
+}
+
+export function WorkItemLink({ item }: { item: WorkItemRef | null }) {
+  return item ? <a className="wi" href={item.url}>{item.name}</a> : <Unknown />;
+}
+
+export function NowLine({ now }: { now: string | null }) {
+  return (
+    <span className="now">
+      <span className="now-k">now:</span>
+      {now ?? <Unknown />}
+    </span>
+  );
+}
+
+function NeedsBody({ reason }: { reason: NeedsReason }): ReactNode {
+  switch (reason.kind) {
+    case "permission":
+      return (
+        <>
+          <span className="eyebrow nlabel">{reason.tool} wants to run</span>
+          <pre className="cmd">{reason.command}</pre>
+        </>
+      );
+    case "question":
+      return <p className="needs-q">{reason.text}</p>;
+    case "hitl":
+      return (
+        <>
+          <p className="needs-q">{reason.ticket}</p>
+          {reason.questions?.length ? (
+            <ul className="needs-qs">{reason.questions.map((q) => <li key={q}>{q}</li>)}</ul>
+          ) : null}
+        </>
+      );
+    case "escalation":
+      return <p className="needs-q">{reason.reason}</p>;
+    case "error":
+      return <p className="needs-q">stopped on error: {reason.type}</p>;
+    case "no-pr":
+      return <p className="needs-q">ended without a PR</p>;
+  }
+}
+
+export interface NeedsYouCardProps {
+  reason: NeedsReason;
+  waitingMs: number;
+  repo: string;
+  kind: string;
+  workItem: WorkItemRef | null;
+  machine: string;
+  session: string;
+  terminal: string | null;
+  resumeCommand: string;
+  selected?: boolean;
+  onCopy?: (text: string) => void;
+  onOpen?: () => void;
+}
+
+/** One entry in the Needs you inbox. */
+export function NeedsYouCard(p: NeedsYouCardProps) {
+  const [title, icon] = REASON[p.reason.kind];
+  return (
+    <article className={`ncard${p.selected ? " sel" : ""}`} aria-label={`${title} from ${p.session}`}>
+      <header>
+        <Icon name={icon} size="18px" />
+        {title}
+        <span className="wait">{formatDuration(p.waitingMs)}</span>
+      </header>
+      <div className="nb">
+        <span className="nwhat">
+          <b>{p.repo}</b> · {p.kind} · <WorkItemLink item={p.workItem} />
+        </span>
+        <NeedsBody reason={p.reason} />
+        <dl className="where">
+          <div><dt>Machine</dt><dd>{p.machine}</dd></div>
+          <div><dt>Session</dt><dd>{p.session}</dd></div>
+          <div><dt>Terminal</dt><dd>{p.terminal ?? <Unknown />}</dd></div>
+        </dl>
+        <div className="nact">
+          <button type="button" className="btn btn-needs" onClick={() => p.onCopy?.(p.resumeCommand)}>
+            <Icon name="terminal" />
+            Copy resume command
+          </button>
+          <button type="button" className="btn" onClick={p.onOpen}>
+            Open detail <Icon name="arrow" />
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export interface DoneCardProps {
+  kind: string;
+  workItem: WorkItemRef | null;
+  repo: string;
+  machine: string;
+  agoMs: number;
+  now: string | null;
+  onOpen?: () => void;
+  onSeen?: () => void;
+}
+
+/** One Done-unseen entry under the inbox. */
+export function DoneCard(p: DoneCardProps) {
+  return (
+    <div className="dcard">
+      <span className="dt">{p.kind} · <WorkItemLink item={p.workItem} /></span>
+      <span className="dm">{p.repo} · {p.machine} · {formatDuration(p.agoMs)} ago</span>
+      <NowLine now={p.now} />
+      <div className="nact">
+        <button type="button" className="btn" onClick={p.onOpen}>Open</button>
+        <button type="button" className="btn" onClick={p.onSeen}><Icon name="check" />Mark seen</button>
+      </div>
+    </div>
+  );
+}
+
+export function InboxHeader({ count }: { count: number }) {
+  return (
+    <div className="inbox-h">
+      <span className={`n${count ? "" : " zero"}`}>{count}</span>
+      <div>
+        <h2>Needs you</h2>
+        <p>Oldest first. Each one is a session waiting on you.</p>
+      </div>
+    </div>
+  );
+}
