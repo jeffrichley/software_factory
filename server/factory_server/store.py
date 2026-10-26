@@ -105,13 +105,17 @@ class Store:
             )
 
     def machines(self) -> list[dict]:
-        """Machines that track a repo or have a live session, each with its live session count."""
+        """Machines that track a repo or have a live session, each with its live session count.
+
+        A Machine with no event recorded (tracked before the server recorded them) was last seen when it
+        installed or its session last changed state.
+        """
         rows = self.db.execute(
-            "SELECT m.machine, m.last_seen,"
-            " (SELECT COUNT(*) FROM sessions s WHERE s.machine = m.machine AND s.ended_at IS NULL) AS sessions"
-            " FROM machines m"
-            " WHERE EXISTS (SELECT 1 FROM tracking t WHERE t.machine = m.machine)"
-            " OR EXISTS (SELECT 1 FROM sessions s WHERE s.machine = m.machine AND s.ended_at IS NULL)"
-            " ORDER BY m.machine"
+            "WITH active (machine, seen, live) AS ("
+            "  SELECT machine, installed_at, 0 FROM tracking"
+            "  UNION ALL SELECT machine, state_since, 1 FROM sessions WHERE ended_at IS NULL)"
+            " SELECT a.machine, COALESCE(m.last_seen, MAX(a.seen)) AS last_seen, SUM(a.live) AS sessions"
+            " FROM active a LEFT JOIN machines m USING (machine)"
+            " GROUP BY a.machine ORDER BY a.machine"
         ).fetchall()
         return [dict(r) for r in rows]

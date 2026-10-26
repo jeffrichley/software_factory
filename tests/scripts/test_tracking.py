@@ -138,6 +138,8 @@ def test_with_the_server_down_the_hook_queues_each_event_with_its_cached_ids(env
 
     assert server.events() == ["PreToolUse", "Stop", "UserPromptSubmit"]
     assert all(r["body"]["ids"] == {"session_id": "7", "job_id": None} for r in server.received)
+    # Queued events carry when they happened, for the server to use instead of when they arrived.
+    assert ["queued_at" in r["body"] for r in server.received] == [True, True, False]
     assert not (repo / ".factory" / "machines" / "wsl" / "queue.jsonl").exists()
 
 
@@ -156,3 +158,43 @@ def test_the_hook_exits_within_its_time_budget_when_the_server_never_answers(env
     assert elapsed < budget
     queue = (repo / ".factory" / "machines" / "wsl" / "queue.jsonl").read_text().splitlines()
     assert [json.loads(line)["event"]["hook_event_name"] for line in queue] == ["SessionStart"]
+
+
+def test_an_event_the_server_refuses_is_dropped_and_never_blocks_the_queue(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    server.close()
+    run_factory(env, repo, "install")
+    run_hook(env, event(repo))
+    server.restart()
+    server.refuse = {"repo_installed"}
+
+    done = run_hook(env, event(repo, "PreToolUse", tool_name="Bash"))
+
+    assert done.returncode == 0
+    assert "refused" in done.stderr
+    assert server.events() == ["repo_installed", "SessionStart", "PreToolUse"]
+    assert not (repo / ".factory" / "machines" / "wsl" / "queue.jsonl").exists()
+
+
+def test_a_slow_server_and_a_long_queue_cannot_make_the_hook_overrun(env, repo, server):
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    server.close()
+    names = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "PreToolUse", "PostToolUse", "Stop"]
+    for name in names:
+        run_hook(env, event(repo, name))
+    server.restart()
+    server.received.clear()
+    server.delay = 1.0
+
+    started = time.monotonic()
+    done = run_hook(env, event(repo, "UserPromptSubmit"))
+    elapsed = time.monotonic() - started
+
+    budget = json.loads(HOOKS_JSON.read_text())["hooks"]["UserPromptSubmit"][0]["hooks"][0]["timeout"]
+    assert done.returncode == 0
+    assert elapsed < budget
+    assert 0 < len(server.received) < len(names)
+    server.delay = 0
+    run_hook(env, event(repo, "Stop"))
+    assert server.events() == [*names, "UserPromptSubmit", "Stop"]

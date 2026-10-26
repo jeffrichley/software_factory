@@ -196,7 +196,13 @@ export function Gallery() {
         </Section>
 
         <Section id="sessions" title="Top bar & session table" note="One row per Tracked session, in every state; empty until a session starts in a Tracked repo.">
-          <TopBar />
+          <TopBar>
+            <MachinePills>
+              <MachinePill name="mac-studio" sessions={5} />
+              <MachinePill name="wsl-desk" sessions={3} />
+              <MachinePill name="mbp-travel" sessions={2} silentForMs={14 * 60_000} />
+            </MachinePills>
+          </TopBar>
           <SessionTable
             sessions={[
               { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", inStateMs: 3 * 60_000 },

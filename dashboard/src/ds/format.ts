@@ -9,8 +9,13 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+export interface StateLook {
+  tone: Tone;
+  label: string;
+}
+
 /** A state's tone and label; a Stale label says why, e.g. "Stale · Machine silent". */
-export function stateLook(state: SessionState, seen = false, staleReason?: string): { tone: Tone; label: string } {
+export function stateLook(state: SessionState, seen = false, staleReason?: string): StateLook {
   switch (state) {
     case "Needs you":
       return { tone: "needs", label: state };

@@ -1,6 +1,7 @@
 """Seam 1: the Factory server's HTTP API, with GitHub and the clock faked."""
 
 import json
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -226,3 +227,29 @@ def test_the_stream_pushes_state_when_a_machine_goes_silent(tmp_path, clock):
         clock.advance(5 * 60)
 
         assert next(events)["sessions"][0]["state"] == "Stale"
+
+
+def test_a_queued_event_counts_from_when_it_happened_but_the_machine_from_when_it_arrived(client, clock):
+    clock.advance(10 * 60)
+
+    client.post("/api/events", json={**hook_event("SessionStart"), "queued_at": "2026-10-26T12:02:00Z"})
+
+    state = client.get("/api/state").json()
+    assert state["sessions"][0]["state_since"] == "2026-10-26T12:02:00Z"
+    assert state["machines"][0]["last_seen"] == "2026-10-26T12:10:00Z"
+
+
+def test_a_machine_tracked_before_machines_were_recorded_still_gets_a_pill(tmp_path, clock):
+    db = tmp_path / "factory.db"
+    old = sqlite3.connect(db)
+    old.executescript(
+        "CREATE TABLE tracking (repo TEXT NOT NULL, machine TEXT NOT NULL, repo_path TEXT NOT NULL,"
+        " installed_at TEXT NOT NULL, PRIMARY KEY (repo, machine));"
+        "INSERT INTO tracking VALUES ('jeff/widgets', 'mac', '/Users/jeff/widgets', '2026-10-26T09:00:00Z');"
+    )
+    old.close()
+    client = TestClient(create_app(db_path=db, github=FakeGitHub(), clock=clock))
+
+    assert client.get("/api/state").json()["machines"] == [
+        {"machine": "mac", "sessions": 0, "last_seen": "2026-10-26T09:00:00Z", "silent": True},
+    ]

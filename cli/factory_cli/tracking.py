@@ -7,7 +7,11 @@ import json
 import os
 import re
 import subprocess
+import sys
+import time
+import urllib.error
 import urllib.request
+from datetime import UTC, datetime
 from pathlib import Path
 
 PLUGIN_ID = "factory-software-factory"  # <plugin>-<marketplace>, as Claude Code names plugin data dirs
@@ -85,20 +89,42 @@ def queue_path(main: Path, machine: str) -> Path:
     return machine_dir(main, machine) / "queue.jsonl"
 
 
+class Refused(Exception):
+    """The server answered 4xx: sending the event again can't help, so it is dropped, never queued."""
+
+
 def post_event(server_url: str, body: dict) -> dict:
-    """POST one envelope to the server and return its reply; raises OSError when it can't be reached."""
+    """POST one envelope to the server and return its reply.
+
+    Raises OSError when the server can't take it now (unreachable, or 5xx), and Refused on a 4xx.
+    """
     req = urllib.request.Request(
         f"{server_url}/api/events", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}
     )
-    with urllib.request.urlopen(req, timeout=POST_TIMEOUT_S) as resp:
-        return json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=POST_TIMEOUT_S) as resp:
+            reply = resp.read()
+    except urllib.error.HTTPError as e:
+        if e.code < 500:
+            raise Refused(f"the server refused {body['event'].get('hook_event_name')} ({e.code}); dropped") from e
+        raise
+    try:
+        return json.loads(reply)
+    except ValueError:
+        return {}  # delivered, but nothing to cache
+
+
+def log_refused(e: Refused) -> None:
+    print(f"factory: {e}", file=sys.stderr)
 
 
 def enqueue(main: Path, machine: str, body: dict) -> None:
+    """Queue an envelope, stamped with when it happened for the server to use instead of when it arrives."""
     q = queue_path(main, machine)
     q.parent.mkdir(parents=True, exist_ok=True)
+    stamped = {"queued_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"), **body}
     with q.open("a") as f:
-        f.write(json.dumps(body) + "\n")
+        f.write(json.dumps(stamped) + "\n")
 
 
 def queued(main: Path, machine: str) -> list[str]:
@@ -108,8 +134,16 @@ def queued(main: Path, machine: str) -> list[str]:
         return []
 
 
-def flush_queue(main: Path, machine: str, server_url: str) -> bool:
-    """Deliver queued events in order; True once none are left. Stops at the first failure, keeping the rest."""
+def time_left(deadline: float | None) -> bool:
+    """Whether a POST can still run its full timeout before `deadline` (a time.monotonic() value; None = no limit)."""
+    return deadline is None or time.monotonic() + POST_TIMEOUT_S <= deadline
+
+
+def flush_queue(main: Path, machine: str, server_url: str, deadline: float | None = None) -> bool:
+    """Deliver queued events in order; True once none are left.
+
+    Stops at the first failure, or when `deadline` leaves no time for another POST, keeping the rest in order.
+    """
     lines = queued(main, machine)
     for i, line in enumerate(lines):
         try:
@@ -117,7 +151,11 @@ def flush_queue(main: Path, machine: str, server_url: str) -> bool:
         except ValueError:
             continue  # a line half-written by a crash: drop it rather than block the queue for good
         try:
+            if not time_left(deadline):
+                raise TimeoutError
             post_event(server_url, body)
+        except Refused as e:
+            log_refused(e)  # resending can't help: drop it rather than block the queue for good
         except OSError:
             queue_path(main, machine).write_text("".join(f"{rest}\n" for rest in lines[i:]))
             return False
@@ -125,14 +163,17 @@ def flush_queue(main: Path, machine: str, server_url: str) -> bool:
     return True
 
 
-def send(main: Path, machine: str, server_url: str, body: dict) -> dict | None:
-    """Deliver any queued events, then this one; queue it when the server can't be reached.
+def send(main: Path, machine: str, server_url: str, body: dict, deadline: float | None = None) -> dict | None:
+    """Deliver any queued events, then this one; queue it when the server can't take it before `deadline`.
 
-    Returns the server's reply, or None when the event was queued.
+    Returns the server's reply ({} when it refused the event), or None when the event was queued.
     """
-    if flush_queue(main, machine, server_url):
+    if flush_queue(main, machine, server_url, deadline) and time_left(deadline):
         try:
             return post_event(server_url, body)
+        except Refused as e:
+            log_refused(e)
+            return {}
         except OSError:
             pass
     enqueue(main, machine, body)

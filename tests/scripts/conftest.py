@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -20,19 +21,25 @@ UV = shutil.which("uv")
 
 
 class FakeServer:
-    """Records every POSTed envelope and answers with `reply`; `restart()` brings it back on the same port."""
+    """Records every POSTed envelope and answers with `reply`; `restart()` brings it back on the same port.
+
+    Answers 422 to the events named in `refuse`, and takes `delay` seconds over each reply.
+    """
 
     def __init__(self, port: int = 0) -> None:
         self.received: list[dict] = []
         self.reply: dict = {"session_id": "7", "job_id": None, "server_version": "0.1.0"}
+        self.refuse: set[str] = set()
+        self.delay = 0.0
         server = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:
-                body = self.rfile.read(int(self.headers["Content-Length"]))
-                server.received.append({"path": self.path, "body": json.loads(body)})
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                server.received.append({"path": self.path, "body": body})
+                time.sleep(server.delay)
                 out = json.dumps(server.reply).encode()
-                self.send_response(200)
+                self.send_response(422 if body["event"]["hook_event_name"] in server.refuse else 200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(out)))
                 self.end_headers()

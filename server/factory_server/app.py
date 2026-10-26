@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator, Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -12,13 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .github import GitHub
+from .silence import as_shown, is_silent
 from .store import Store
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 SERVER_VERSION: str = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
 DASHBOARD_DIR = PLUGIN_ROOT / "dashboard" / "dist"
-# A Machine with no events for this long is silent: "last seen Nm", and its sessions Stale.
-SILENT_AFTER = timedelta(minutes=5)
 
 
 class Envelope(BaseModel):
@@ -29,6 +28,8 @@ class Envelope(BaseModel):
     repo_path: str
     ids: dict = {}
     event: dict
+    # Set on an event that was queued while the server was down: when it happened on the Machine.
+    queued_at: datetime | None = None
 
 
 class Reply(BaseModel):
@@ -76,24 +77,18 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime], ref
 
     def state() -> dict:
         now = clock()
-        machines = [
-            {**m, "silent": now - datetime.fromisoformat(m["last_seen"]) >= SILENT_AFTER} for m in store.machines()
-        ]
-        # A silent Machine's sessions can't be trusted: Stale since its last event, until it reports again.
+        machines = [{**m, "silent": is_silent(m["last_seen"], now)} for m in store.machines()]
         silent_since = {m["machine"]: m["last_seen"] for m in machines if m["silent"]}
-        sessions = [
-            {**s, "state": "Stale", "state_since": silent_since[s["machine"]], "stale_reason": "Machine silent"}
-            if s["machine"] in silent_since else s
-            for s in store.live_sessions()
-        ]
+        sessions = [as_shown(s, silent_since.get(s["machine"])) for s in store.live_sessions()]
         return {"server_version": SERVER_VERSION, "machines": machines, "repos": store.tracked_repos(), "sessions": sessions}
 
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
         event = envelope.event
-        now = clock()
+        # The Machine reports now, but a queued event counts from when it happened (never later than now).
+        store.machine_seen(envelope.machine, clock())
+        now = min(envelope.queued_at, clock()) if envelope.queued_at else clock()
         session_id = None
-        store.machine_seen(envelope.machine, now)
         match event.get("hook_event_name"):
             case "repo_installed":
                 store.track_repo(envelope.repo, envelope.machine, envelope.repo_path, now)

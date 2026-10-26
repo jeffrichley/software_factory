@@ -16,6 +16,10 @@ _Avoid_: Backend, collector, daemon
 One Claude Code install that reports to the Factory server, named by the human; WSL and Windows on the same PC are two Machines.
 _Avoid_: Box, host, computer
 
+**Silent Machine**:
+A Machine the Factory server has had no events from for five minutes; it shows as "last seen Nm", and its Working sessions show as Stale.
+_Avoid_: Offline, disconnected, down
+
 **Tracked repo**:
 A repo the human has turned on for the Factory on a given Machine; repos are off by default.
 _Avoid_: Project, registered repo
@@ -73,3 +77,7 @@ _Avoid_: Blocked, waiting, pending
 **Done**:
 The state of a Tracked session that has finished with nothing blocking it; a Job's session is Done once its non-draft PR exists. The human is told, but no action is required.
 _Avoid_: Idle, complete, finished
+
+**Stale**:
+The state of a Tracked session that was Working when its Machine went silent, so what it is doing can't be trusted; it says why ("Machine silent") and returns to its real state once the Machine reports again. Needs you and Done are never Stale.
+_Avoid_: Dead, lost, offline

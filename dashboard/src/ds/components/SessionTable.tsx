@@ -24,14 +24,17 @@ export function SessionTable({ sessions }: { sessions: SessionRowData[] }) {
         <tr><th>State</th><th>Machine</th><th>Tracked repo</th><th>In state</th></tr>
       </thead>
       <tbody>
-        {sessions.map((s) => (
-          <tr key={s.id} aria-label={`${stateLook(s.state, false, s.staleReason).label}: ${s.repo} on ${s.machine}`}>
-            <td><StateBadge state={s.state} staleReason={s.staleReason} /></td>
-            <td className="mono">{s.machine}</td>
-            <td className="mono">{s.repo}</td>
-            <td><span className="tmain">{formatDuration(s.inStateMs)}</span></td>
-          </tr>
-        ))}
+        {sessions.map((s) => {
+          const look = stateLook(s.state, false, s.staleReason);
+          return (
+            <tr key={s.id} aria-label={`${look.label}: ${s.repo} on ${s.machine}`}>
+              <td><StateBadge state={s.state} look={look} /></td>
+              <td className="mono">{s.machine}</td>
+              <td className="mono">{s.repo}</td>
+              <td><span className="tmain">{formatDuration(s.inStateMs)}</span></td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

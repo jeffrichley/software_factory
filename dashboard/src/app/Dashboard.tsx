@@ -8,7 +8,7 @@ interface FactoryState {
   machines: { machine: string; sessions: number; last_seen: string; silent: boolean }[];
   /** Tracked repos, each with the Machines that track it. */
   repos: { repo: string; machines: string[] }[];
-  /** A session on a silent Machine is Stale, with stale_reason "Machine silent". */
+  /** A Working session on a silent Machine is Stale, with stale_reason "Machine silent". */
   sessions: { id: string; machine: string; repo: string; state: SessionState; state_since: string; stale_reason?: string }[];
 }
 
@@ -35,7 +35,9 @@ function useNow(everyMs: number): number {
 export function Dashboard() {
   const state = useFactoryState();
   const now = useNow(1000);
-  const sessions = state?.sessions.map((s) => ({ ...s, staleReason: s.stale_reason, inStateMs: now - Date.parse(s.state_since) }));
+  const sessions = state?.sessions.map(({ stale_reason, state_since, ...s }) => ({
+    ...s, staleReason: stale_reason, inStateMs: now - Date.parse(state_since),
+  }));
   return (
     <>
       <TopBar>
