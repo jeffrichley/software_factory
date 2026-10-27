@@ -421,3 +421,20 @@ def test_a_running_spec_job_with_no_steps_gains_them_on_the_next_poll(client, ep
     poll(client)
 
     assert [(s["number"], s["phase"]) for s in steps(client)] == [(41, "Pending"), (42, "Pending")]
+
+
+def test_a_bare_number_names_the_spec_like_hash_n(client, spec):
+    reply = implement_spec(client, str(SPEC))
+
+    assert jobs(client)[0]["number"] == SPEC
+    assert [s["number"] for s in steps(client)] == [5, 6]
+    assert reply["inject"].startswith(f"The Factory tracks this as Spec Job {reply['job_id']} on #{SPEC}.")
+
+
+def test_naming_the_spec_job_issue_later_adds_its_steps_at_once(client, spec):
+    job_id = implement_spec(client, "the widget export")["job_id"]
+    assert steps(client) == []
+
+    report(client, "job_issue", job_id, issue=SPEC)
+
+    assert [(s["number"], s["phase"]) for s in steps(client)] == [(5, "Pending"), (6, "Pending")]

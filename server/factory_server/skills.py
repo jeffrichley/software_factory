@@ -60,10 +60,10 @@ def skill_invocation(event: dict) -> tuple[str, str | None] | None:
 
 
 def work_item_named(args: str | None, repo: str) -> int | None:
-    """The Work item a skill's args name: a bare `#N`, or an issue URL in the session's own repo."""
-    issue_ref = re.compile(rf"(?:^|\s)#(\d+)\b|github\.com/{re.escape(repo)}/issues/(\d+)\b")
+    """The Work item a skill's args name: `#N`, a leading bare `N`, or an issue URL in the session's own repo."""
+    issue_ref = re.compile(rf"(?:^|\s)#(\d+)\b|^\s*(\d+)\b|github\.com/{re.escape(repo)}/issues/(\d+)\b")
     m = issue_ref.search(args or "")
-    return int(m[1] or m[2]) if m else None
+    return int(m[1] or m[2] or m[3]) if m else None
 
 
 def version_key(version: str, width: int) -> tuple[int, ...]:
