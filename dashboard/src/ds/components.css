@@ -312,10 +312,23 @@ a { color: inherit; }
 .facts dd { margin: 0; font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
 
 /* ---------- History (ended Jobs) ---------- */
-.hist { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
-.hist li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); font-size: var(--fs-sm); min-width: 0; }
-.hist-item { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
-.hist-meta { color: var(--text-2); }
+.hlist { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.hrow { display: grid; grid-template-columns: 150px minmax(0, 1fr) 96px 96px; gap: var(--s3); align-items: center; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s3) var(--s4); cursor: pointer; color: var(--text); font: inherit; }
+.hrow > span { display: block; min-width: 0; }
+@media (hover: hover) { .hrow:hover { border-color: var(--line-hover); background: var(--surface-2); } }
+.hrow:focus-visible { outline: 2px solid var(--working); outline-offset: 1px; }
+.hname { display: grid; gap: 2px; }
+.ht { font-weight: 600; }
+.hm { font: 500 var(--fs-xs)/1.4 var(--font-mono); color: var(--text-3); }
+.hdur, .hago { font: 500 var(--fs-sm)/1 var(--font-mono); color: var(--text-2); }
+.hout { display: inline-flex !important; align-items: center; gap: 6px; font-weight: 600; font-size: var(--fs-sm); white-space: nowrap; }
+.out-merged { color: var(--done); }
+.out-closed { color: var(--text-2); }
+.out-abandoned { color: var(--fail-soft); }
+@media (max-width: 640px) {
+  .hrow { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); }
+  .hrow .hname { flex: 1 1 100%; order: -1; }
+}
 
 /* ---------- Replay (a finished Job over time) ---------- */
 .btn-icon { padding: 0; width: var(--control-h); justify-content: center; }

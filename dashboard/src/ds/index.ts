@@ -32,6 +32,7 @@ export * from "./components/Graph";
 export * from "./components/HeaderCount";
 export * from "./components/SoundToggle";
 export * from "./components/Tag";
+export * from "./components/RepoName";
 export * from "./components/SessionDetail";
 export * from "./components/StepDetail";
 export * from "./components/SpecProgress";

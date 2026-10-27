@@ -100,8 +100,12 @@ interface FactoryState {
     /** The latest skill the skill table doesn't know. */
     unknown_skill: string | null;
     now: string | null;
+    /** What the headline leaves out, e.g. the full command; null when it says it all. */
+    now_detail: string | null;
     /** The last few actions, oldest first. */
     actions: TimelineEntry[];
+    /** Where it runs, e.g. "tmux · factory:2", as its SessionStart said; null when the hook couldn't tell. */
+    terminal: string | null;
   }[];
   /** Jobs in Tracked repos, oldest first. */
   jobs: {
@@ -122,6 +126,8 @@ interface FactoryState {
     /** The CI checks on its PR's head; null until read. */
     pr_checks: CheckData[] | null;
     started_at: string;
+    /** When the server first saw it Merged, Closed or Abandoned; null before. */
+    ended_at: string | null;
     /** The active Job already on its Work item when it started; flagged, not blocked. */
     duplicate_of: string | null;
   }[];
@@ -186,6 +192,7 @@ interface FactoryState {
 
 type Session = SessionData & {
   ccSessionId: string;
+  terminal: string | null;
   reason: NeedsReason | null;
   seen: boolean;
   hidden: boolean;
@@ -314,7 +321,7 @@ export function Dashboard() {
   useSounds(state?.sounds, soundOn);
   const sessions: Session[] = state?.sessions.map((s) => ({
     id: s.id, machine: s.machine, repo: s.repo, ccSessionId: s.cc_session_id, state: s.state, staleReason: s.stale_reason, reason: s.reason,
-    seen: s.seen, hidden: s.hidden, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, actions: s.actions,
+    seen: s.seen, hidden: s.hidden, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, nowDetail: s.now_detail, actions: s.actions, terminal: s.terminal,
     inStateMs: now - Date.parse(s.state_since),
     ...(s.quiet_since ? { quietMs: now - Date.parse(s.quiet_since) } : {}),
   })) ?? [];
@@ -328,7 +335,7 @@ export function Dashboard() {
   const setHidden = (id: string, hidden: boolean) =>
     void fetch(`/api/sessions/${id}/${hidden ? "hide" : "show"}`, { method: "POST" }).catch(() => {});
   const jobs: JobData[] = (state?.jobs ?? []).map((j) => ({
-    id: j.id, sessionId: j.session_id, machine: j.machine, kind: j.kind, repo: j.repo, startedAt: j.started_at, duplicateOf: j.duplicate_of,
+    id: j.id, sessionId: j.session_id, machine: j.machine, kind: j.kind, repo: j.repo, startedAt: j.started_at, endedAt: j.ended_at, duplicateOf: j.duplicate_of,
     number: j.number, stage: j.stage, branch: j.branch,
     worktree: j.worktree, pr: j.pr, prTrack: j.pr_track, prChecks: j.pr_checks, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
   }));
@@ -445,7 +452,7 @@ export function Dashboard() {
       ...s,
       machineSilentForMs: m?.silent ? now - Date.parse(m.last_seen) : undefined,
       needs: s.state === "Needs you" ? {
-        reason: s.reason, session: s.ccSessionId.slice(0, SESSION_ID_CHARS), terminal: null, resumeCommand: resumeCommand(s.ccSessionId), onCopy: copy,
+        reason: s.reason, session: s.ccSessionId.slice(0, SESSION_ID_CHARS), terminal: s.terminal, resumeCommand: resumeCommand(s.ccSessionId), onCopy: copy,
       } : undefined,
       controls: (
         <button type="button" className="btn" onClick={() => setHidden(s.id, !s.hidden)}>
@@ -512,7 +519,7 @@ export function Dashboard() {
                   workItem={workItemOf(s)}
                   machine={s.machine}
                   session={s.ccSessionId.slice(0, SESSION_ID_CHARS)}
-                  terminal={null}
+                  terminal={s.terminal}
                   resumeCommand={resumeCommand(s.ccSessionId)}
                   selected={s.id === openId}
                   onCopy={copy}
@@ -533,6 +540,7 @@ export function Dashboard() {
                   machine={s.machine}
                   agoMs={s.inStateMs}
                   now={s.now}
+                  nowDetail={s.nowDetail}
                   onOpen={() => open(s.id)}
                 />
               ))
@@ -551,8 +559,8 @@ export function Dashboard() {
       >
         {showHistory ? (
           replayJob ? (
-            <ReplayView key={replayJob.id} job={replayJob} replay={replay?.job_id === replayJob.id ? replay : null} onBack={() => setReplayId(undefined)} />
-          ) : <HistoryList jobs={history} onReplay={setReplayId} />
+            <ReplayView key={replayJob.id} job={replayJob} nowMs={now} replay={replay?.job_id === replayJob.id ? replay : null} onBack={() => setReplayId(undefined)} />
+          ) : <HistoryList jobs={history} nowMs={now} onReplay={setReplayId} />
         ) : selected ? (
           detailOf(selected)
         ) : state ? (

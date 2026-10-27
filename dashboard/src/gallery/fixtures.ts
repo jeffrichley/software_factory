@@ -129,7 +129,7 @@ export const freshStep: { step: StepData; detail: StepDetailData } = {
 /** A merged Ticket Job and its timeline, for the replay. */
 export const REPLAY_JOB: JobData = {
   id: "21", sessionId: "7", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T15:30:00Z",
-  duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" },
+  endedAt: "2026-10-26T16:42:00Z", duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" },
   stage: "Merged", branch: "ticket-29-job-edges", worktree: null, pr: { number: 48, url: "https://github.com/jeff/widgets/pull/48", draft: false },
 };
 
@@ -163,7 +163,7 @@ export const REPLAY: ReplayData = {
 
 /** A Spec Job part-way through: Tickets merged, one in Red, one blocked, one not started. */
 export const SPEC_JOB: JobData = {
-  id: "30", sessionId: "9", machine: "wsl-desk", kind: "Spec Job", repo: "jeff/widgets", startedAt: at(90), duplicateOf: null,
+  id: "30", sessionId: "9", machine: "wsl-desk", kind: "Spec Job", repo: "jeff/widgets", startedAt: at(90), endedAt: null, duplicateOf: null,
   number: 18, workItem: { name: "#18 The Factory", url: "https://github.com/jeff/widgets/issues/18" }, stage: "In progress",
   branch: "worktree-spec-18-the-factory", worktree: "/home/jeff/widgets/.claude/worktrees/spec-18-the-factory",
   pr: { number: 60, url: "https://github.com/jeff/widgets/pull/60", draft: true },

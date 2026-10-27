@@ -229,7 +229,9 @@ SESSION_COLUMNS = {
     "kind": f"TEXT NOT NULL DEFAULT '{AD_HOC}'",
     "skill": "TEXT",
     "headline": "TEXT",
+    "headline_detail": "TEXT",  # what the headline leaves out, e.g. the full command: shown on hover
     "mattpocock_skills_version": "TEXT",
+    "terminal": "TEXT",  # where the session runs, as its SessionStart said: "tmux · factory:2", "Windows Terminal"
     "base": "TEXT NOT NULL DEFAULT 'Working'",  # the state shown when no prompt is waiting
     "base_reason": "TEXT",
     "reason": "TEXT",  # JSON reason shown with Needs you
@@ -378,6 +380,11 @@ class Store:
             self.db.execute("UPDATE sessions SET mattpocock_skills_version = ? WHERE id = ?", (version, session_id))
 
     @locked
+    def set_terminal(self, session_id: int, terminal: str | None) -> None:
+        with self.db:
+            self.db.execute("UPDATE sessions SET terminal = ? WHERE id = ?", (terminal, session_id))
+
+    @locked
     def session(self, session_id: int) -> sqlite3.Row:
         return self.db.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
 
@@ -392,14 +399,14 @@ class Store:
             self.db.execute("INSERT INTO unknown_skills (session_id, skill, at) VALUES (?, ?, ?)", (session_id, skill, iso(now)))
 
     @locked
-    def record_action(self, session_id: int, text: str, now: datetime) -> None:
-        """The session's headline is now `text`; it joins the timeline, which keeps the last few, and the
-        replay of the session's current Job, which keeps them all."""
+    def record_action(self, session_id: int, text: str, now: datetime, detail: str | None = None) -> None:
+        """The session's headline is now `text` (with `detail`, what it leaves out); it joins the timeline, which keeps
+        the last few, and the replay of the session's current Job, which keeps them all."""
         with self.db:
             job = self.db.execute("SELECT id FROM jobs WHERE session_id = ? ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
             if job:
                 self._job_event(job["id"], now, "action", text)
-            self.db.execute("UPDATE sessions SET headline = ? WHERE id = ?", (text, session_id))
+            self.db.execute("UPDATE sessions SET headline = ?, headline_detail = ? WHERE id = ?", (text, detail, session_id))
             self.db.execute("INSERT INTO actions (session_id, at, text) VALUES (?, ?, ?)", (session_id, iso(now), text))
             self.db.execute(
                 "DELETE FROM actions WHERE session_id = ? AND id NOT IN"
@@ -411,7 +418,7 @@ class Store:
     def live_sessions(self) -> list[dict]:
         """Live rows, Needs you first (longest waiting first), then the rest in order of first sight."""
         rows = self.db.execute(
-            "SELECT id, machine, repo, cc_session_id, state, state_since, reason, seen, hidden, kind, skill, headline,"
+            "SELECT id, machine, repo, cc_session_id, state, state_since, reason, seen, hidden, kind, skill, headline, headline_detail, terminal,"
             " COALESCE(last_event_at, state_since) AS last_event_at,"
             " (SELECT skill FROM unknown_skills u WHERE u.session_id = sessions.id ORDER BY u.id DESC LIMIT 1) AS unknown_skill"
             " FROM sessions WHERE ended_at IS NULL"
@@ -428,8 +435,8 @@ class Store:
                 "id": str(r["id"]), "machine": r["machine"], "repo": r["repo"], "cc_session_id": r["cc_session_id"],
                 "state": r["state"], "state_since": r["state_since"], "last_event_at": r["last_event_at"],
                 "reason": r["reason"] and json.loads(r["reason"]), "seen": bool(r["seen"]), "hidden": bool(r["hidden"]),
-                "kind": r["kind"], "skill": r["skill"], "unknown_skill": r["unknown_skill"], "now": r["headline"],
-                "actions": actions.get(r["id"], []),
+                "kind": r["kind"], "skill": r["skill"], "unknown_skill": r["unknown_skill"], "now": r["headline"], "now_detail": r["headline_detail"],
+                "actions": actions.get(r["id"], []), "terminal": r["terminal"],
             }
             for r in rows
         ]
@@ -984,7 +991,7 @@ class Store:
 
     @locked
     def jobs(self) -> list[dict]:
-        """Jobs in repos some Machine tracks, oldest first, with their Machine, Work item, PR and stage."""
+        """Jobs in repos some Machine tracks, oldest first, with their Machine, Work item, PR, stage and (once over) end."""
         rows = self.db.execute(
             "SELECT j.*, w.title, w.url, s.machine FROM jobs j JOIN sessions s ON s.id = j.session_id"
             " LEFT JOIN work_items w ON w.repo = j.repo AND w.number = j.number WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY j.id"
@@ -998,7 +1005,7 @@ class Store:
                 "work_item": {"title": j["title"], "url": j["url"]} if j["title"] is not None else None,
                 "worktree": j["worktree"], "branch": j["branch"],
                 "stage": self._stage(j, pr),
-                "pr": pr and {k: pr[k] for k in ("number", "url", "draft")}, "started_at": j["started_at"],
+                "pr": pr and {k: pr[k] for k in ("number", "url", "draft")}, "started_at": j["started_at"], "ended_at": j["ended_at"],
                 "pr_checks": self._pr_checks(j["repo"], pr),
                 "pr_track": [{"stage": t["stage"], "at": t["at"]} for t in json.loads(j["pr_track"]) if pr and t["url"] == pr["url"]],
                 "duplicate_of": None if j["duplicate_of"] is None else str(j["duplicate_of"]),

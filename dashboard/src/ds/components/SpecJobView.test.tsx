@@ -15,7 +15,7 @@ globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {
 const props: SpecJobViewProps = {
   machine: "wsl", repo: "jeff/widgets", kind: "Spec Job", state: "Working", inStateMs: 0, now: null, nowMs: 0, actions: [],
   job: {
-    id: "1", sessionId: "s1", machine: "wsl", kind: "Spec Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z",
+    id: "1", sessionId: "s1", machine: "wsl", kind: "Spec Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null,
     duplicateOf: null, number: 4, workItem: { name: "#4 Widget export", url: "#" }, stage: "In progress", branch: null,
     worktree: null, pr: null,
   },

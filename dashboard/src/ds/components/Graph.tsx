@@ -143,7 +143,8 @@ const edgeTypes = { factory: FactoryEdge };
 
 export interface GraphViewProps {
   items: GraphNodeInput[];
-  /** Map fog: what is not yet specified, drawn past the frontier. */
+  /** Map fog: what is not yet specified, drawn past the frontier. Given (even empty), the graph is a Map and its legend
+   * says what fog is. */
   fog?: string[];
   selectedId?: string;
   onSelect?: (id: string) => void;
@@ -169,8 +170,11 @@ function useBoxWidth<E extends HTMLElement>(): [RefObject<E | null>, number] {
   return [ref, width];
 }
 
+const NO_FOG: string[] = [];
+
 /** The one graph style: left→right; solid = resolved, dashed grey = waiting, dashed red = blocking, dashed blue + FRONTIER = takeable now. */
-export function GraphView({ items, fog = [], selectedId, onSelect, label, legend = true, fit = false }: GraphViewProps) {
+export function GraphView({ items, fog: mapFog, selectedId, onSelect, label, legend = true, fit = false }: GraphViewProps) {
+  const fog = mapFog ?? NO_FOG;
   const [box, boxWidth] = useBoxWidth<HTMLDivElement>();
   const { nodes, edges, width, height } = useMemo(() => {
     const { edges: ge, frontier } = classifyGraph(items);
@@ -234,6 +238,7 @@ export function GraphView({ items, fog = [], selectedId, onSelect, label, legend
           <span><span className="lg-line waiting" />waiting on dependency</span>
           <span><span className="lg-line blocking" />blocking</span>
           <span><Tag tone="frontier">Frontier</Tag>takeable now</span>
+          {mapFog ? <span>Fog = not yet specified</span> : null}
         </div>
       ) : null}
     </div>

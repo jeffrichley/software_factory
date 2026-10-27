@@ -131,6 +131,9 @@ const TYPE: [string, string, string, string][] = [
 const SPACE = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7"];
 const RADII = ["--r-xs", "--r-sm", "--r", "--r-lg", "--r-pill"];
 
+/** A fixed "now" for History and Replay, so their "ended … ago" reads the same every time. */
+const GALLERY_NOW = Date.parse("2026-10-26T19:00:00Z");
+
 const headerStates: [SessionState, boolean][] = [["Working", false], ["Needs you", false], ["Done", false], ["Done", true], ["Stale", false]];
 
 const chip = (over: Partial<StateChipProps> & Pick<StateChipProps, "id">): StateChipProps => ({
@@ -266,34 +269,34 @@ export function Gallery() {
           <TicketJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Done" inStateMs={2 * 60_000} now="ran `factory report pr`" actions={adhocActions.slice(-2)}
             onAbandon={() => {}}
-            job={{ id: "12", sessionId: "3", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: null, number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "PR open", branch: "worktree-ticket-28-ticket-job-launch-to-done", worktree: "/home/jeff/widgets/.claude/worktrees/ticket-28-ticket-job-launch-to-done", pr: { number: 46, url: "https://github.com/jeff/widgets/pull/46", draft: false } }}
+            job={{ id: "12", sessionId: "3", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "PR open", branch: "worktree-ticket-28-ticket-job-launch-to-done", worktree: "/home/jeff/widgets/.claude/worktrees/ticket-28-ticket-job-launch-to-done", pr: { number: 46, url: "https://github.com/jeff/widgets/pull/46", draft: false } }}
           />
           <Eyebrow>Ticket Job · Step detail: struggling, PR with CI checks</Eyebrow>
           <TicketJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={23 * 60_000} now="running uv run pytest" actions={adhocActions.slice(-2)}
             step={ticketStep}
-            job={{ id: "16", sessionId: "7", machine: "wsl-desk", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: null, number: 31, workItem: { name: "Ticket Job Step detail", url: "https://github.com/jeff/widgets/issues/31" }, stage: "PR open", branch: "ticket-31-step-detail", worktree: null, pr: { number: 52, url: "https://github.com/jeff/widgets/pull/52", draft: false } }}
+            job={{ id: "16", sessionId: "7", machine: "wsl-desk", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 31, workItem: { name: "Ticket Job Step detail", url: "https://github.com/jeff/widgets/issues/31" }, stage: "PR open", branch: "ticket-31-step-detail", worktree: null, pr: { number: 52, url: "https://github.com/jeff/widgets/pull/52", draft: false } }}
           />
           <Eyebrow>Ticket Job · Step just started, silent, no checklist</Eyebrow>
           <TicketJobView
             machine="mac-studio" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={12 * 60_000} now={null} actions={[]}
             step={freshStep}
-            job={{ id: "17", sessionId: "8", machine: "mac-studio", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: null, number: 33, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null }}
+            job={{ id: "17", sessionId: "8", machine: "mac-studio", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 33, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null }}
           />
           <Eyebrow>Ticket Job · Work item unknown, ended without a PR</Eyebrow>
           <TicketJobView
             machine="mac-studio" repo="jeff/widgets" kind="Ticket Job" state="Needs you" inStateMs={60_000} now={null} actions={[]}
-            job={{ id: "13", sessionId: "4", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: null, number: null, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null }}
+            job={{ id: "13", sessionId: "4", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: null, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null }}
           />
           <Eyebrow>Ticket Job · draft PR</Eyebrow>
           <TicketJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={30_000} now="pushing" actions={[]}
-            job={{ id: "14", sessionId: "5", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: null, number: 31, workItem: null, stage: "In progress", branch: null, worktree: "/home/jeff/widgets-31", pr: { number: 47, url: "https://github.com/jeff/widgets/pull/47", draft: true } }}
+            job={{ id: "14", sessionId: "5", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 31, workItem: null, stage: "In progress", branch: null, worktree: "/home/jeff/widgets-31", pr: { number: 47, url: "https://github.com/jeff/widgets/pull/47", draft: true } }}
           />
           <Eyebrow>Ticket Job · duplicate, can be marked abandoned</Eyebrow>
           <TicketJobView
             machine="mac-studio" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={90_000} now="reading src/api.ts" actions={[]} onAbandon={() => {}}
-            job={{ id: "15", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: "12", number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "In progress", branch: null, worktree: null, pr: null }}
+            job={{ id: "15", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: "12", number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "In progress", branch: null, worktree: null, pr: null }}
           />
           <Eyebrow>Session header · every state</Eyebrow>
           {headerStates.map(([state, seen]) => (
@@ -376,26 +379,27 @@ export function Gallery() {
           </div>
         </Section>
 
-        <Section id="history" title="History" note="Merged, Closed and Abandoned Jobs, latest first, with their outcome. The header button opens it.">
+        <Section id="history" title="History" note="Merged, Closed and Abandoned Jobs, latest first: outcome and PR, Work item, kind · repo · Machine, how long it took and how long ago it ended (— until the server has seen it end). Each row replays its Job. The header button opens it.">
           <div className="g-row">
             <HistoryCount count={3} open={historyOpen} onToggle={() => setHistoryOpen(!historyOpen)} />
             <HistoryCount count={0} open={false} onToggle={() => {}} />
             <Clock now={new Date(2026, 9, 26, 9, 5, 7).getTime()} />
           </div>
           <HistoryList
+            nowMs={GALLERY_NOW}
             onReplay={() => {}}
             jobs={[
-              { id: "21", sessionId: "7", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T15:30:00Z", duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" }, stage: "Merged", branch: null, worktree: "/home/jeff/widgets/.claude/worktrees/ticket-29-job-edges", pr: { number: 48, url: "https://github.com/jeff/widgets/pull/48", draft: false } },
-              { id: "17", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/gadgets", startedAt: "2026-10-26T13:05:00Z", duplicateOf: null, number: 7, workItem: null, stage: "Closed", branch: null, worktree: null, pr: { number: 9, url: "https://github.com/jeff/gadgets/pull/9", draft: false } },
-              { id: "15", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: "12", number: null, workItem: null, stage: "Abandoned", branch: null, worktree: null, pr: null },
+              { id: "21", sessionId: "7", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T15:30:00Z", endedAt: "2026-10-26T16:42:00Z", duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" }, stage: "Merged", branch: null, worktree: "/home/jeff/widgets/.claude/worktrees/ticket-29-job-edges", pr: { number: 48, url: "https://github.com/jeff/widgets/pull/48", draft: false } },
+              { id: "17", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/gadgets", startedAt: "2026-10-25T13:05:00Z", endedAt: "2026-10-25T13:59:00Z", duplicateOf: null, number: 7, workItem: null, stage: "Closed", branch: null, worktree: null, pr: { number: 9, url: "https://github.com/jeff/gadgets/pull/9", draft: false } },
+              { id: "15", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: "12", number: null, workItem: null, stage: "Abandoned", branch: null, worktree: null, pr: null },
             ]}
           />
-          <HistoryList jobs={[]} />
+          <HistoryList jobs={[]} nowMs={GALLERY_NOW} />
         </Section>
 
         <Section id="replay" title="Replay" note="A finished Job over time: play/pause, the scrubber with its events marked, each Step's Phase at that moment, and every event. Click a marker or an event to jump to it.">
-          <ReplayView job={REPLAY_JOB} replay={REPLAY} onBack={() => {}} initialPos={200} />
-          <ReplayView job={REPLAY_JOB} replay={null} onBack={() => {}} />
+          <ReplayView job={REPLAY_JOB} replay={REPLAY} onBack={() => {}} initialPos={200} nowMs={GALLERY_NOW} />
+          <ReplayView job={{ ...REPLAY_JOB, endedAt: null }} replay={null} onBack={() => {}} nowMs={GALLERY_NOW} />
         </Section>
 
         <Section id="chips" title="State chips" note="Hover or focus for the tooltip. Red/Green Phases underline; unknown Phase is dotted; long names ellipsize.">
@@ -438,7 +442,7 @@ export function Gallery() {
               <InboxHeader count={0} />
               <Empty><Icon name="check" /> Nothing needs you. New questions and permission prompts land here.</Empty>
               <SectionHeading icon="check" tone="done">Done — unseen · 2</SectionHeading>
-              <DoneCard kind="Ticket Job" workItem={{ name: "#24 Needs you and Done sounds", url: "#" }} repo="software_factory" machine="wsl-desk" agoMs={6 * 60_000} now="opened PR #41 — ready for review" />
+              <DoneCard kind="Ticket Job" workItem={{ name: "#24 Needs you and Done sounds", url: "#" }} repo="jeff/software_factory" machine="wsl-desk" agoMs={6 * 60_000} now="opened PR #41 — ready for review" />
               <DoneCard kind="ad hoc" workItem={null} repo="gateway" machine="mac-studio" agoMs={41 * 60_000} now={null} />
               <SectionHeading icon="check" tone="done">Done — unseen · 0</SectionHeading>
               <Empty>Everything Done has been seen.</Empty>
@@ -486,7 +490,10 @@ export function Gallery() {
           <SectionHeading>Section heading · neutral</SectionHeading>
           <div className="g-row"><Tag>Ticket</Tag><Tag tone="frontier">Frontier</Tag><Tag tone="blocked">Blocked by #19</Tag><Tag tone="struggle"><Icon name="flame" />Struggling · 4 test failures</Tag><Tag tone="needs">Needs you</Tag><Tag tone="unknown">Phase unknown</Tag></div>
           <div className="g-row"><button type="button" className="btn">Default button</button><button type="button" className="btn btn-needs"><Icon name="copy" />Needs-you action</button><button type="button" className="btn btn-on">Toggled on</button></div>
-          <NowLine now="running tests: uv run pytest tests/server" />
+          <NowLine now="running cargo test" />
+          <NowLine now={'creating issue "Prove the dashboard\'s shaky fields can be sourced"'} detail={'gh issue create --title "Prove the dashboard\'s shaky fields can be sourced" --label wayfinder:research --body "## Q …"'} />
+          <NowLine now="run the server tests" detail="cd /home/jeff/widgets && uv run pytest -q tests/server/test_sessions.py tests/server/test_skills.py --maxfail=1" />
+          <NowLine now={null} />
         </Section>
 
         <Section id="spec-progress" title="Spec Job progress" note="Stat tiles; the PR track Draft → Ready → Merged in every state (times as the poll saw each stage; Closed in Merged's place); the merges list with SHAs (unknown when git didn't print one).">

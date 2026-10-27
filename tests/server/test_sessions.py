@@ -73,8 +73,17 @@ def test_a_started_session_appears_as_working(client, clock):
             "now": None,
             "actions": [],
             "quiet_since": None,
+            "terminal": None,
+            "now_detail": None,
         }
     ]
+
+
+def test_a_session_shows_the_terminal_it_started_in(client):
+    client.post("/api/events", json={**hook_event("SessionStart", source="startup"), "terminal": "tmux · factory:2"})
+    client.post("/api/events", json=hook_event("PreToolUse", tool_name="Bash"))
+
+    assert client.get("/api/state").json()["sessions"][0]["terminal"] == "tmux · factory:2"
 
 
 def test_events_from_one_session_keep_one_row_until_it_ends(client):
