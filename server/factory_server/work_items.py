@@ -40,8 +40,8 @@ def work_items(repo: str, issues: list[dict], blocked_by: dict[int, list[int]] |
             return DECISION_TICKET  # wayfinder labels each Map child with its type
         parent = parent_of(repo, issue)
         parent_kind = kind(parent, seen) if parent in by_number and parent not in seen else None
-        if parent_kind == SPEC:
-            return TICKET
+        if parent_kind in (SPEC, TICKET):
+            return TICKET  # a Ticket split again (an Epic) has Tickets of its own, at any depth
         if parent_kind == MAP:
             return DECISION_TICKET
         body = issue.get("body") or ""

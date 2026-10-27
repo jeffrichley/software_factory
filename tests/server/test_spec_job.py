@@ -380,3 +380,44 @@ def test_a_spec_jobs_replay_starts_its_steps_pending_and_shows_each_starting_and
         ("#6 started: Phase unknown", None),
         ("#6 Red", "Red"),
     ]
+
+
+EPIC = 40
+
+
+@pytest.fixture
+def epic(client, github):
+    """Spec #31 split into Epics; Epic #40 split again into Tickets #41 and #42, tracked but not polled yet."""
+    github.issues["jeff/widgets"] = [
+        issue(31, "ML4T reboot", body=SPEC_BODY, sub_issues=2),
+        issue(32, "Grading", parent=31),
+        issue(EPIC, "Docs and dry run", parent=31, sub_issues=2),
+        issue(41, "Stub runbooks", body=f"## Parent\r\n\r\n#{EPIC}\r\n", parent=EPIC),
+        issue(42, "Dry run plan", parent=EPIC),
+    ]
+    github.block("jeff/widgets", 42, 41)
+    install(client)
+
+
+def test_a_spec_job_on_an_epic_has_a_pending_step_per_sub_issue_and_its_subagents_work_them(client, epic):
+    reply = implement_spec(client, f"#{EPIC}")
+
+    assert [(s["number"], s["phase"], s["blocked_by"]) for s in steps(client)] == [
+        (41, "Pending", []), (42, "Pending", [41]),
+    ]
+    launch(client, "a1", "Implement ticket #42", f"You are implementing #42 of epic #{EPIC}.")
+    assert hook(client, "SubagentStart", **agent("a1"))["step_id"] == step_numbered(client, 42)["id"]
+    assert reply["job_id"] == jobs(client)[0]["id"]
+
+
+def test_a_running_spec_job_with_no_steps_gains_them_on_the_next_poll(client, epic, github, clock):
+    tickets = [i for i in github.issues["jeff/widgets"] if i["number"] in (41, 42)]
+    github.issues["jeff/widgets"] = [i for i in github.issues["jeff/widgets"] if i not in tickets]
+    implement_spec(client, f"#{EPIC}")
+    assert steps(client) == []
+
+    github.issues["jeff/widgets"] += tickets
+    clock.advance(60)
+    poll(client)
+
+    assert [(s["number"], s["phase"]) for s in steps(client)] == [(41, "Pending"), (42, "Pending")]

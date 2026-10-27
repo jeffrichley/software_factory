@@ -807,10 +807,10 @@ class Store:
             ).lastrowid
 
     @locked
-    def spec_tickets(self, repo: str, spec: int) -> list[int]:
-        """The Spec's child Tickets, as last polled."""
+    def child_tickets(self, repo: str, number: int) -> list[int]:
+        """The Work item's child Tickets (its sub-issues, whether it is a Spec or a Ticket split again), as last polled."""
         rows = self.db.execute(
-            "SELECT number FROM work_items WHERE repo = ? AND parent = ? AND kind = 'Ticket' ORDER BY number", (repo, spec)
+            "SELECT number FROM work_items WHERE repo = ? AND parent = ? AND kind = 'Ticket' ORDER BY number", (repo, number)
         )
         return [r["number"] for r in rows]
 

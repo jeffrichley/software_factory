@@ -146,6 +146,20 @@ def test_work_item_kinds_come_from_github_structure(client, github):
     }
 
 
+def test_a_ticket_split_again_has_tickets_of_its_own_at_any_depth(client, github):
+    github.issues["jeff/widgets"] = [
+        issue(1, body=SPEC_BODY, sub_issues=1),
+        issue(2, parent=1, sub_issues=1),  # an Epic: a Spec's child split again
+        issue(3, parent=2, sub_issues=1),
+        issue(4, body="## Parent\n\n#3\n"),
+    ]
+    install(client)
+
+    poll(client)
+
+    assert kinds(client) == {1: "Spec", 2: "Ticket", 3: "Ticket", 4: "Ticket"}
+
+
 def test_without_sub_issues_the_parent_comes_from_the_childs_body(client, github):
     github.issues["jeff/widgets"] = [
         issue(1, labels=("wayfinder:map",)),
@@ -264,6 +278,26 @@ def test_a_skill_run_against_the_right_kind_is_not_flagged(client, planned, comm
     typed(client, command, f"#{number}")
 
     assert mismatches(client) == []
+
+
+def test_implement_spec_on_a_ticket_with_sub_issues_is_not_flagged(client, github):
+    github.issues["jeff/widgets"] = [issue(4, body=SPEC_BODY), issue(5, parent=4), issue(6, parent=5)]
+    install(client)
+    poll(client)
+
+    typed(client, "implement-spec", "#5")
+
+    assert mismatches(client) == []
+
+
+def test_implement_spec_on_a_work_item_with_no_sub_issues_is_flagged(client, github):
+    github.issues["jeff/widgets"] = [issue(4, body=SPEC_BODY)]
+    install(client)
+    poll(client)
+
+    typed(client, "implement-spec", "#4")
+
+    assert [(m["skill"], m["number"], m["kind"]) for m in mismatches(client)] == [("implement-spec", 4, "Spec")]
 
 
 def test_a_skill_the_model_starts_is_checked_too(client, planned):

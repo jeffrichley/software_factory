@@ -189,12 +189,21 @@ def create_app(
                 "blocked_by": sorted(set(t["blocked_by"]) | set(item["blocked_by"]))}
 
     def mismatches() -> list[dict]:
-        """Skill starts in live sessions against the wrong kind of Work item."""
+        """Skill starts in live sessions against the wrong kind of Work item.
+
+        A Spec Job works its Work item's sub-issues, so its fit is having some, whatever the Work item's kind.
+        """
         found = []
         for start in store.live_skill_starts():
             role = skills.role(start["skill"], start.pop("mattpocock_skills_version"))
             expected = list(role.work_items) if role else []
-            if expected and start["kind"] and start["kind"] not in expected:
+            if not (expected and start["kind"]):
+                continue
+            if role.role == SPEC_JOB:
+                wrong = not store.child_tickets(start["repo"], start["number"])
+            else:
+                wrong = start["kind"] not in expected
+            if wrong:
                 found.append({**start, "expected": expected})
         return found
 
@@ -244,9 +253,9 @@ def create_app(
             add_spec_steps(job_id, repo)
 
     def add_spec_steps(job_id: int, repo: str) -> None:
-        """A Step, Pending, for each of the Spec's Tickets the Job has none for yet."""
-        spec = store.job_number(job_id)
-        for number in store.spec_tickets(repo, spec) if spec else []:
+        """A Step, Pending, for each child Ticket of the Job's Work item (a Spec, or an Epic-like Ticket) it has none for yet."""
+        parent = store.job_number(job_id)
+        for number in store.child_tickets(repo, parent) if parent else []:
             if store.job_step_numbered(job_id, number) is None:
                 store.add_step(job_id, number, clock(), PENDING)
 
