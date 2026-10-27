@@ -420,6 +420,17 @@ def phase_(
     self_report("report_phase", job, phase=phase, **({} if ticket is None else {"ticket": ticket}))
 
 
+@app.command()
+def review(
+    standards: Annotated[int, typer.Option("--standards", min=0, help="Findings on the Standards axis.")],
+    spec: Annotated[int, typer.Option("--spec", min=0, help="Findings on the Spec axis.")],
+    job: JobOption,
+    ticket: Annotated[int | None, typer.Option("--ticket", help="The Step's Ticket, in a Spec Job.")] = None,
+) -> None:
+    """code-review's findings count per axis, once its summary is written."""
+    self_report("report_review", job, standards=standards, spec=spec, **({} if ticket is None else {"ticket": ticket}))
+
+
 def server_table(given: Path | None, file_name: str, shipped: Path) -> Path:
     """An edited copy in the data dir survives plugin updates; the shipped table is the fallback."""
     edited = data_dir() / "server" / file_name

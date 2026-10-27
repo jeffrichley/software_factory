@@ -305,3 +305,12 @@ def test_the_shipped_phase_rules_are_valid():
     from factory_server.phases import DEFAULT_PHASE_RULES, parse_rules
 
     assert parse_rules(DEFAULT_PHASE_RULES.read_text()).rules
+
+
+def test_a_repo_section_may_only_add_test_patterns():
+    from factory_server.phases import DEFAULT_PHASE_RULES, parse_rules
+
+    with pytest.raises(ValueError, match="may only list"):
+        parse_rules(DEFAULT_PHASE_RULES.read_text() + '\n[repos."jeff/widgets"]\ncommit_commands = ["x"]\n')
+    with pytest.raises(ValueError, match="bad pattern"):
+        parse_rules(DEFAULT_PHASE_RULES.read_text() + '\n[repos."jeff/widgets"]\ntest_commands = ["("]\n')

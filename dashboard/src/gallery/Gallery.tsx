@@ -42,7 +42,7 @@ import {
   type SessionState,
   type StateChipProps,
 } from "../ds";
-import { adhocActions, flowRows, mapItems, mapFog, needsCards, REPLAY, REPLAY_JOB, specItems, ticketItems } from "./fixtures";
+import { adhocActions, flowRows, freshStep, mapItems, mapFog, needsCards, REPLAY, REPLAY_JOB, specItems, ticketItems, ticketStep } from "./fixtures";
 import "./gallery.css";
 
 type Theme = "system" | "light" | "dark";
@@ -241,6 +241,18 @@ export function Gallery() {
             machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Done" inStateMs={2 * 60_000} now="ran `factory report pr`" actions={adhocActions.slice(-2)}
             onAbandon={() => {}}
             job={{ id: "12", sessionId: "3", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: null, number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "PR open", branch: "worktree-ticket-28-ticket-job-launch-to-done", worktree: "/home/jeff/widgets/.claude/worktrees/ticket-28-ticket-job-launch-to-done", pr: { number: 46, url: "https://github.com/jeff/widgets/pull/46", draft: false } }}
+          />
+          <Eyebrow>Ticket Job · Step detail: struggling, PR with CI checks</Eyebrow>
+          <TicketJobView
+            machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={23 * 60_000} now="running uv run pytest" actions={adhocActions.slice(-2)}
+            step={ticketStep}
+            job={{ id: "16", sessionId: "7", machine: "wsl-desk", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: null, number: 31, workItem: { name: "Ticket Job Step detail", url: "https://github.com/jeff/widgets/issues/31" }, stage: "PR open", branch: "ticket-31-step-detail", worktree: null, pr: { number: 52, url: "https://github.com/jeff/widgets/pull/52", draft: false } }}
+          />
+          <Eyebrow>Ticket Job · Step just started, silent, no checklist</Eyebrow>
+          <TicketJobView
+            machine="mac-studio" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={12 * 60_000} now={null} actions={[]}
+            step={freshStep}
+            job={{ id: "17", sessionId: "8", machine: "mac-studio", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", duplicateOf: null, number: 33, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null }}
           />
           <Eyebrow>Ticket Job · Work item unknown, ended without a PR</Eyebrow>
           <TicketJobView

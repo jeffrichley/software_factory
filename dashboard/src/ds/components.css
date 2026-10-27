@@ -375,3 +375,53 @@ a { color: inherit; }
 /* Wayfinder detail */
 .prose { margin: 0; }
 .files { margin: 0; padding-left: var(--s5); display: grid; gap: 4px; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+
+/* ---------- Step detail ---------- */
+.step { display: grid; gap: var(--s4); border-top: 1px solid var(--line); padding-top: var(--s5); }
+.step-h { display: flex; align-items: flex-start; gap: var(--s3); justify-content: space-between; }
+.step-h h3 { margin: 4px 0 0; font: 600 var(--fs-lg)/1.2 var(--font-display); overflow-wrap: anywhere; }
+.step-tags, .struggle { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: flex-end; }
+.phase-time { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+.step-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); }
+.step-grid > .panel { align-content: start; }
+@media (max-width: 720px) { .step-grid { grid-template-columns: minmax(0, 1fr); } }
+.checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-sm); }
+.checklist li { display: flex; gap: 8px; align-items: flex-start; }
+.checklist .cb { flex: none; width: 16px; height: 16px; margin-top: 2px; border: 1.5px solid var(--line-2); border-radius: 3px; display: grid; place-items: center; color: var(--bg); }
+.checklist li.done .cb { background: var(--text-2); border-color: var(--text-2); }
+.checklist li.done span:last-child { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--line-2); }
+.checklist li.cur span:last-child { color: var(--text); font-weight: 500; }
+.checklist li.cur .cb { border-color: var(--working); }
+.tests { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); font-size: var(--fs-sm); }
+.tpulse { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+.tpulse.pass { background: var(--pass); }
+.tpulse.fail { background: var(--fail); }
+.lbl-pass { color: var(--pass); font-weight: 600; }
+.lbl-fail { color: var(--fail); font-weight: 600; }
+.thist { display: inline-flex; gap: 2px; align-items: flex-end; }
+.thist i { display: block; width: 6px; height: 16px; border-radius: 1px; }
+.thist i.p { background: var(--pass); opacity: .75; }
+.thist i.f { background: var(--fail); height: 20px; }
+.step .files, .commits, .events, .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-sm); }
+.step .files li, .commits li, .checks li { display: flex; gap: var(--s2); align-items: baseline; min-width: 0; }
+.step .files .path { font-family: var(--font-mono); flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.step .files .muted { color: var(--text-3); }
+.churn { color: var(--fail-soft); }
+.add { color: var(--pass); font-family: var(--font-mono); }
+.del { color: var(--fail); font-family: var(--font-mono); }
+.sha { font-family: var(--font-mono); color: var(--working); }
+.commits .msg { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.dstat { display: inline-flex; gap: 1px; flex: none; }
+.dstat i { display: block; width: 6px; height: 10px; border-radius: 1px; background: var(--surface-3); }
+.dstat i.a { background: var(--pass); }
+.dstat i.d { background: var(--fail); }
+.review { display: flex; align-items: baseline; gap: var(--s3); }
+.big-num { font: 700 var(--fs-xl)/1 var(--font-mono); }
+.pr-line { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.checks li.chk-pass { color: var(--pass); }
+.checks li.chk-fail { color: var(--fail); }
+.checks li.chk-pending { color: var(--needs-fg); }
+.checks li.chk-skipped { color: var(--text-3); }
+.checks li .mono { color: var(--text); }
+.events li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: var(--s3); color: var(--text-2); }
+.events time { font-family: var(--font-mono); color: var(--text-3); }

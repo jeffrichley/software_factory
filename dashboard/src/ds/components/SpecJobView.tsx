@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react";
-import { formatDuration } from "../format";
 import { isEnded, type JobData } from "../jobs";
 import { specGraph, ticketName, type SpecStepData } from "../specDag";
-import { PENDING } from "../types";
 import { GraphView } from "./Graph";
 import { WorkItemLink } from "./InboxCards";
 import { Panel } from "./Panel";
-import { PhaseTrack } from "./PhaseTrack";
+import { Review, StepDetail } from "./StepDetail";
+import type { StepDetailData } from "../stepDetail";
 import { Detail, Facts, Hint, PrLink, SessionHeader, Timeline, type SessionHeaderProps, type TimelineEntry } from "./SessionDetail";
 import { Tag } from "./Tag";
 import { Unknown } from "./Unknown";
@@ -16,6 +15,10 @@ export interface SpecJobViewProps extends Omit<SessionHeaderProps, "title"> {
   job: JobData | null;
   /** The Job's Steps, one per Ticket of its Spec. */
   steps: SpecStepData[];
+  /** What each Step has done, by Step id. */
+  details?: Record<string, StepDetailData>;
+  /** Code-review's findings on the whole integration branch, when known. */
+  review?: StepDetailData["review"];
   /** The time now (ms), for time in Phase. */
   nowMs: number;
   actions: TimelineEntry[];
@@ -24,7 +27,7 @@ export interface SpecJobViewProps extends Omit<SessionHeaderProps, "title"> {
 }
 
 /** A Spec Job: its Spec, integration branch, stage and PR, its Ticket DAG, and the Step opened from the DAG. */
-export function SpecJobView({ job, steps, nowMs, actions, onAbandon, ...header }: SpecJobViewProps) {
+export function SpecJobView({ job, steps, details = {}, review = null, nowMs, actions, onAbandon, ...header }: SpecJobViewProps) {
   const [stepId, setStepId] = useState<string>();
   const items = useMemo(() => specGraph(steps, nowMs), [steps, nowMs]);
   const step = steps.find((s) => s.id === stepId);
@@ -47,6 +50,7 @@ export function SpecJobView({ job, steps, nowMs, actions, onAbandon, ...header }
             ["Worktree", job?.worktree ? <span className="mono">{job.worktree}</span> : <Unknown />],
             ["Merged", steps.length ? `${merged} / ${steps.length} Tickets` : <Unknown />],
             ["PR", <PrLink pr={job?.pr ?? null} />],
+            ["Review findings", <Review review={review} />],
           ]}
         />
         {job && onAbandon && !isEnded(job.stage) ? (
@@ -62,7 +66,7 @@ export function SpecJobView({ job, steps, nowMs, actions, onAbandon, ...header }
           <Hint>No Tickets yet: they appear once the Spec's child Tickets are read from GitHub.</Hint>
         )}
       </Panel>
-      {step ? <StepPanel step={step} steps={steps} nowMs={nowMs} /> : steps.length ? <Hint>Select a Ticket in the DAG to open its Step.</Hint> : null}
+      {step ? <StepDetail step={step} detail={details[step.id] ?? null} nowMs={nowMs} inSpecJob blockers={blockersOf(step, steps)} /> : steps.length ? <Hint>Select a Ticket in the DAG to open its Step.</Hint> : null}
       <Panel title={actions.length ? `Last ${actions.length} actions` : "Last actions"}>
         {actions.length ? <Timeline actions={actions} /> : <Hint>No actions yet.</Hint>}
       </Panel>
@@ -70,20 +74,10 @@ export function SpecJobView({ job, steps, nowMs, actions, onAbandon, ...header }
   );
 }
 
-function StepPanel({ step, steps, nowMs }: { step: SpecStepData; steps: SpecStepData[]; nowMs: number }) {
-  const blockers = step.blockedBy.map((n) => {
+/** The Tickets still blocking a Step (not merged yet), by name. */
+function blockersOf(step: SpecStepData, steps: SpecStepData[]): string[] {
+  return step.blockedBy.flatMap((n) => {
     const s = steps.find((x) => x.number === n);
-    return s ? ticketName(s) : `#${n}`;
+    return s?.phase === "Merged" ? [] : [s ? ticketName(s) : `#${n}`];
   });
-  return (
-    <Panel title={`Step · ${ticketName(step)}`} label="Step detail">
-      <Facts
-        items={[
-          ["Phase", step.phase === PENDING ? <Tag tone="unknown">Pending</Tag> : <PhaseTrack phase={step.phase} compact />],
-          ["In it for", step.phase === null ? <Unknown /> : formatDuration(nowMs - Date.parse(step.phaseSince))],
-          ["Blocked by", blockers.length ? blockers.join(", ") : "nothing"],
-        ]}
-      />
-    </Panel>
-  );
 }

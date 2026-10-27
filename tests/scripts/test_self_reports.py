@@ -117,3 +117,17 @@ def test_escalate_requires_its_job(env, repo, server):
     assert done.returncode != 0
     assert "--job" in done.stdout + done.stderr
     assert server.events() == ["repo_installed"]
+
+
+def test_review_reports_code_reviews_findings_per_axis(env, repo, server):
+    installed(env, repo, server)
+
+    done = run_factory(env, repo, "review", "--standards", "3", "--spec", "0", "--job", "3")
+    assert done.returncode == 0, done.stderr
+    assert server.received[-1]["body"]["event"] == {"hook_event_name": "report_review", "job_id": "3", "standards": 3, "spec": 0}
+
+    done = run_factory(env, repo, "review", "--standards", "1", "--spec", "2", "--job", "3", "--ticket", "6")
+    assert done.returncode == 0, done.stderr
+    assert server.received[-1]["body"]["event"] == {
+        "hook_event_name": "report_review", "job_id": "3", "standards": 1, "spec": 2, "ticket": 6,
+    }
