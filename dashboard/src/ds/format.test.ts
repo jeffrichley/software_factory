@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClock, formatDuration, phaseClass, stateLook } from "./format";
+import { formatClock, formatDuration, formatWallClock, phaseClass, stateLook } from "./format";
 
 describe("formatDuration", () => {
   it("shows seconds under a minute, minutes under an hour, then hours and minutes", () => {
@@ -43,5 +43,12 @@ describe("formatClock", () => {
   it("shows a timeline time as local hours and minutes", () => {
     expect(formatClock(new Date(2026, 9, 26, 9, 5, 42).toISOString())).toBe("09:05");
     expect(formatClock(new Date(2026, 9, 26, 23, 59).toISOString())).toBe("23:59");
+  });
+});
+
+describe("formatWallClock", () => {
+  it("shows the header clock as local hours, minutes and seconds", () => {
+    expect(formatWallClock(new Date(2026, 9, 26, 9, 5, 7).getTime())).toBe("09:05:07");
+    expect(formatWallClock(new Date(2026, 9, 26, 23, 59, 59).getTime())).toBe("23:59:59");
   });
 });

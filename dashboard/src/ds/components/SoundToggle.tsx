@@ -5,7 +5,7 @@ export function SoundToggle({ on, onToggle }: { on: boolean; onToggle: () => voi
   return (
     <button
       type="button"
-      className={`count count-sound${on ? "" : " off"}`}
+      className={`btn btn-sound${on ? "" : " off"}`}
       aria-pressed={on}
       title={on ? "Mute sounds" : "Play sounds"}
       onClick={onToggle}
