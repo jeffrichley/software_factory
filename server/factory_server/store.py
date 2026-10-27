@@ -93,6 +93,17 @@ CREATE TABLE IF NOT EXISTS tool_uses (
   tool_input TEXT NOT NULL,
   PRIMARY KEY (session_id, tool_use_id)
 );
+-- A sound for one transition of a session's state, due at `due`. It plays (gets `seq`, the order the
+-- dashboard plays sounds in) once due if the session is still in that transition, else it is dropped.
+CREATE TABLE IF NOT EXISTS sounds (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL,
+  transition INTEGER NOT NULL,
+  sound TEXT NOT NULL,
+  due TEXT NOT NULL,
+  seq INTEGER,
+  UNIQUE (session_id, transition)
+);
 """
 # Columns added after the first release, so an existing database gains them on start.
 SESSION_COLUMNS = {
@@ -104,9 +115,12 @@ SESSION_COLUMNS = {
     "base_reason": "TEXT",
     "reason": "TEXT",  # JSON reason shown with Needs you
     "seen": "INTEGER NOT NULL DEFAULT 0",  # Done has been seen by the human
+    "transitions": "INTEGER NOT NULL DEFAULT 0",  # counts changes of shown state: a sound belongs to one
 }
 # The ad hoc detail view's timeline shows a session's last few actions; older ones are dropped.
 KEEP_ACTIONS = 8
+# The state lists the last few sounds played; a dashboard that missed more than these plays none of them late.
+KEEP_SOUNDS = 20
 
 # The `subagent` value for the main session itself.
 MAIN = ""
@@ -159,6 +173,7 @@ class Store:
         with self.db:
             cur = self.db.execute(
                 "UPDATE sessions SET ended_at = NULL, state = 'Working', state_since = ?, base = 'Working',"
+                " transitions = transitions + 1,"
                 " base_reason = NULL, reason = NULL WHERE id = ? AND ended_at IS NOT NULL",
                 (iso(now), session_id),
             )
@@ -331,15 +346,61 @@ class Store:
             if prompt:
                 self.db.execute(
                     "UPDATE sessions SET state_since = CASE WHEN state = 'Needs you' THEN state_since ELSE ? END,"
+                    " transitions = transitions + (state != 'Needs you'),"
                     " state = 'Needs you', reason = ? WHERE id = ?",
                     (iso(now), prompt["reason"], session_id),
                 )
             else:
                 self.db.execute(
                     "UPDATE sessions SET state_since = CASE WHEN state = base THEN state_since ELSE ? END,"
+                    " transitions = transitions + (state != base),"
                     " state = base, reason = base_reason WHERE id = ?",
                     (iso(now), session_id),
                 )
+
+    # ---------- Sounds (rules in sounds.py) ----------
+
+    @locked
+    def schedule_sound(self, session_id: int, transition: int, sound: str, due: datetime) -> None:
+        """One sound per transition: scheduling it again can only bring it forward, never repeat it."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO sounds (session_id, transition, sound, due) VALUES (?, ?, ?, ?)"
+                " ON CONFLICT (session_id, transition) DO UPDATE SET due = MIN(due, excluded.due) WHERE seq IS NULL",
+                (session_id, transition, sound, iso(due)),
+            )
+
+    @locked
+    def release_sounds(self, now: datetime) -> None:
+        """Due sounds play if their session is still live in the transition they were for; the rest are dropped."""
+        with self.db:
+            due = self.db.execute(
+                "SELECT k.id, k.transition = s.transitions AND s.ended_at IS NULL AS still FROM sounds k"
+                " JOIN sessions s ON s.id = k.session_id WHERE k.seq IS NULL AND k.due <= ? ORDER BY k.due, k.id",
+                (iso(now),),
+            ).fetchall()
+            for row in due:
+                if row["still"]:
+                    self.db.execute(
+                        "UPDATE sounds SET seq = (SELECT COALESCE(MAX(seq), 0) + 1 FROM sounds) WHERE id = ?", (row["id"],)
+                    )
+                else:
+                    self.db.execute("DELETE FROM sounds WHERE id = ?", (row["id"],))
+            self.db.execute(
+                "DELETE FROM sounds WHERE seq IS NOT NULL AND seq <= (SELECT MAX(seq) FROM sounds) - ?", (KEEP_SOUNDS,)
+            )
+
+    @locked
+    def sounds(self) -> list[dict]:
+        """The latest sounds played, in play order; `id` only grows, so the dashboard plays each once."""
+        rows = self.db.execute(
+            "SELECT k.seq, k.session_id, s.machine, k.sound, k.due FROM sounds k JOIN sessions s ON s.id = k.session_id"
+            " WHERE k.seq IS NOT NULL ORDER BY k.seq"
+        ).fetchall()
+        return [
+            {"id": r["seq"], "session_id": str(r["session_id"]), "machine": r["machine"], "sound": r["sound"], "at": r["due"]}
+            for r in rows
+        ]
 
     # ---------- Tracking ----------
 
