@@ -46,6 +46,10 @@ _Avoid_: PRD, design doc
 A child of a Spec: one implementable vertical slice produced by `to-tickets`.
 _Avoid_: Task, story, slice
 
+**Mismatch**:
+A skill started against a Work item of a kind it isn't meant for, such as `implement` on a Spec; flagged, never blocked.
+_Avoid_: Wrong kind, error
+
 ### Running work
 
 **Job**:
