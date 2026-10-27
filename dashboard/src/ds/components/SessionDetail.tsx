@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { formatClock, formatDuration } from "../format";
-import type { JobData } from "../jobs";
+import { isEnded, type JobData } from "../jobs";
 import { AD_HOC, type SessionState } from "../types";
 import { Icon } from "./Icon";
 import { WorkItemLink } from "./InboxCards";
@@ -108,10 +108,12 @@ export interface TicketJobViewProps extends Omit<SessionHeaderProps, "title"> {
   /** The session's current Job; null until one starts. */
   job: JobData | null;
   actions: TimelineEntry[];
+  /** Marks the Job abandoned; offered only while the Job is active. */
+  onAbandon?: () => void;
 }
 
 /** A Ticket Job: its Ticket, where it works, its stage and PR, then the last actions. */
-export function TicketJobView({ job, actions, ...header }: TicketJobViewProps) {
+export function TicketJobView({ job, actions, onAbandon, ...header }: TicketJobViewProps) {
   const ticket = job?.workItem ? <WorkItemLink item={job.workItem} /> : job?.number ? `#${job.number}` : <Unknown />;
   return (
     <Detail label="Ticket Job detail">
@@ -120,12 +122,22 @@ export function TicketJobView({ job, actions, ...header }: TicketJobViewProps) {
         <Facts
           items={[
             ["Ticket", job?.number ? <span className="mono">#{job.number}</span> : <Unknown />],
-            ["Stage", job ? <Tag>{job.stage}</Tag> : <Unknown />],
+            ["Stage", job ? (
+              <>
+                <Tag>{job.stage}</Tag>
+                {job.duplicateOf ? <> <Tag tone="struggle">duplicate of Job {job.duplicateOf}</Tag></> : null}
+              </>
+            ) : <Unknown />],
             ["Branch", job?.branch ? <span className="mono">{job.branch}</span> : <Unknown />],
             ["Worktree", job?.worktree ? <span className="mono">{job.worktree}</span> : <Unknown />],
             ["PR", <PrLink pr={job?.pr ?? null} />],
           ]}
         />
+        {job && onAbandon && !isEnded(job.stage) ? (
+          <div className="toolbar">
+            <button type="button" className="btn" onClick={onAbandon}>Mark abandoned</button>
+          </div>
+        ) : null}
       </Panel>
       <Panel title={actions.length ? `Last ${actions.length} actions` : "Last actions"}>
         {actions.length ? <Timeline actions={actions} /> : <Hint>No actions yet.</Hint>}

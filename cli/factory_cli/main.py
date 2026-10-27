@@ -334,6 +334,12 @@ def server_table(given: Path | None, file_name: str, shipped: Path) -> Path:
 
 
 @app.command()
+def escalate(reason: Annotated[str, typer.Argument(help="Why the Job needs the human.")], job: JobOption) -> None:
+    """The Job is stopping to ask the human for approval or help: it shows as Needs you with this reason."""
+    self_report("escalate", job, reason=reason)
+
+
+@app.command()
 def server(
     port: Annotated[int, typer.Option(help="Port to listen on.")] = DEFAULT_PORT,
     host: Annotated[str, typer.Option(help="Interface to bind; 0.0.0.0 serves the whole local network.")] = "0.0.0.0",

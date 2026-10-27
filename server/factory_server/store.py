@@ -9,7 +9,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from .jobs import IN_PROGRESS, PR_OPEN
+from .jobs import ENDED, stage_of
 from .skills import AD_HOC
 
 SCHEMA = """
@@ -154,6 +154,10 @@ WORK_ITEM_COLUMNS = {
     "parent": "INTEGER",  # the parent issue's number: a Ticket's Spec, a Decision ticket's Map
     "blocked_by": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues in this repo that block it
 }
+JOB_COLUMNS = {
+    "abandoned_at": "TEXT",  # when the human abandoned the Job on the dashboard
+    "duplicate_of": "INTEGER",  # the active Job already on its Work item when it started (or learnt it): flagged, not blocked
+}
 PULL_REQUEST_COLUMNS = {
     "closes": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues its body closes
 }
@@ -189,7 +193,7 @@ class Store:
         self.db.executescript(SCHEMA)
         with self.db:
             for table, columns in (("sessions", SESSION_COLUMNS), ("work_items", WORK_ITEM_COLUMNS),
-                                   ("pull_requests", PULL_REQUEST_COLUMNS)):
+                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS)):
                 have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
                 for column, decl in columns.items():
                     if column not in have:
@@ -522,6 +526,10 @@ class Store:
                 " VALUES (:repo, :number, :title, :state, :draft, :url, :closes)",
                 [{**pull, "repo": repo, "closes": json.dumps(pull.get("closes", []))} for pull in pulls],
             )
+            # A PR the poll found for a Job stays the Job's, so its closing or merging ends the Job.
+            for job in self.db.execute("SELECT * FROM jobs WHERE repo = ? AND pr_url IS NULL", (repo,)).fetchall():
+                if pr := self._job_pr(job):
+                    self.db.execute("UPDATE jobs SET pr_url = ? WHERE id = ?", (pr["url"], job["id"]))
 
     @locked
     def work_items(self) -> list[dict]:
@@ -574,10 +582,28 @@ class Store:
     def start_job(self, session_id: int, kind: str, repo: str, number: int | None, now: datetime) -> int:
         """A new Job in the session; older ones are never closed by it."""
         with self.db:
-            return self.db.execute(
+            job_id = self.db.execute(
                 "INSERT INTO jobs (session_id, kind, repo, number, started_at) VALUES (?, ?, ?, ?, ?)",
                 (session_id, kind, repo, number, iso(now)),
             ).lastrowid
+            self._flag_duplicate(job_id)
+            return job_id
+
+    def _flag_duplicate(self, job_id: int) -> None:
+        """Flag the Job a duplicate of the earliest other active Job (any session, any Machine) on its Work item."""
+        job = self.db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if job["number"] is None or job["duplicate_of"] is not None:
+            return
+        for other in self.db.execute(
+            "SELECT * FROM jobs WHERE repo = ? AND number = ? AND id != ? ORDER BY id", (job["repo"], job["number"], job_id)
+        ).fetchall():
+            if self._stage(other, self._job_pr(other)) not in ENDED:
+                self.db.execute("UPDATE jobs SET duplicate_of = ? WHERE id = ?", (other["id"], job_id))
+                return
+
+    @locked
+    def duplicate_of(self, job_id: int) -> int | None:
+        return self.db.execute("SELECT duplicate_of FROM jobs WHERE id = ?", (job_id,)).fetchone()["duplicate_of"]
 
     @locked
     def current_job(self, session_id: int) -> int | None:
@@ -595,6 +621,7 @@ class Store:
         """The Job's Work item; a Step that didn't know its Ticket (a Ticket Job's one Step) works the same one."""
         with self.db:
             self.db.execute("UPDATE jobs SET number = ? WHERE id = ?", (number, job_id))
+            self._flag_duplicate(job_id)
             self.db.execute("UPDATE steps SET number = ? WHERE job_id = ? AND number IS NULL", (number, job_id))
 
     @locked
@@ -731,17 +758,31 @@ class Store:
             }
             found = next((p for p in pulls if p["state"] != "closed" and items & set(json.loads(p["closes"]))), None)
         if found is not None:
-            return {"number": found["number"], "url": found["url"], "draft": bool(found["draft"])}
+            return {"number": found["number"], "url": found["url"], "draft": bool(found["draft"]), "state": found["state"]}
         if job["pr_url"]:
             m = re.search(r"/pull/(\d+)", job["pr_url"])
-            return {"number": int(m[1]) if m else None, "url": job["pr_url"], "draft": False}
+            return {"number": int(m[1]) if m else None, "url": job["pr_url"], "draft": False, "state": "open"}
         return None
 
     @locked
-    def job_has_pr(self, job_id: int) -> bool:
-        """A non-draft PR exists for the Job, which makes it Done."""
-        pr = self._job_pr(self.db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
-        return bool(pr and not pr["draft"])
+    def abandon_job(self, job_id: int, now: datetime) -> bool:
+        """The human abandoned the Job; false when there is no such Job."""
+        with self.db:
+            return self.db.execute(
+                "UPDATE jobs SET abandoned_at = COALESCE(abandoned_at, ?) WHERE id = ?", (iso(now), job_id)
+            ).rowcount > 0
+
+    def _stage(self, job: sqlite3.Row, pr: dict | None) -> str:
+        item = self.db.execute(
+            "SELECT state FROM work_items WHERE repo = ? AND number = ?", (job["repo"], job["number"])
+        ).fetchone()
+        return stage_of(pr, job["abandoned_at"] is not None, item and item["state"])
+
+    @locked
+    def job_stage(self, job_id: int) -> str:
+        """In progress until a non-draft PR exists (which makes it Done), then PR open, Merged, Closed or Abandoned."""
+        job = self.db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return self._stage(job, self._job_pr(job))
 
     @locked
     def jobs(self) -> list[dict]:
@@ -758,7 +799,8 @@ class Store:
                 "number": j["number"],
                 "work_item": {"title": j["title"], "url": j["url"]} if j["title"] is not None else None,
                 "worktree": j["worktree"], "branch": j["branch"],
-                "stage": PR_OPEN if pr and not pr["draft"] else IN_PROGRESS,
-                "pr": pr, "started_at": j["started_at"],
+                "stage": self._stage(j, pr),
+                "pr": pr and {k: pr[k] for k in ("number", "url", "draft")}, "started_at": j["started_at"],
+                "duplicate_of": None if j["duplicate_of"] is None else str(j["duplicate_of"]),
             })
         return out

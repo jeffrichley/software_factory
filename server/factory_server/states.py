@@ -21,11 +21,30 @@ ASK_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 NO_PR = {"kind": "no-pr"}
 
 
-def pr_arrived(store: Store, session_id: int, now: datetime) -> None:
-    """The session's Job now has its non-draft PR: if it stopped without one, it is Done after all."""
-    if (store.session(session_id)["base_reason"] or "") == json.dumps(NO_PR):
-        store.set_base(session_id, "Done")
-        store.settle(session_id, now)
+def pr_no_longer_awaited(store: Store, session_id: int, now: datetime, seen: bool = False) -> bool:
+    """The session's Job has its non-draft PR, or has ended without one: if it stopped waiting for a PR,
+    it is Done after all (already `seen` when the human ended the Job themselves). True if it changed."""
+    if (store.session(session_id)["base_reason"] or "") != json.dumps(NO_PR):
+        return False
+    store.set_base(session_id, "Done")
+    if seen:
+        store.mark_seen(session_id)
+    store.settle(session_id, now)
+    return True
+
+
+def escalate(store: Store, session_id: int, reason: str, now: datetime) -> None:
+    """The agent asked for the human's approval or help (`factory escalate`), and is stopping to wait.
+
+    It waits through the end of the call that sent it and the Stop after it; it clears when the human
+    types into the session, or when the main agent starts another tool call (it carried on after all).
+    """
+    store.set_base(session_id, "Needs you", {"kind": "escalation", "reason": reason})
+    store.settle(session_id, now)
+
+
+def escalated(store: Store, session_id: int) -> bool:
+    return json.loads(store.session(session_id)["base_reason"] or "{}").get("kind") == "escalation"
 
 
 def permission_reason(event: dict) -> dict:
@@ -67,7 +86,8 @@ def apply(store: Store, session_id: int, event: dict, now: datetime, job_without
             store.clear_loose_prompts(session_id, subagent)
             if event.get("tool_name") in ASK_TOOLS:
                 store.add_prompt(session_id, subagent, tool_use_id, naming(ask_reason(event)), now)
-            store.set_base(session_id, "Working")
+            if subagent == MAIN or not escalated(store, session_id):
+                store.set_base(session_id, "Working")
         case "PermissionRequest":
             # No tool_use_id on this event: tie it to the open call it asks about. A question or plan
             # approval asking permission stays the question it already is.
@@ -78,7 +98,8 @@ def apply(store: Store, session_id: int, event: dict, now: datetime, job_without
                 store.close_tool_use(session_id, tool_use_id)
                 store.clear_prompts(session_id, key=tool_use_id)
             store.clear_loose_prompts(session_id, subagent)
-            store.set_base(session_id, "Working")
+            if not escalated(store, session_id):
+                store.set_base(session_id, "Working")
         case "Elicitation":
             store.add_prompt(session_id, subagent, elicitation_key(event),
                              naming({"kind": "question", "text": event.get("message", "")}), now)
@@ -93,7 +114,9 @@ def apply(store: Store, session_id: int, event: dict, now: datetime, job_without
             store.set_base(session_id, "Working")
         case "Stop":
             # The main turn ended, so its own prompts are over; a subagent still running may yet ask.
-            if running_background_tasks(event):
+            if escalated(store, session_id):
+                store.end_turn(session_id)
+            elif running_background_tasks(event):
                 store.end_turn(session_id, MAIN)
                 store.set_base(session_id, "Working")
             else:

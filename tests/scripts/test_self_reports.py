@@ -96,3 +96,24 @@ def test_a_self_report_from_an_untracked_repo_is_refused(env, repo, server):
     assert done.returncode != 0
     assert "factory install" in done.stdout + done.stderr
     assert server.received == []
+
+
+def test_escalate_reports_why_the_job_needs_the_human(env, repo, server):
+    installed(env, repo, server)
+
+    done = run_factory(env, repo, "escalate", "--job", "3", "Which database should this use?")
+
+    assert done.returncode == 0, done.stderr
+    assert server.received[-1]["body"]["event"] == {
+        "hook_event_name": "escalate", "job_id": "3", "reason": "Which database should this use?",
+    }
+
+
+def test_escalate_requires_its_job(env, repo, server):
+    installed(env, repo, server)
+
+    done = run_factory(env, repo, "escalate", "Which database?")
+
+    assert done.returncode != 0
+    assert "--job" in done.stdout + done.stderr
+    assert server.events() == ["repo_installed"]

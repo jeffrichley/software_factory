@@ -16,8 +16,8 @@ from pydantic import BaseModel
 from . import sounds, states
 from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub, read_blocked_by, read_issues
-from .jobs import (SPEC_JOB, STEP_REPORT, TICKET_JOB, spec_job_start, spec_step_start, ticket_job_start, tickets_named,
-                   worktree_of)
+from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, spec_job_start, spec_step_start, ticket_job_start,
+                   tickets_named, worktree_of)
 from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
@@ -170,10 +170,10 @@ def create_app(
                 store.add_step(job_id, number, clock(), PENDING)
 
     def prs_arrived(repo: str) -> None:
-        """A poll may bring the non-draft PR of a Job that already stopped without one."""
+        """A poll may bring the non-draft PR of a Job that already stopped without one, or end that Job."""
         for s in store.live_sessions():
             job_id = store.current_job(int(s["id"]))
-            if s["repo"] == repo and job_id is not None and store.job_has_pr(job_id):
+            if s["repo"] == repo and job_id is not None and store.job_stage(job_id) != IN_PROGRESS:
                 pr_arrived(int(s["id"]), clock())
 
     def prs_merged(repo: str) -> None:
@@ -184,8 +184,8 @@ def create_app(
                 infer_phase(step_id, job_id, "pr_merged", session_id, clock())
 
     def pr_arrived(session_id: int, now: datetime) -> None:
-        states.pr_arrived(store, session_id, now)
-        sounds.schedule(store, session_id, {}, now)  # a stopped Job turning Done sounds like any Done
+        if states.pr_no_longer_awaited(store, session_id, now):
+            sounds.schedule(store, session_id, {}, now)  # a stopped Job turning Done sounds like any Done
 
     async def poll_forever() -> None:
         while True:
@@ -235,7 +235,7 @@ def create_app(
             case "repo_uninstalled":
                 store.untrack_repo(envelope.repo, envelope.machine, now)
                 polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
-            case "report_pr" | "job_issue" | "report_phase" | "report_step" as name:
+            case "report_pr" | "job_issue" | "report_phase" | "report_step" | "escalate" as name:
                 session_id, job_id, step_id = self_report(name, event, now)
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
@@ -262,7 +262,7 @@ def create_app(
                 else:
                     # A resumed session, or one still running when its repo was uninstalled and reinstalled.
                     store.resume_session(session_id, now)
-                    without_pr = job_id is not None and not store.job_has_pr(job_id)
+                    without_pr = job_id is not None and store.job_stage(job_id) == IN_PROGRESS
                     # A Spec Job's subagent asking for the human asks about its Step's Ticket.
                     ticket = store.step_number(step_id) if spec_job and step_id is not None else None
                     states.apply(store, session_id, event, now, job_without_pr=without_pr, ticket=ticket)
@@ -342,8 +342,10 @@ def create_app(
             add_spec_steps(job_id, envelope.repo)
         item = store.work_item(envelope.repo, number) if number else None
         worktree = worktree_of(envelope.event.get("cwd"), envelope.repo_path)
+        duplicate_of = store.duplicate_of(job_id)
         starting = ticket_job_start if role.role == TICKET_JOB else spec_job_start
-        return starting(str(job_id), number, item and item["title"], worktree)
+        return starting(str(job_id), number, item and item["title"], worktree,
+                        duplicate_of=None if duplicate_of is None else str(duplicate_of))
 
     def follow_worktree(job_id: int, event: dict, main_tree: str) -> None:
         """Where the Job works: the worktree EnterWorktree made, else the session's own cwd when in one."""
@@ -374,7 +376,10 @@ def create_app(
                 step_id = report_phase(job_id, event, now)
             case "report_step":
                 step_id = report_step(job_id, event)
-        if store.current_job(session_id) == job_id and store.job_has_pr(job_id):
+            case "escalate":
+                states.escalate(store, session_id, str(event.get("reason") or ""), now)
+                sounds.schedule(store, session_id, event, now)
+        if store.current_job(session_id) == job_id and store.job_stage(job_id) != IN_PROGRESS:
             pr_arrived(session_id, now)
         return session_id, job_id, step_id
 
@@ -404,6 +409,17 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"Job {job_id} has no Step" + (f" for #{ticket}" if ticket else ""))
         store.set_phase(step_id, phase, now)
         return step_id
+
+    @app.post("/api/jobs/{job_id}/abandon")
+    async def abandon(job_id: int) -> dict:
+        """The human abandoned the Job on the dashboard: it moves to History, and its session waits for no PR."""
+        if not store.abandon_job(job_id, clock()):
+            raise HTTPException(status_code=404, detail="no such Job")
+        session_id = store.job_session(job_id)
+        if store.current_job(session_id) == job_id:
+            states.pr_no_longer_awaited(store, session_id, clock(), seen=True)
+        hub.publish(state())
+        return {"ok": True}
 
     @app.post("/api/sessions/{session_id}/seen")
     async def seen(session_id: int) -> dict:

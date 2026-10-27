@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { formatDuration } from "../format";
-import type { JobData } from "../jobs";
+import { isEnded, type JobData } from "../jobs";
 import { specGraph, ticketName, type SpecStepData } from "../specDag";
 import { PENDING } from "../types";
 import { GraphView } from "./Graph";
@@ -19,10 +19,12 @@ export interface SpecJobViewProps extends Omit<SessionHeaderProps, "title"> {
   /** The time now (ms), for time in Phase. */
   nowMs: number;
   actions: TimelineEntry[];
+  /** Marks the Job abandoned; offered only while the Job is active. */
+  onAbandon?: () => void;
 }
 
 /** A Spec Job: its Spec, integration branch, stage and PR, its Ticket DAG, and the Step opened from the DAG. */
-export function SpecJobView({ job, steps, nowMs, actions, ...header }: SpecJobViewProps) {
+export function SpecJobView({ job, steps, nowMs, actions, onAbandon, ...header }: SpecJobViewProps) {
   const [stepId, setStepId] = useState<string>();
   const items = useMemo(() => specGraph(steps, nowMs), [steps, nowMs]);
   const step = steps.find((s) => s.id === stepId);
@@ -35,13 +37,23 @@ export function SpecJobView({ job, steps, nowMs, actions, ...header }: SpecJobVi
         <Facts
           items={[
             ["Spec", job?.number ? <span className="mono">#{job.number}</span> : <Unknown />],
-            ["Stage", job ? <Tag>{job.stage}</Tag> : <Unknown />],
+            ["Stage", job ? (
+              <>
+                <Tag>{job.stage}</Tag>
+                {job.duplicateOf ? <> <Tag tone="struggle">duplicate of Job {job.duplicateOf}</Tag></> : null}
+              </>
+            ) : <Unknown />],
             ["Integration branch", job?.branch ? <span className="mono">{job.branch}</span> : <Unknown />],
             ["Worktree", job?.worktree ? <span className="mono">{job.worktree}</span> : <Unknown />],
             ["Merged", steps.length ? `${merged} / ${steps.length} Tickets` : <Unknown />],
             ["PR", <PrLink pr={job?.pr ?? null} />],
           ]}
         />
+        {job && onAbandon && !isEnded(job.stage) ? (
+          <div className="toolbar">
+            <button type="button" className="btn" onClick={onAbandon}>Mark abandoned</button>
+          </div>
+        ) : null}
       </Panel>
       <Panel title="Ticket DAG">
         {steps.length ? (

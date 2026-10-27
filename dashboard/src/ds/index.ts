@@ -30,3 +30,4 @@ export * from "./components/SessionTable";
 export * from "./components/SessionDetail";
 export * from "./components/SpecJobView";
 export * from "./components/TopBar";
+export * from "./components/History";

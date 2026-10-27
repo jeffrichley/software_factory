@@ -6,9 +6,13 @@ import re
 TICKET_JOB = "Ticket Job"
 SPEC_JOB = "Spec Job"
 
-# Job stages; Merged, Closed and Abandoned come with the Job's end.
+# Job stages; Merged, Closed and Abandoned come with the Job's end, and move it to History.
 IN_PROGRESS = "In progress"
 PR_OPEN = "PR open"
+MERGED = "Merged"
+CLOSED = "Closed"
+ABANDONED = "Abandoned"
+ENDED = (MERGED, CLOSED, ABANDONED)
 
 # The words GitHub reads as closing an issue from a PR body.
 CLOSING = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.IGNORECASE)
@@ -34,6 +38,23 @@ def closed_by(body: str | None) -> list[int]:
     return sorted({int(n) for n in CLOSING.findall(body or "")})
 
 
+def stage_of(pr: dict | None, abandoned: bool, item_state: str | None) -> str:
+    """A Job's stage from its PR (with the PR's state), whether the human abandoned it, and its Work item's state.
+
+    The human abandoning a Job is final. Otherwise its PR decides; a Work item closed with no
+    non-draft PR abandons the Job. No timeouts.
+    """
+    if abandoned:
+        return ABANDONED
+    if pr and pr["state"] == "merged":
+        return MERGED
+    if pr and pr["state"] == "closed":
+        return CLOSED
+    if item_state == "closed" and (pr is None or pr["draft"]):
+        return ABANDONED
+    return PR_OPEN if pr and not pr["draft"] else IN_PROGRESS
+
+
 def slug(title: str) -> str:
     """A title as a short kebab-case slug: "Add the widget API!" → add-the-widget-api."""
     return "-".join(re.findall(r"[a-z0-9]+", title.lower())[:SLUG_WORDS])
@@ -52,34 +73,48 @@ def worktree_of(cwd: str | None, main_tree: str) -> str | None:
     return path
 
 
-def ticket_job_start(job_id: str, number: int | None, title: str | None, worktree: str | None) -> str:
+
+
+def ticket_job_start(job_id: str, number: int | None, title: str | None, worktree: str | None,
+                     duplicate_of: str | None = None) -> str:
     """The context injected when a Ticket Job starts: how to work it so that it ends as a PR the Factory can see."""
     n = str(number) if number else "<N>"
-    lines = job_start(TICKET_JOB, job_id, number, title, worktree)
+    lines = job_start(TICKET_JOB, job_id, number, title, worktree, duplicate_of)
     lines.append(f"3. When finished, push your branch, open a non-draft PR whose body closes the Ticket "
                  f"(`Closes #{n}`), then run `factory report pr <url> --job {job_id}`.")
+    lines.append(escalate_line(job_id))
     return "\n".join(lines)
 
 
-def spec_job_start(job_id: str, number: int | None, title: str | None, worktree: str | None) -> str:
+def spec_job_start(job_id: str, number: int | None, title: str | None, worktree: str | None,
+                   duplicate_of: str | None = None) -> str:
     """The context injected when a Spec Job starts: its worktree's branch is the integration branch, and
     implement-spec works each Ticket in worktrees of its own."""
     n = str(number) if number else "<N>"
-    lines = job_start(SPEC_JOB, job_id, number, title, worktree)
+    lines = job_start(SPEC_JOB, job_id, number, title, worktree, duplicate_of)
     lines.append("3. implement-spec: use the current branch (this worktree's) as the integration branch; do not "
                  "create another one.")
     lines.append(f"4. When finished, push the integration branch. The PR's body closes the Spec and its Tickets "
                  f"(`Closes #{n}`, and `Closes #N` for each Ticket). Once the PR is non-draft (ready for review), "
                  f"run `factory report pr <url> --job {job_id}`.")
+    lines.append(escalate_line(job_id))
     return "\n".join(lines)
 
 
-def job_start(kind: str, job_id: str, number: int | None, title: str | None, worktree: str | None) -> list[str]:
+def escalate_line(job_id: str) -> str:
+    return f'Before you stop to ask for approval or help, run `factory escalate --job {job_id} "<reason>"`.'
+
+
+def job_start(kind: str, job_id: str, number: int | None, title: str | None, worktree: str | None,
+              duplicate_of: str | None = None) -> list[str]:
     """What every Job is told first: which Job it is, and the worktree to work in."""
     item, prefix = ("Spec", "spec") if kind == SPEC_JOB else ("Ticket", "ticket")
     n = str(number) if number else "<N>"
     name = f"{prefix}-{n}-{slug(title)}" if number and title else f"{prefix}-{n}-<slug>"
     lines = [f"The Factory tracks this as {kind} {job_id}" + (f" on #{number}." if number else ".")]
+    if duplicate_of:
+        lines.append(f"Note: Job {duplicate_of} is already working #{n}, so the Factory flags this Job as a duplicate. "
+                     "It is not blocked: carry on unless the human says otherwise.")
     if not number:
         lines.append(f"It couldn't tell which {item} this is: once you know its issue number N, run "
                      f"`factory job --issue N --job {job_id}`.")
