@@ -259,6 +259,15 @@ def create_app(
             if store.job_step_numbered(job_id, number) is None:
                 store.add_step(job_id, number, clock(), PENDING)
 
+    async def read_spec_steps(job_id: int, repo: str) -> None:
+        """A Spec Job's Steps are its Work item's Tickets as GitHub has them now; with GitHub unreachable, as last polled."""
+        polled_at[repo] = clock()
+        try:
+            await asyncio.to_thread(read_repo, repo)
+        except Exception:
+            log.exception("GitHub read of %s for the Steps of Spec Job %s failed", repo, job_id)
+        add_spec_steps(job_id, repo)
+
     def prs_arrived(repo: str) -> None:
         """A poll may bring the non-draft PR of a Job that already stopped without one, or end that Job."""
         for s in store.live_sessions():
@@ -326,7 +335,7 @@ def create_app(
                 store.untrack_repo(envelope.repo, envelope.machine, now)
                 polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
             case "report_pr" | "job_issue" | "report_phase" | "report_step" | "report_review" | "escalate" as name:
-                session_id, job_id, step_id = self_report(name, event, now)
+                session_id, job_id, step_id = await self_report(name, event, now)
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
                 if name in HIDE_EVENTS:
@@ -629,13 +638,7 @@ def create_app(
         if role.role == TICKET_JOB:
             store.add_step(job_id, number, now)  # a Ticket Job's one Step works its Ticket
         elif number:
-            # A Spec Job's Steps are its Spec's Tickets as GitHub has them now; with GitHub unreachable, as last polled.
-            polled_at[envelope.repo] = clock()
-            try:
-                await asyncio.to_thread(read_repo, envelope.repo)
-            except Exception:
-                log.exception("GitHub read of %s at the start of Spec Job %s failed", envelope.repo, job_id)
-            add_spec_steps(job_id, envelope.repo)
+            await read_spec_steps(job_id, envelope.repo)
         item = store.work_item(envelope.repo, number) if number else None
         worktree = worktree_of(envelope.event.get("cwd"), envelope.repo_path)
         duplicate_of = store.duplicate_of(job_id)
@@ -651,7 +654,7 @@ def create_app(
         elif worktree := worktree_of(event.get("cwd"), main_tree):
             store.set_job_worktree(job_id, worktree)
 
-    def self_report(name: str, event: dict, now: datetime) -> tuple[int, int, int | None]:
+    async def self_report(name: str, event: dict, now: datetime) -> tuple[int, int, int | None]:
         """A `factory` self-report about a Job; every one names its Job."""
         try:
             job_id = int(event.get("job_id"))
@@ -669,6 +672,8 @@ def create_app(
                 if not str(event.get("issue", "")).isdigit():
                     raise HTTPException(status_code=422, detail="`factory job` needs --issue <number>")
                 store.set_job_number(job_id, int(event["issue"]))
+                if store.job_kind(job_id) == SPEC_JOB:
+                    await read_spec_steps(job_id, store.session(session_id)["repo"])
             case "report_phase":
                 step_id = report_phase(job_id, event, now)
             case "report_step":
