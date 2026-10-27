@@ -25,6 +25,8 @@ SIGNALS = {"explore", "test_edit", "source_edit", "test_pass", "test_fail", "com
 SKILL_SIGNAL = "skill:"  # skill:<name>, a skill started in the Step (a Phase signal such as tdd or code-review)
 PATTERN_LISTS = ("test_files", "test_commands", "failed_summary", "commit_commands", "merge_commands")
 TOOL_LISTS = ("explore_tools", "edit_tools")
+# The patterns a repo's [repos."owner/repo"] section can add to, for test runners and layouts of its own.
+REPO_PATTERN_LISTS = ("test_files", "test_commands", "failed_summary")
 
 
 @dataclass(frozen=True)
@@ -41,12 +43,15 @@ class Rules:
     rules: tuple[Rule, ...] = ()
     tools: dict[str, frozenset[str]] = field(default_factory=dict)
     patterns: dict[str, tuple[re.Pattern, ...]] = field(default_factory=dict)
+    # Each repo's own patterns, added to the shared ones for events in that repo.
+    repo_patterns: dict[str, dict[str, tuple[re.Pattern, ...]]] = field(default_factory=dict)
 
-    def matches(self, name: str, text: str) -> bool:
-        return any(p.search(text) for p in self.patterns.get(name, ()))
+    def matches(self, name: str, text: str, repo: str | None = None) -> bool:
+        own = self.repo_patterns.get(repo, {}).get(name, ()) if repo else ()
+        return any(p.search(text) for p in (*self.patterns.get(name, ()), *own))
 
-    def signal(self, event: dict) -> str | None:
-        """What the event says about the Step's work, if anything."""
+    def signal(self, event: dict, repo: str | None = None) -> str | None:
+        """What the event (in `repo`) says about the Step's work, if anything."""
         if invocation := skill_invocation(event):
             name = bare_name(invocation[0])
             return f"{SKILL_SIGNAL}{name}" if name else None
@@ -59,15 +64,15 @@ class Rules:
             if failed:
                 return None
             path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "").replace("\\", "/")
-            return "test_edit" if self.matches("test_files", path) else "source_edit"
+            return "test_edit" if self.matches("test_files", path, repo) else "source_edit"
         if tool == "Bash":
-            return self.bash_signal(event, str(tool_input.get("command") or ""), failed, tool_input)
+            return self.bash_signal(event, str(tool_input.get("command") or ""), failed, tool_input, repo)
         if tool in self.tools.get("explore_tools", ()) and not failed:
             return "explore"
         return None
 
-    def bash_signal(self, event: dict, command: str, failed: bool, tool_input: dict) -> str | None:
-        if self.matches("test_commands", command):
+    def bash_signal(self, event: dict, command: str, failed: bool, tool_input: dict, repo: str | None) -> str | None:
+        if self.matches("test_commands", command, repo):
             if tool_input.get("run_in_background") or event.get("is_interrupt"):
                 return None  # the outcome isn't known
             if failed:
@@ -75,7 +80,7 @@ class Rules:
             # A piped run exits with the last command's status: its output's summary line decides.
             response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
             output = f"{response.get('stdout', '')}\n{response.get('stderr', '')}"
-            return "test_fail" if self.matches("failed_summary", output) else "test_pass"
+            return "test_fail" if self.matches("failed_summary", output, repo) else "test_pass"
         if failed:
             return None
         if self.matches("commit_commands", command):
@@ -111,10 +116,15 @@ def parse_rules(text: str) -> Rules:
     for name in TOOL_LISTS:
         tools[name] = frozenset(strings(signals, name))
     for name in PATTERN_LISTS:
-        try:
-            patterns[name] = tuple(re.compile(p) for p in strings(signals, name))
-        except re.error as e:
-            raise ValueError(f"signals.{name}: bad pattern: {e}") from None
+        patterns[name] = compiled(signals, name, f"signals.{name}")
+    repos = table.get("repos", {})
+    if not isinstance(repos, dict):
+        raise ValueError('repos must be a table of [repos."owner/repo"] sections')
+    repo_patterns = {}
+    for repo, section in repos.items():
+        if not isinstance(section, dict) or not set(section) <= set(REPO_PATTERN_LISTS):
+            raise ValueError(f'repos."{repo}" may only list {", ".join(REPO_PATTERN_LISTS)}')
+        repo_patterns[repo] = {name: compiled(section, name, f'repos."{repo}".{name}') for name in REPO_PATTERN_LISTS}
     rules = []
     for rule in table.get("rule", []):
         on, to = rule.get("on"), rule.get("to")
@@ -128,7 +138,14 @@ def parse_rules(text: str) -> Rules:
         if spec := rule.get("mattpocock_skills"):
             check_range(spec)
         rules.append(Rule(on, frozenset(from_), to, frozenset(strings(rule, "job_kinds")), spec))
-    return Rules(tuple(rules), tools, patterns)
+    return Rules(tuple(rules), tools, patterns, repo_patterns)
+
+
+def compiled(table: dict, key: str, where: str) -> tuple[re.Pattern, ...]:
+    try:
+        return tuple(re.compile(p) for p in strings(table, key))
+    except re.error as e:
+        raise ValueError(f"{where}: bad pattern: {e}") from None
 
 
 def strings(table: dict, key: str) -> list[str]:

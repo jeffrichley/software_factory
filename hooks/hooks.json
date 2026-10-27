@@ -288,6 +288,42 @@
           }
         ]
       }
+    ],
+    "TaskCreated": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--quiet",
+              "--script",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/factory-hook"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--quiet",
+              "--script",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/factory-hook"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

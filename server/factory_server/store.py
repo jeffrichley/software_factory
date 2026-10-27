@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .jobs import ENDED, stage_of
+from .step_detail import CHURN_EDITS, KEEP_RUNS, struggle_of
 from .skills import AD_HOC
 from .wayfinder import mode_of
 
@@ -138,6 +139,53 @@ CREATE TABLE IF NOT EXISTS step_agents (
   step_id INTEGER NOT NULL REFERENCES steps (id),
   PRIMARY KEY (job_id, agent_id)
 );
+-- Each test run in a Step, for its test pulse; passed/failed NULL when the output had no summary line.
+CREATE TABLE IF NOT EXISTS test_runs (
+  id INTEGER PRIMARY KEY,
+  step_id INTEGER NOT NULL REFERENCES steps (id),
+  at TEXT NOT NULL,
+  result TEXT NOT NULL,
+  passed INTEGER,
+  failed INTEGER
+);
+CREATE INDEX IF NOT EXISTS test_runs_by_step ON test_runs (step_id, id);
+-- Each file a Step's agent edited, with its edits in all and since the Step's tests last passed (for churn).
+CREATE TABLE IF NOT EXISTS step_files (
+  id INTEGER PRIMARY KEY,
+  step_id INTEGER NOT NULL REFERENCES steps (id),
+  path TEXT NOT NULL,
+  edits INTEGER NOT NULL,
+  since_pass INTEGER NOT NULL,
+  UNIQUE (step_id, path)
+);
+-- Each commit a Step's agent made, with its diffstat.
+CREATE TABLE IF NOT EXISTS step_commits (
+  id INTEGER PRIMARY KEY,
+  step_id INTEGER NOT NULL REFERENCES steps (id),
+  at TEXT NOT NULL,
+  sha TEXT NOT NULL,
+  message TEXT NOT NULL,
+  files INTEGER NOT NULL,
+  added INTEGER NOT NULL,
+  deleted INTEGER NOT NULL
+);
+-- The CI checks on a Job's PR's head commit, as last read (JSON list of {name, status}).
+CREATE TABLE IF NOT EXISTS pr_checks (
+  repo TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  checks TEXT NOT NULL,
+  PRIMARY KEY (repo, number)
+);
+-- A Job's latest code-review findings per axis, for one Step or (step_id 0) the whole Job; source is
+-- 'report' (`factory review`, which wins) or 'summary' (read from code-review's summary line).
+CREATE TABLE IF NOT EXISTS reviews (
+  job_id INTEGER NOT NULL REFERENCES jobs (id),
+  step_id INTEGER NOT NULL,
+  standards INTEGER NOT NULL,
+  spec INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  PRIMARY KEY (job_id, step_id)
+);
 -- A sound for one transition of a session's state, due at `due`. It plays (gets `seq`, the order the
 -- dashboard plays sounds in) once due if the session is still in that transition, else it is dropped.
 -- A Wayfinder session: its Map, the Decision ticket it works (NULL until it claims one) and its latest grilling
@@ -196,10 +244,13 @@ WORK_ITEM_COLUMNS = {
 JOB_COLUMNS = {
     "abandoned_at": "TEXT",  # when the human abandoned the Job on the dashboard
     "duplicate_of": "INTEGER",  # the active Job already on its Work item when it started (or learnt it): flagged, not blocked
+    "reviewed": "INTEGER NOT NULL DEFAULT 0",  # code-review has run in the Job: its summary line may follow
     "ended_at": "TEXT",  # when the Job was first seen Merged, Closed or Abandoned: its replay ends there
 }
 STEP_COLUMNS = {
     "first_phase": "TEXT",  # the Phase it was added in (Pending, or NULL = unknown): where its replay starts
+    "checklist": "TEXT",  # JSON: the agent's live checklist; NULL while it has none (no todo or task tools)
+    "active_at": "TEXT",  # the Step's latest event; NULL before any
 }
 PULL_REQUEST_COLUMNS = {
     "closes": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues its body closes
@@ -769,8 +820,8 @@ class Store:
         return row["phase"] if row else None
 
     @locked
-    def set_phase(self, step_id: int, phase: str, now: datetime) -> None:
-        """The Step's Phase; a change joins its Job's replay."""
+    def set_phase(self, step_id: int, phase: str | None, now: datetime) -> None:
+        """The Step's Phase; a change joins its Job's replay and its Phase track."""
         with self.db:
             step = self.db.execute("SELECT job_id, number, phase FROM steps WHERE id = ?", (step_id,)).fetchone()
             if step and step["phase"] != phase:
@@ -1036,3 +1087,149 @@ class Store:
                 for e in rows
             ],
         }
+
+    # ---------- Step detail ----------
+
+    @locked
+    def record_test_run(self, step_id: int, result: str, passed: int | None, failed: int | None, now: datetime) -> None:
+        """A test run; a passing one ends any churn."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO test_runs (step_id, at, result, passed, failed) VALUES (?, ?, ?, ?, ?)",
+                (step_id, iso(now), result, passed, failed),
+            )
+            if result == "pass":
+                self.db.execute("UPDATE step_files SET since_pass = 0 WHERE step_id = ?", (step_id,))
+
+    @locked
+    def prs_to_check(self, repo: str) -> list[int]:
+        """The open PRs of the repo's Jobs still going, whose CI checks the poll reads."""
+        numbers = []
+        for job in self.db.execute("SELECT * FROM jobs WHERE repo = ? ORDER BY id", (repo,)).fetchall():
+            pr = self._job_pr(job)
+            if pr and pr["number"] and pr["state"] == "open" and self._stage(job, pr) not in ENDED:
+                numbers.append(pr["number"])
+        return list(dict.fromkeys(numbers))
+
+    @locked
+    def save_checks(self, repo: str, number: int, checks: list[dict]) -> None:
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO pr_checks VALUES (?, ?, ?)", (repo, number, json.dumps(checks)))
+
+    @locked
+    def start_review(self, job_id: int) -> None:
+        with self.db:
+            self.db.execute("UPDATE jobs SET reviewed = 1 WHERE id = ?", (job_id,))
+
+    @locked
+    def review_started(self, job_id: int) -> bool:
+        row = self.db.execute("SELECT reviewed FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return bool(row and row["reviewed"])
+
+    @locked
+    def record_review(self, job_id: int, step_id: int | None, standards: int, spec: int, source: str) -> None:
+        """The latest findings count; one read from a summary never replaces the agent's own report."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO reviews VALUES (?, ?, ?, ?, ?) ON CONFLICT (job_id, step_id) DO UPDATE SET"
+                " standards = excluded.standards, spec = excluded.spec, source = excluded.source"
+                " WHERE excluded.source = 'report' OR reviews.source != 'report'",
+                (job_id, step_id or 0, standards, spec, source),
+            )
+
+    @locked
+    def job_reviews(self) -> dict[str, dict]:
+        """Findings counts for a whole Job (a Spec Job's review of its integration branch), by Job id."""
+        rows = self.db.execute(
+            "SELECT r.* FROM reviews r JOIN jobs j ON j.id = r.job_id"
+            " WHERE r.step_id = 0 AND j.repo IN (SELECT repo FROM tracking) ORDER BY r.job_id"
+        )
+        return {str(r["job_id"]): {k: r[k] for k in ("standards", "spec", "source")} for r in rows}
+
+    @locked
+    def step_active(self, step_id: int, now: datetime) -> None:
+        with self.db:
+            self.db.execute("UPDATE steps SET active_at = ? WHERE id = ?", (iso(now), step_id))
+
+    @locked
+    def checklist(self, step_id: int) -> list[dict] | None:
+        row = self.db.execute("SELECT checklist FROM steps WHERE id = ?", (step_id,)).fetchone()
+        return json.loads(row["checklist"]) if row and row["checklist"] else None
+
+    @locked
+    def set_checklist(self, step_id: int, items: list[dict]) -> None:
+        with self.db:
+            self.db.execute("UPDATE steps SET checklist = ? WHERE id = ?", (json.dumps(items), step_id))
+
+    @locked
+    def record_commit(self, step_id: int, commit: dict, now: datetime) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO step_commits (step_id, at, sha, message, files, added, deleted)"
+                " VALUES (:step_id, :at, :sha, :message, :files, :added, :deleted)",
+                {**commit, "step_id": step_id, "at": iso(now)},
+            )
+
+    @locked
+    def record_edit(self, step_id: int, path: str) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO step_files (step_id, path, edits, since_pass) VALUES (?, ?, 1, 1)"
+                " ON CONFLICT (step_id, path) DO UPDATE SET edits = edits + 1, since_pass = since_pass + 1",
+                (step_id, path),
+            )
+
+    @locked
+    def step_details(self, now: datetime, working: set[str]) -> dict[str, dict]:
+        """What each Step (of a Job in a repo some Machine tracks) has done, by Step id, and whether it is
+        struggling; `working` holds the ids of the sessions Working (Stale included), whose Steps can be silent."""
+        rows = self.db.execute(
+            "SELECT j.*, s.id AS step_id, s.checklist, s.phase, s.first_phase, COALESCE(s.active_at, s.phase_since) AS active_at"
+            " FROM steps s JOIN jobs j ON j.id = s.job_id WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY s.id"
+        ).fetchall()
+        ids = [r["step_id"] for r in rows]
+        details: dict[str, dict] = {str(i): {"phase_events": [], "tests": None, "files": [], "commits": [], "pr": None,
+                                    "review": None, "checklist": None} for i in ids}
+        # The Phase track: each Step's Phase changes from its replay, each from the Phase before (first the one it began in).
+        phase = {str(r["step_id"]): r["first_phase"] for r in rows}
+        for e in self.db.execute("SELECT step_id, at, phase FROM job_events WHERE kind = 'phase' AND step_id IS NOT NULL ORDER BY id"):
+            if (d := details.get(str(e["step_id"]))) is not None:
+                d["phase_events"].append({"at": e["at"], "from": phase[str(e["step_id"])], "to": e["phase"]})
+                phase[str(e["step_id"])] = e["phase"]
+        for f in self.db.execute("SELECT step_id, path, edits FROM step_files ORDER BY id"):
+            if (d := details.get(str(f["step_id"]))) is not None:
+                d["files"].append({"path": f["path"], "edits": f["edits"]})
+        for c in self.db.execute("SELECT * FROM step_commits ORDER BY id"):
+            if (d := details.get(str(c["step_id"]))) is not None:
+                d["commits"].append({k: c[k] for k in ("sha", "message", "files", "added", "deleted")})
+        for r in rows:
+            if r["checklist"]:
+                details[str(r["step_id"])]["checklist"] = [
+                    {"text": i["text"], "status": i["status"]} for i in json.loads(r["checklist"])]
+            # A Ticket Job's Step ends as the Job's PR; a Spec Job's Steps merge into its integration branch.
+            if r["kind"] == "Ticket Job" and (pr := self._job_pr(r)):
+                checks = self.db.execute(
+                    "SELECT checks FROM pr_checks WHERE repo = ? AND number = ?", (r["repo"], pr["number"])
+                ).fetchone()
+                details[str(r["step_id"])]["pr"] = {**{k: pr[k] for k in ("number", "url", "draft")},
+                                            "checks": json.loads(checks["checks"]) if checks else None}
+        for v in self.db.execute("SELECT * FROM reviews WHERE step_id != 0"):
+            if (d := details.get(str(v["step_id"]))) is not None:
+                d["review"] = {k: v[k] for k in ("standards", "spec", "source")}
+        runs: dict[str, list[dict]] = {}
+        for r in self.db.execute("SELECT step_id, at, result, passed, failed FROM test_runs ORDER BY id"):
+            runs.setdefault(str(r["step_id"]), []).append({k: r[k] for k in ("at", "result", "passed", "failed")})
+        for step_id, step_runs in runs.items():
+            if (d := details.get(step_id)) is not None:
+                last = step_runs[-1]
+                d["tests"] = {"last": last["result"], "passed": last["passed"], "failed": last["failed"],
+                              "runs": step_runs[-KEEP_RUNS:]}
+        for r in rows:
+            d = details[str(r["step_id"])]
+            churned = [f["path"] for f in self.db.execute(
+                "SELECT path FROM step_files WHERE step_id = ? AND since_pass >= ? ORDER BY id", (r["step_id"], CHURN_EDITS))]
+            going = (str(r["session_id"]) in working and r["phase"] not in ("Pending", "Merged")
+                     and self._stage(r, self._job_pr(r)) not in ENDED)
+            silent_for = int((now - datetime.fromisoformat(r["active_at"])).total_seconds()) if going else None
+            d["struggle"] = struggle_of([t["result"] for t in runs.get(str(r["step_id"]), [])], churned, silent_for)
+        return details
