@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS tracking (
   installed_at TEXT NOT NULL,
   PRIMARY KEY (repo, machine)
 );
+CREATE TABLE IF NOT EXISTS machines (
+  machine TEXT PRIMARY KEY,
+  last_seen TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS actions (
   id INTEGER PRIMARY KEY,
   session_id INTEGER NOT NULL REFERENCES sessions (id),
@@ -367,6 +371,32 @@ class Store:
             repos.setdefault(r["repo"], []).append(r["machine"])
         return [{"repo": repo, "machines": machines} for repo, machines in repos.items()]
 
+    @locked
+    def machine_seen(self, machine: str, now: datetime) -> None:
+        """Any event, queued ones included, is the Machine reporting."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO machines (machine, last_seen) VALUES (?, ?)"
+                " ON CONFLICT (machine) DO UPDATE SET last_seen = excluded.last_seen",
+                (machine, iso(now)),
+            )
+
+    @locked
+    def machines(self) -> list[dict]:
+        """Machines that track a repo or have a live session, each with its live session count.
+
+        A Machine with no event recorded (tracked before the server recorded them) was last seen when it
+        installed or its session last changed state.
+        """
+        rows = self.db.execute(
+            "WITH active (machine, seen, live) AS ("
+            "  SELECT machine, installed_at, 0 FROM tracking"
+            "  UNION ALL SELECT machine, state_since, 1 FROM sessions WHERE ended_at IS NULL)"
+            " SELECT a.machine, COALESCE(m.last_seen, MAX(a.seen)) AS last_seen, SUM(a.live) AS sessions"
+            " FROM active a LEFT JOIN machines m USING (machine)"
+            " GROUP BY a.machine ORDER BY a.machine"
+        ).fetchall()
+        return [dict(r) for r in rows]
     @locked
     def save_poll(self, repo: str, items: list[dict], pulls: list[dict]) -> None:
         """The repo's Work items and PRs as of the latest poll, replacing the previous poll's."""

@@ -58,6 +58,8 @@ a { color: inherit; }
 @keyframes flash { 0%, 100% { opacity: 0; } 50% { opacity: var(--flash-opacity); } }
 
 /* ---------- Machine pill ---------- */
+/* Many Machines scroll sideways rather than push the header taller. */
+.mpills { display: flex; gap: var(--s2); min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .mpill { display: inline-flex; align-items: center; gap: 8px; height: var(--pill-h); padding: 0 var(--s3); border-radius: var(--r-pill); border: 1px solid var(--line-2);
   background: var(--surface); color: var(--text); cursor: pointer; font-size: var(--fs-sm); white-space: nowrap; }
 .mpill .mdot { display: block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--pass); }
@@ -66,7 +68,8 @@ a { color: inherit; }
 .mpill.silent .mdot { background: transparent; border: 1.5px solid var(--stale); }
 .mpill.off { opacity: .45; border-style: dashed; background: transparent; }
 .mpill.off .mono { text-decoration: line-through; }
-@media (hover: hover) { .mpill:hover { border-color: var(--line-hover); background: var(--surface-2); } }
+.mpill.inert { cursor: default; }
+@media (hover: hover) { .mpill:not(.inert):hover { border-color: var(--line-hover); background: var(--surface-2); } }
 
 /* header counts */
 .count { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: var(--r-pill); border: 1px solid var(--line); font: 600 var(--fs-sm)/1 var(--font-body); color: var(--text-2); background: transparent; }

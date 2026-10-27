@@ -1,11 +1,19 @@
-import { stateLook } from "../format";
+import { stateLook, type StateLook } from "../format";
 import type { SessionState } from "../types";
 import { Icon, type IconName } from "./Icon";
 
 const ICON = { needs: "alert", working: "work", done: "check", "done-seen": "check", stale: "clock" } as const satisfies Record<string, IconName>;
 
-export function StateBadge({ state, seen }: { state: SessionState; seen?: boolean }) {
-  const { tone, label } = stateLook(state, seen);
+export interface StateBadgeProps {
+  state: SessionState;
+  seen?: boolean;
+  staleReason?: string;
+  /** Pass when the caller already has it (e.g. for a row's label), so it isn't worked out twice. */
+  look?: StateLook;
+}
+
+export function StateBadge({ state, seen, staleReason, look }: StateBadgeProps) {
+  const { tone, label } = look ?? stateLook(state, seen, staleReason);
   return (
     <span className={`state st-${tone}`}>
       <Icon name={ICON[tone]} />

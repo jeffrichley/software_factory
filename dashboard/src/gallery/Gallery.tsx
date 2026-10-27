@@ -15,6 +15,7 @@ import {
   Inbox,
   InboxHeader,
   MachinePill,
+  MachinePills,
   NeedsYouCard,
   NowLine,
   Panel,
@@ -204,7 +205,13 @@ export function Gallery() {
         </Section>
 
         <Section id="sessions" title="Top bar & session table" note="One row per Tracked session, in every state; empty until a session starts in a Tracked repo.">
-          <TopBar />
+          <TopBar>
+            <MachinePills>
+              <MachinePill name="mac-studio" sessions={5} />
+              <MachinePill name="wsl-desk" sessions={3} />
+              <MachinePill name="mbp-travel" sessions={2} silentForMs={14 * 60_000} />
+            </MachinePills>
+          </TopBar>
           <SessionTable
             selectedId={selectedRow}
             onSelect={setSelectedRow}
@@ -212,7 +219,7 @@ export function Gallery() {
               { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", kind: "Ticket Job", unknownSkill: null, now: "waiting on permission — Bash", inStateMs: 3 * 60_000 },
               { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", kind: "ad hoc", unknownSkill: "deploy-preview", now: "running skill `deploy-preview`", inStateMs: 42_000 },
               { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", kind: "research", unknownSkill: null, now: "pushed findings to research/runtime.md", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
-              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", kind: "ad hoc", unknownSkill: null, now: null, inStateMs: 14 * 60_000 },
+              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", staleReason: "Machine silent", kind: "ad hoc", unknownSkill: null, now: null, inStateMs: 14 * 60_000 },
               { id: "5", machine: "mac-studio", repo: "jeff/gateway", state: "Working", kind: "Wayfinder", unknownSkill: null, now: "reading docs/agents/a-very-long-path/that/ellipsizes/in/the/headline/column/of/the/session/table.md", inStateMs: 7 * 60_000 },
               { id: "6", machine: "mac-studio", repo: "jeff/gadgets", state: "Done", seen: true, kind: "ad hoc", unknownSkill: null, now: "tidied the README", inStateMs: 5 * 60_000 },
             ]}
@@ -226,17 +233,17 @@ export function Gallery() {
           <AdHocView machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Needs you" inStateMs={3 * 60_000} now="started `implement`" unknownSkill={null} actions={adhocActions.slice(-3)} />
           <Eyebrow>Session header · every state</Eyebrow>
           {headerStates.map(([state, seen]) => (
-            <SessionHeader key={`${state}-${seen}`} machine="mac-studio" repo="jeff/widgets" kind="research" state={state} seen={seen} inStateMs={7 * 60_000} now={state === "Stale" ? null : "fetching https://docs.github.com/rest"} title="research session" />
+            <SessionHeader key={`${state}-${seen}`} machine="mac-studio" repo="jeff/widgets" kind="research" state={state} seen={seen} staleReason={state === "Stale" ? "Machine silent" : undefined} inStateMs={7 * 60_000} now={state === "Stale" ? null : "fetching https://docs.github.com/rest"} title="research session" />
           ))}
         </Section>
 
         <Section id="machines" title="Machine pills & header counts" note="Click a pill to toggle it; hidden Machines still count their Needs you.">
-          <div className="g-row">
+          <MachinePills>
             <MachinePill name="mac-studio" sessions={5} hidden={hidden.has("mac-studio")} onToggle={() => toggle("mac-studio")} />
             <MachinePill name="wsl-desk" sessions={3} hidden={hidden.has("wsl-desk")} onToggle={() => toggle("wsl-desk")} />
             <MachinePill name="win-ps" sessions={1} hidden={hidden.has("win-ps")} onToggle={() => toggle("win-ps")} />
             <MachinePill name="mbp-travel" sessions={2} silentForMs={14 * 60_000} hidden={hidden.has("mbp-travel")} onToggle={() => toggle("mbp-travel")} />
-          </div>
+          </MachinePills>
           <div className="g-row">
             <NeedsCount count={3} />
             <NeedsCount count={0} />
@@ -290,6 +297,12 @@ export function Gallery() {
               <Empty>Everything Done has been seen.</Empty>
             </div>
           </div>
+          <TopBar>
+            <MachinePills>
+              <MachinePill name="wsl-desk" sessions={1} />
+              <MachinePill name="mac-studio" sessions={2} silentForMs={9 * 60_000} />
+            </MachinePills>
+          </TopBar>
           <Split
             side={
               <Inbox>
@@ -301,7 +314,7 @@ export function Gallery() {
               </Inbox>
             }
           >
-            <p className="muted g-small">The dashboard body: the inbox on the left (kind and Work item unknown here), the focus area beside it.</p>
+            <p className="muted g-small">The dashboard page: the top bar with its Machine pills, then the inbox on the left (kind and Work item unknown here), the focus area beside it.</p>
           </Split>
         </Section>
 

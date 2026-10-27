@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from . import states
 from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub, read_issues
+from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
 from .store import Store
 from .work_items import pull_requests, work_items
@@ -39,6 +40,8 @@ class Envelope(BaseModel):
     event: dict
     # Sent with SessionStart only: the installed mattpocock-skills version, for the skill table's version ranges.
     mattpocock_skills_version: str | None = None
+    # Set on an event that was queued while the server was down: when it happened on the Machine.
+    queued_at: datetime | None = None
 
 
 class Reply(BaseModel):
@@ -60,20 +63,31 @@ class Broadcaster:
         for q, loop in list(self.queues.items()):
             loop.call_soon_threadsafe(q.put_nowait, state)
 
-    async def stream(self, first: dict) -> AsyncIterator[str]:
+    async def stream(self, current: Callable[[], dict], refresh_s: float) -> AsyncIterator[str]:
+        """Sends the state now and on every change; between events, rechecks it every `refresh_s`
+        so a Machine going silent reaches the dashboard without an event of its own."""
         q: asyncio.Queue[dict] = asyncio.Queue()
         self.queues[q] = asyncio.get_running_loop()
         try:
-            state = first
+            state, sent = current(), None
             while True:
-                yield f"event: state\ndata: {json.dumps(state)}\n\n"
-                state = await q.get()
+                if state != sent:
+                    yield f"event: state\ndata: {json.dumps(state)}\n\n"
+                    sent = state
+                try:
+                    state = await asyncio.wait_for(q.get(), refresh_s)
+                except TimeoutError:
+                    state = current()
         finally:
             self.queues.pop(q, None)
 
 
 def create_app(
-    db_path: Path, github: GitHub, clock: Callable[[], datetime], skill_table: Path = DEFAULT_SKILL_TABLE
+    db_path: Path,
+    github: GitHub,
+    clock: Callable[[], datetime],
+    skill_table: Path = DEFAULT_SKILL_TABLE,
+    refresh_s: float = 5,
 ) -> FastAPI:
     store = Store(db_path)
     skills = SkillTable(skill_table)
@@ -81,10 +95,14 @@ def create_app(
     polled_at: dict[str, datetime] = {}
 
     def state() -> dict:
+        now = clock()
+        machines = [{**m, "silent": is_silent(m["last_seen"], now)} for m in store.machines()]
+        silent_since = {m["machine"]: m["last_seen"] for m in machines if m["silent"]}
         return {
             "server_version": SERVER_VERSION,
+            "machines": machines,
             "repos": store.tracked_repos(),
-            "sessions": store.live_sessions(),
+            "sessions": [as_shown(s, silent_since.get(s["machine"])) for s in store.live_sessions()],
             "work_items": store.work_items(),
             "pull_requests": store.pull_requests(),
             "mismatches": mismatches(),
@@ -161,7 +179,9 @@ def create_app(
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
         event = envelope.event
-        now = clock()
+        # The Machine reports now, but a queued event counts from when it happened (never later than now).
+        store.machine_seen(envelope.machine, clock())
+        now = min(envelope.queued_at, clock()) if envelope.queued_at else clock()
         session_id = None
         match event.get("hook_event_name"):
             case "repo_installed":
@@ -207,7 +227,7 @@ def create_app(
 
     @app.get("/api/stream")
     async def stream() -> StreamingResponse:
-        return StreamingResponse(hub.stream(state()), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+        return StreamingResponse(hub.stream(state, refresh_s), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
     if DASHBOARD_DIR.is_dir():
         app.mount("/", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")

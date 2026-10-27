@@ -15,14 +15,20 @@ export function formatClock(iso: string): string {
   return `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
 }
 
-export function stateLook(state: SessionState, seen = false): { tone: Tone; label: string } {
+export interface StateLook {
+  tone: Tone;
+  label: string;
+}
+
+/** A state's tone and label; a Stale label says why, e.g. "Stale · Machine silent". */
+export function stateLook(state: SessionState, seen = false, staleReason?: string): StateLook {
   switch (state) {
     case "Needs you":
       return { tone: "needs", label: state };
     case "Working":
       return { tone: "working", label: state };
     case "Stale":
-      return { tone: "stale", label: state };
+      return { tone: "stale", label: staleReason ? `${state} · ${staleReason}` : state };
     case "Done":
       return seen ? { tone: "done-seen", label: "Done" } : { tone: "done", label: "Done · unseen" };
   }

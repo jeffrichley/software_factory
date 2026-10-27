@@ -35,6 +35,8 @@ export interface SessionHeaderProps {
   state: SessionState;
   /** Done only: has the human seen it. */
   seen?: boolean;
+  /** Stale only: why its state can't be trusted, e.g. "Machine silent". */
+  staleReason?: string;
   inStateMs: number;
   now: string | null;
   /** The detail's title: the Work item, or what kind of session it is. */
@@ -55,7 +57,7 @@ export function SessionHeader(p: SessionHeaderProps) {
         <Eyebrow>{p.kind}</Eyebrow>
         <h2>{p.title}</h2>
         <div className="sd-meta">
-          <StateBadge state={p.state} seen={p.seen} />
+          <StateBadge state={p.state} seen={p.seen} staleReason={p.staleReason} />
           <span>in state {formatDuration(p.inStateMs)}</span>
           <span className="sd-where"><Icon name="terminal" /><span className="mono">{p.machine}</span></span>
           <span>repo <span className="mono">{p.repo}</span></span>

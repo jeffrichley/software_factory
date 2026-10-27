@@ -8,17 +8,20 @@ stdlib-only and never blocks or fails the session (ADR 0001).
 
 Exits at once unless this Machine tracks the repo; otherwise POSTs the event, unchanged,
 stamped with Machine, repo and the session's cached ids, and caches the reply's ids.
+With the server down it queues the event and exits; the next event delivers the queue first.
 """
 
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "cli"))
-from factory_cli.tracking import (  # noqa: E402
-    flush_queue, load_setup, main_worktree, marker_path, post_event, session_cache_path,
-)
+from factory_cli.tracking import load_setup, main_worktree, marker_path, send, session_cache_path  # noqa: E402
+
+# Seconds the hook may spend delivering, well inside its 10 s timeout in hooks.json (uv start-up comes on top).
+DELIVERY_BUDGET_S = 5
 
 # Events whose hookSpecificOutput.additionalContext Claude Code reads.
 CONTEXT_EVENTS = {
@@ -59,15 +62,14 @@ def main() -> None:
         body["mattpocock_skills_version"] = mattpocock_skills_version()
 
     try:
-        # Queued events (such as a `repo_installed` sent while the server was down) go first, in order.
-        if not flush_queue(main_tree, machine, setup["server_url"]):
-            return
-        reply = post_event(setup["server_url"], body)
-    except (OSError, ValueError):
-        return  # server down: never block the session (queueing this event arrives with #22)
-
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps({k: reply[k] for k in REPLY_IDS if k in reply}))
+        # Queued events go first, in order; with the server down (or out of time) this one joins them.
+        reply = send(main_tree, machine, setup["server_url"], body, deadline=time.monotonic() + DELIVERY_BUDGET_S)
+        if not reply:
+            return  # queued, or refused: nothing to cache, and never block the session
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({k: reply[k] for k in REPLY_IDS if k in reply}))
+    except OSError:
+        return  # the queue or cache couldn't be written: still never fail the session
     name = event.get("hook_event_name")
     if reply.get("inject") and name in CONTEXT_EVENTS:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": name, "additionalContext": reply["inject"]}}))

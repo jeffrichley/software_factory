@@ -242,3 +242,17 @@ def test_needs_you_sorts_first_longest_waiting_first(client, clock):
 
     order = [(s["cc_session_id"], s["state"]) for s in client.get("/api/state").json()["sessions"]]
     assert order == [("c", "Needs you"), ("b", "Needs you"), ("a", "Working")]
+
+
+def test_on_a_silent_machine_only_working_goes_stale(client, clock):
+    post(client, "PreToolUse", session="asks", tool_use_id="toolu_p", tool_name="ExitPlanMode", tool_input={"plan": "1."})
+    post(client, "Stop", session="done", background_tasks=[])
+    post(client, "UserPromptSubmit", session="works", prompt="tidy the README")
+    clock.advance(5 * 60)
+
+    rows = {r["cc_session_id"]: r for r in client.get("/api/state").json()["sessions"]}
+
+    assert rows["asks"]["state"] == "Needs you"
+    assert rows["asks"]["reason"] == {"kind": "question", "text": "Approve the plan?"}
+    assert (rows["done"]["state"], rows["done"]["seen"]) == ("Done", False)
+    assert (rows["works"]["state"], rows["works"]["stale_reason"]) == ("Stale", "Machine silent")

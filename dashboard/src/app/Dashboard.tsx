@@ -7,6 +7,8 @@ import {
   Icon,
   Inbox,
   InboxHeader,
+  MachinePill,
+  MachinePills,
   NeedsYouCard,
   SectionHeading,
   SessionTable,
@@ -23,6 +25,8 @@ import {
 /** The server's dashboard state (GET /api/state, and each SSE `state` event). */
 interface FactoryState {
   server_version: string;
+  /** Machines that track a repo or have a live session; a silent one has sent nothing for a while. */
+  machines: { machine: string; sessions: number; last_seen: string; silent: boolean }[];
   /** Tracked repos, each with the Machines that track it. */
   repos: { repo: string; machines: string[] }[];
   /** Live Tracked sessions, Needs you first. */
@@ -33,6 +37,8 @@ interface FactoryState {
     cc_session_id: string;
     state: SessionState;
     state_since: string;
+    /** A Working session on a silent Machine is Stale, with stale_reason "Machine silent". */
+    stale_reason?: string;
     /** Why it Needs you; null otherwise. */
     reason: NeedsReason | null;
     /** Done has been seen. */
@@ -85,7 +91,7 @@ export function Dashboard() {
   const now = useNow(1000);
   const [selectedId, setSelectedId] = useState<string>();
   const sessions: Session[] | undefined = state?.sessions.map((s) => ({
-    id: s.id, machine: s.machine, repo: s.repo, ccSessionId: s.cc_session_id, state: s.state, reason: s.reason,
+    id: s.id, machine: s.machine, repo: s.repo, ccSessionId: s.cc_session_id, state: s.state, staleReason: s.stale_reason, reason: s.reason,
     seen: s.seen, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, actions: s.actions,
     inStateMs: now - Date.parse(s.state_since),
   }));
@@ -101,7 +107,13 @@ export function Dashboard() {
 
   return (
     <>
-      <TopBar />
+      <TopBar>
+        <MachinePills>
+          {state?.machines.map((m) => (
+            <MachinePill key={m.machine} name={m.machine} sessions={m.sessions} silentForMs={m.silent ? now - Date.parse(m.last_seen) : undefined} />
+          ))}
+        </MachinePills>
+      </TopBar>
       <Split
         side={
           <Inbox>

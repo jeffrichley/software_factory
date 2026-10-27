@@ -1,4 +1,4 @@
-import { formatDuration } from "../format";
+import { formatDuration, stateLook } from "../format";
 import { AD_HOC, type SessionState } from "../types";
 import { NowLine } from "./NowLine";
 import { StateBadge } from "./StateBadge";
@@ -9,6 +9,8 @@ export interface SessionRowData {
   machine: string;
   repo: string;
   state: SessionState;
+  /** Why a Stale session can't be trusted, e.g. "Machine silent". */
+  staleReason?: string;
   /** Ticket Job, Spec Job, a planning kind (Wayfinder, to-spec, to-tickets, research) or ad hoc. */
   kind: string;
   /** The latest skill the skill table doesn't know, if any; an ad hoc row names it. */
@@ -38,23 +40,26 @@ export function SessionTable({
         <tr><th>State</th><th>Machine</th><th>Tracked repo</th><th>Kind</th><th>Headline</th><th>In state</th></tr>
       </thead>
       <tbody>
-        {sessions.map((s) => (
-          <tr
-            key={s.id}
-            className={`row${s.id === selectedId ? " sel" : ""}`}
-            tabIndex={onSelect ? 0 : undefined}
-            aria-label={`${s.state}: ${s.kind} session in ${s.repo} on ${s.machine}`}
-            onClick={onSelect ? () => onSelect(s.id) : undefined}
-            onKeyDown={onSelect ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(s.id); } } : undefined}
-          >
-            <td><StateBadge state={s.state} seen={s.seen} /></td>
-            <td className="mono">{s.machine}</td>
-            <td className="mono">{s.repo}</td>
-            <td>{s.kind}{s.kind === AD_HOC && s.unknownSkill ? <SkillNote skill={s.unknownSkill} /> : null}</td>
-            <td><NowLine now={s.now} /></td>
-            <td><span className="tmain">{formatDuration(s.inStateMs)}</span></td>
-          </tr>
-        ))}
+        {sessions.map((s) => {
+          const look = stateLook(s.state, s.seen, s.staleReason);
+          return (
+            <tr
+              key={s.id}
+              className={`row${s.id === selectedId ? " sel" : ""}`}
+              tabIndex={onSelect ? 0 : undefined}
+              aria-label={`${look.label}: ${s.kind} session in ${s.repo} on ${s.machine}`}
+              onClick={onSelect ? () => onSelect(s.id) : undefined}
+              onKeyDown={onSelect ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(s.id); } } : undefined}
+            >
+              <td><StateBadge state={s.state} look={look} /></td>
+              <td className="mono">{s.machine}</td>
+              <td className="mono">{s.repo}</td>
+              <td>{s.kind}{s.kind === AD_HOC && s.unknownSkill ? <SkillNote skill={s.unknownSkill} /> : null}</td>
+              <td><NowLine now={s.now} /></td>
+              <td><span className="tmain">{formatDuration(s.inStateMs)}</span></td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

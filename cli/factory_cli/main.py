@@ -14,8 +14,8 @@ from typing import Annotated
 import typer
 
 from .tracking import (
-    data_dir, factory_dir, flush_queue, github_repo, latest_session_ids, load_setup, machine_dir, main_worktree,
-    marker_path, post_event, queued, save_setup, send,
+    Refused, data_dir, factory_dir, flush_queue, github_repo, latest_session_ids, load_setup, log_refused, machine_dir,
+    main_worktree, marker_path, post_event, queued, save_setup, send,
 )
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -205,6 +205,9 @@ def uninstall() -> None:
         try:
             post_event(url, tracking_event("repo_uninstalled", main, machine, repo))
             delivered = True
+        except Refused as e:
+            log_refused(e)
+            delivered = True  # the server answered: nothing more to deliver
         except OSError:
             pass
     if not delivered:
