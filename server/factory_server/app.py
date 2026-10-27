@@ -26,6 +26,8 @@ SERVER_VERSION: str = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
 DASHBOARD_DIR = PLUGIN_ROOT / "dashboard" / "dist"
 POLL_EVERY = timedelta(minutes=1)
 POLL_CHECK_SECONDS = 5
+# Sent by 'factory hide' / 'factory show' for the session that runs them: is it hidden now.
+HIDE_EVENTS = dict(session_hidden=True, session_shown=False)
 
 log = logging.getLogger(__name__)
 
@@ -191,6 +193,8 @@ def create_app(
                 polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
+                if name in HIDE_EVENTS:
+                    store.set_hidden(session_id, HIDE_EVENTS[name])
                 if invocation := skill_invocation(event):
                     skill, number = bare_name(invocation[0]), work_item_named(invocation[1], envelope.repo)
                     if skill and number:
@@ -212,6 +216,21 @@ def create_app(
     async def seen(session_id: int) -> dict:
         """The human opened the session's detail: its Done is seen."""
         if not store.mark_seen(session_id):
+            raise HTTPException(status_code=404, detail="no such session")
+        hub.publish(state())
+        return {"ok": True}
+
+    @app.post("/api/sessions/{session_id}/hide")
+    async def hide(session_id: int) -> dict:
+        """The human hid the session from the dashboard: out of its views, and silent."""
+        return set_hidden(session_id, True)
+
+    @app.post("/api/sessions/{session_id}/show")
+    async def show(session_id: int) -> dict:
+        return set_hidden(session_id, False)
+
+    def set_hidden(session_id: int, hidden: bool) -> dict:
+        if not store.set_hidden(session_id, hidden):
             raise HTTPException(status_code=404, detail="no such session")
         hub.publish(state())
         return {"ok": True}
