@@ -18,6 +18,7 @@ const PATHS = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
   "eye-off": <><path d="M3 3l18 18" /><path d="M10.6 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9" /><path d="M6.6 6.6A17 17 0 0 0 2 12s4 7 10 7a9.700 9.700 0 0 0 5.400-1.600" /><path d="M9.900 9.900a3 3 0 0 0 4.200 4.200" /></>,
   pr: <><circle cx="6" cy="6" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" /><path d="M6 8v8" /><path d="M18 16V9a3 3 0 0 0-3-3h-4" /><path d="m13 4-2 2 2 2" /></>,
+  history: <><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v4h4" /><path d="M12 8v4l3 2" /></>,
   eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>,
 } as const;
 

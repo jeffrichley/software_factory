@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   AdHocView,
+  Clock,
   DoneCard,
   DoneUnseenCount,
   Empty,
@@ -489,9 +490,10 @@ export function Dashboard() {
           <HiddenNeedsBadge count={view.hiddenNeeds.length} onShow={() => showMachines(view.hiddenNeeds.map((s) => s.machine))} />
           <NeedsCount count={needs.length} />
           <DoneUnseenCount count={doneUnseen.length} />
-          <HistoryCount count={history.length} open={showHistory} onToggle={() => { setShowHistory(!showHistory); setReplayId(undefined); }} />
-          <SoundToggle on={soundOn} onToggle={toggleSound} />
         </div>
+        <HistoryCount count={history.length} open={showHistory} onToggle={() => { setShowHistory(!showHistory); setReplayId(undefined); }} />
+        <SoundToggle on={soundOn} onToggle={toggleSound} />
+        <Clock now={now} />
       </TopBar>
       <Split
         view={showHistory ? `history:${replayJob?.id ?? ""}` : `session:${selected?.id ?? ""}`}

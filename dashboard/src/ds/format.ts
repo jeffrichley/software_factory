@@ -15,6 +15,12 @@ export function formatClock(iso: string): string {
   return `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
 }
 
+/** The header clock, in local hours, minutes and seconds: 09:05:07. */
+export function formatWallClock(ms: number): string {
+  const t = new Date(ms);
+  return [t.getHours(), t.getMinutes(), t.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
+}
+
 export interface StateLook {
   tone: Tone;
   label: string;
