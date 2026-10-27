@@ -209,6 +209,60 @@ def test_a_merge_into_the_integration_branch_ends_the_step_at_merged(client, job
     assert step_numbered(client, 5)["phase"] == "Merged"
 
 
+def merge_of_step(client, number: int) -> dict | None:
+    return client.get("/api/state").json()["step_details"][step_numbered(client, number)["id"]]["merge"]
+
+
+def test_a_steps_merge_into_the_integration_branch_is_kept_with_its_sha_when_git_printed_it(client, job, clock):
+    enter_integration_worktree(client)
+    assert merge_of_step(client, 5) is None
+
+    launch(client, "m1", "Merge ticket #5 into the integration branch")
+    clock.advance(60)
+    tool(client, "Bash", {"command": "git merge worktree-agent-a1"}, **merger("m1"),
+         response={"stdout": "Updating 1f0e2d3..a41c9e2\nFast-forward\n src/schema.py | 4 ++++\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) == {"sha": "a41c9e2", "at": "2026-10-26T12:01:00Z"}
+    assert merge_of_step(client, 6) is None
+
+
+def test_a_merge_commit_whose_sha_git_did_not_print_is_kept_without_one(client, job):
+    enter_integration_worktree(client)
+    launch(client, "m1", "Merge ticket #5 into the integration branch")
+    tool(client, "Bash", {"command": "git merge --no-ff worktree-agent-a1"}, **merger("m1"),
+         response={"stdout": "Merge made by the 'ort' strategy.\n src/schema.py | 4 ++++\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) == {"sha": None, "at": "2026-10-26T12:00:00Z"}
+
+
+def test_a_merge_commits_sha_is_the_head_the_hook_read_just_after_it(client, job):
+    """git prints no SHA for a real merge ("Merge made by the 'ort' strategy."): the hook reads HEAD where it ran."""
+    enter_integration_worktree(client)
+    launch(client, "m1", "Merge ticket #5 into the integration branch")
+    tool(client, "Bash", {"command": "git merge --no-ff worktree-agent-a1"}, **merger("m1"), head="b7e01d4",
+         response={"stdout": "Merge made by the 'ort' strategy.\n src/schema.py | 4 ++++\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) == {"sha": "b7e01d4", "at": "2026-10-26T12:00:00Z"}
+
+
+def test_a_head_read_elsewhere_than_where_the_merge_ran_is_not_its_sha(client, job):
+    enter_integration_worktree(client)
+    launch(client, "m1", "Merge ticket #5 into the integration branch")
+    tool(client, "Bash", {"command": f"git -C {INTEGRATION} merge --no-ff worktree-agent-a1"}, **agent("m1"), head="c0ffee1",
+         response={"stdout": "Merge made by the 'ort' strategy.\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) == {"sha": None, "at": "2026-10-26T12:00:00Z"}
+
+
+def test_an_implementer_merging_the_integration_tip_into_its_own_branch_records_no_merge(client, job):
+    enter_integration_worktree(client)
+    launch(client, "a1", "Implement ticket #5")
+    tool(client, "Bash", {"command": f"git merge {INTEGRATION_BRANCH}"}, **agent("a1"),
+         response={"stdout": "Updating 1f0e2d3..a41c9e2\nFast-forward\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) is None
+
+
 def test_a_merge_run_on_the_integration_worktree_from_elsewhere_ends_the_step_at_merged(client, job):
     enter_integration_worktree(client)
     launch(client, "m1", "Merge ticket #5 into the integration branch")
@@ -276,6 +330,44 @@ def test_the_draft_pr_is_a_link_until_marked_ready_then_the_job_is_pr_open_and_d
     assert (row["state"], row["seen"]) == ("Done", False)
 
 
+def test_the_spec_prs_track_keeps_when_it_was_drafted_marked_ready_and_merged(client, job, github, clock):
+    assert jobs(client)[0]["pr_track"] == []
+
+    github.issues["jeff/widgets"].append(spec_pr(60, (SPEC, 5, 6), draft=True))
+    clock.advance(60)
+    poll(client)
+    assert jobs(client)[0]["pr_track"] == [{"stage": "Draft", "at": "2026-10-26T12:01:00Z"}]
+
+    clock.advance(60)
+    poll(client)  # still a draft: nothing new
+    github.issues["jeff/widgets"][-1]["draft"] = False
+    clock.advance(60)
+    poll(client)
+    github.issues["jeff/widgets"][-1].update(state="closed", pull_request={"merged_at": "2026-10-26T12:04:00Z"})
+    clock.advance(60)
+    poll(client)
+
+    assert jobs(client)[0]["pr_track"] == [
+        {"stage": "Draft", "at": "2026-10-26T12:01:00Z"},
+        {"stage": "Ready", "at": "2026-10-26T12:03:00Z"},
+        {"stage": "Merged", "at": "2026-10-26T12:04:00Z"},
+    ]
+
+
+def test_the_spec_prs_ci_checks_are_shown_once_read(client, job, github, clock):
+    github.issues["jeff/widgets"].append(spec_pr(60, (SPEC, 5, 6), draft=True))
+    github.check_runs[("jeff/widgets", "head-60")] = [
+        {"name": "lint", "status": "completed", "conclusion": "success"},
+        {"name": "e2e", "status": "in_progress", "conclusion": None},
+    ]
+    assert jobs(client)[0]["pr_checks"] is None
+
+    clock.advance(60)
+    poll(client)
+
+    assert jobs(client)[0]["pr_checks"] == [{"name": "lint", "status": "pass"}, {"name": "e2e", "status": "pending"}]
+
+
 def test_a_spec_jobs_replay_starts_its_steps_pending_and_shows_each_starting_and_moving(client, job):
     launch(client, "a1", "Implement ticket #6")
     hook(client, "SubagentStart", **agent("a1"))
@@ -288,3 +380,44 @@ def test_a_spec_jobs_replay_starts_its_steps_pending_and_shows_each_starting_and
         ("#6 started: Phase unknown", None),
         ("#6 Red", "Red"),
     ]
+
+
+EPIC = 40
+
+
+@pytest.fixture
+def epic(client, github):
+    """Spec #31 split into Epics; Epic #40 split again into Tickets #41 and #42, tracked but not polled yet."""
+    github.issues["jeff/widgets"] = [
+        issue(31, "ML4T reboot", body=SPEC_BODY, sub_issues=2),
+        issue(32, "Grading", parent=31),
+        issue(EPIC, "Docs and dry run", parent=31, sub_issues=2),
+        issue(41, "Stub runbooks", body=f"## Parent\r\n\r\n#{EPIC}\r\n", parent=EPIC),
+        issue(42, "Dry run plan", parent=EPIC),
+    ]
+    github.block("jeff/widgets", 42, 41)
+    install(client)
+
+
+def test_a_spec_job_on_an_epic_has_a_pending_step_per_sub_issue_and_its_subagents_work_them(client, epic):
+    reply = implement_spec(client, f"#{EPIC}")
+
+    assert [(s["number"], s["phase"], s["blocked_by"]) for s in steps(client)] == [
+        (41, "Pending", []), (42, "Pending", [41]),
+    ]
+    launch(client, "a1", "Implement ticket #42", f"You are implementing #42 of epic #{EPIC}.")
+    assert hook(client, "SubagentStart", **agent("a1"))["step_id"] == step_numbered(client, 42)["id"]
+    assert reply["job_id"] == jobs(client)[0]["id"]
+
+
+def test_a_running_spec_job_with_no_steps_gains_them_on_the_next_poll(client, epic, github, clock):
+    tickets = [i for i in github.issues["jeff/widgets"] if i["number"] in (41, 42)]
+    github.issues["jeff/widgets"] = [i for i in github.issues["jeff/widgets"] if i not in tickets]
+    implement_spec(client, f"#{EPIC}")
+    assert steps(client) == []
+
+    github.issues["jeff/widgets"] += tickets
+    clock.advance(60)
+    poll(client)
+
+    assert [(s["number"], s["phase"]) for s in steps(client)] == [(41, "Pending"), (42, "Pending")]

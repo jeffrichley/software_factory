@@ -58,6 +58,12 @@ def closed_by(body: str | None) -> list[int]:
     return sorted({int(n) for n in CLOSING.findall(body or "")})
 
 
+def pr_stage(pr: dict) -> str:
+    """Where a PR is on its track: Draft, Ready (for review), Merged, or Closed without merging. The one mapping from
+    a PR's state and draft flag; a Job's stage follows from it."""
+    return {"merged": "Merged", "closed": "Closed"}.get(pr["state"], "Draft" if pr["draft"] else "Ready")
+
+
 def stage_of(pr: dict | None, abandoned: bool, item_state: str | None) -> str:
     """A Job's stage from its PR (with the PR's state), whether the human abandoned it, and its Work item's state.
 
@@ -66,13 +72,14 @@ def stage_of(pr: dict | None, abandoned: bool, item_state: str | None) -> str:
     """
     if abandoned:
         return ABANDONED
-    if pr and pr["state"] == "merged":
+    stage = pr and pr_stage(pr)
+    if stage == "Merged":
         return MERGED
-    if pr and pr["state"] == "closed":
+    if stage == "Closed":
         return CLOSED
-    if item_state == "closed" and (pr is None or pr["draft"]):
+    if item_state == "closed" and stage in (None, "Draft"):
         return ABANDONED
-    return PR_OPEN if pr and not pr["draft"] else IN_PROGRESS
+    return PR_OPEN if stage == "Ready" else IN_PROGRESS
 
 
 def slug(title: str) -> str:

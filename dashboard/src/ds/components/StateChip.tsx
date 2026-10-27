@@ -1,6 +1,6 @@
 import { motion as m } from "framer-motion";
 import { useLayoutEffect, useRef, useState } from "react";
-import { phaseClass, stateLook } from "../format";
+import { phaseClass, repoName, stateLook } from "../format";
 import { glide } from "../motion";
 import type { Phase, SessionState } from "../types";
 import { Icon, type IconName } from "./Icon";
@@ -15,9 +15,10 @@ export interface StateChipProps {
   seen?: boolean;
   /** A Step's Phase (null = unknown), or "planning" for a planning / ad hoc session. */
   phase: Phase | null | "planning";
-  /** Spec initials shown on each of a Spec Job's Step chips. */
-  group?: string;
-  groupName?: string;
+  /** A Spec Job's Step chip: the Spec's initials, shown on the chip. */
+  specInitials?: string;
+  /** A Spec Job's Step chip: the Spec named in full, in the tooltip. */
+  specName?: string;
   planIcon?: IconName;
   machine: string;
   repo: string;
@@ -48,7 +49,7 @@ export function StateChip(p: StateChipProps) {
     el.closest(".flow")?.classList.toggle("animating", on);
   };
   const stateTxt = stateLabel + (p.staleReason ? ` · ${p.staleReason}` : "") + (p.blocked ? " · blocked" : "");
-  const phaseTxt = p.phase === "planning" ? `${p.groupName ?? "Planning"} session` : p.phase ? `Phase: ${p.phase}` : "Phase unknown";
+  const phaseTxt = p.phase === "planning" ? "Planning" : p.phase ? `Phase: ${p.phase}` : "Phase unknown";
   return (
     <>
       <m.button
@@ -68,17 +69,17 @@ export function StateChip(p: StateChipProps) {
         onBlur={() => setTip(null)}
       >
         <span className={`fdot${tone === "needs" ? " pulse" : ""}`} aria-hidden="true" />
-        {p.group ? <span className="fgrp" aria-hidden="true">{p.group}</span> : null}
+        {p.specInitials ? <span className="fgrp" aria-hidden="true">{p.specInitials}</span> : null}
         {p.phase === "planning" ? <Icon name={p.planIcon ?? "terminal"} /> : null}
         <span className="fl">{p.label}</span>
       </m.button>
       {tip ? (
         <span className="ftip" role="tooltip" ref={tipRef}>
           <span className="ft-tt">{p.name}</span>
-          {p.groupName ? <span className="ft-tg">{p.groupName}</span> : null}
+          {p.specName ? <span className="ft-tg">{p.specName}</span> : null}
           <span className="ft-tp">{phaseTxt}</span>
           <span className="ft-ts">{stateTxt}</span>
-          <span className="ft-tm">{`${p.machine} · ${p.repo}`}</span>
+          <span className="ft-tm">{`${p.machine} · ${repoName(p.repo)}`}</span>
         </span>
       ) : null}
     </>

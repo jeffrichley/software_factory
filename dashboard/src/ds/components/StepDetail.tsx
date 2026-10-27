@@ -9,6 +9,7 @@ import {
   type StepDetailData,
   type StruggleData,
 } from "../stepDetail";
+import type { MergeData } from "../specJob";
 import { PENDING, type StepPhase } from "../types";
 import { Icon, type IconName } from "./Icon";
 import { Eyebrow, Panel } from "./Panel";
@@ -33,6 +34,8 @@ export interface StepDetailProps {
   inSpecJob?: boolean;
   /** The Tickets blocking it, by name. */
   blockers?: string[];
+  /** A Spec Job's integration branch, which its Steps merge into. */
+  integrationBranch?: string | null;
 }
 
 /** The struggle badge: one tag per reason a Step looks stuck. */
@@ -49,7 +52,7 @@ export function StruggleTags({ struggle }: { struggle: StruggleData | null }) {
 }
 
 /** Everything about a Step needed to judge its progress: Phase track, checklist, tests, files, commits, review and PR. */
-export function StepDetail({ step, detail, nowMs, inSpecJob, blockers = [] }: StepDetailProps) {
+export function StepDetail({ step, detail, nowMs, inSpecJob, blockers = [], integrationBranch = null }: StepDetailProps) {
   return (
     <section className="step" aria-label="Step detail">
       <div className="step-h">
@@ -76,7 +79,7 @@ export function StepDetail({ step, detail, nowMs, inSpecJob, blockers = [] }: St
         <Commits commits={detail?.commits ?? []} />
         <Panel title="Review findings">
           <Review review={detail?.review ?? null} />
-          {inSpecJob ? <MergeNote phase={step.phase} /> : <PullRequest pr={detail?.pr ?? null} />}
+          {inSpecJob ? <MergeNote phase={step.phase} merge={detail?.merge ?? null} branch={integrationBranch} nowMs={nowMs} /> : <PullRequest pr={detail?.pr ?? null} />}
         </Panel>
       </div>
       <Panel title="Phase events">
@@ -135,6 +138,12 @@ function Files({ files, churn }: { files: StepDetailData["files"]; churn: string
         <li key={f.path}>
           <span className="path">{f.path}</span>
           <span className={`mono ${churn.includes(f.path) ? "churn" : "muted"}`}>{f.edits} {f.edits === 1 ? "edit" : "edits"}</span>
+          {f.added === null || f.deleted === null ? <Unknown /> : (
+            <>
+              <span className="add">+{f.added}</span>
+              <span className="del">−{f.deleted}</span>
+            </>
+          )}
         </li>
       ))}
     </ul>
@@ -192,26 +201,39 @@ function PullRequest({ pr }: { pr: StepDetailData["pr"] }) {
         {pr.draft ? <Tag tone="unknown">draft</Tag> : null}
       </div>
       <h4>CI checks</h4>
-      {pr.checks === null ? <Unknown /> : pr.checks.length ? (
-        <ul className="checks">
-          {pr.checks.map((c) => (
-            <li key={c.name} className={`chk-${c.status}`}>
-              <Icon name={CHECK[c.status][0]} />
-              <span className="mono">{c.name}</span>
-              <span>{CHECK[c.status][1]}</span>
-            </li>
-          ))}
-        </ul>
-      ) : <p className="hint">No CI checks on this PR.</p>}
+      <Checks checks={pr.checks} />
     </>
   );
 }
 
-function MergeNote({ phase }: { phase: StepPhase }) {
+/** A PR's CI checks, each passed, failed, pending or skipped; unknown until read. */
+export function Checks({ checks }: { checks: CheckData[] | null }) {
+  if (checks === null) return <Unknown />;
+  if (!checks.length) return <p className="hint">No CI checks on this PR.</p>;
+  return (
+    <ul className="checks">
+      {checks.map((c) => (
+        <li key={c.name} className={`chk-${c.status}`}>
+          <Icon name={CHECK[c.status][0]} />
+          <span className="mono">{c.name}</span>
+          <span>{CHECK[c.status][1]}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function MergeNote({ phase, merge, branch, nowMs }: { phase: StepPhase; merge: MergeData | null; branch: string | null; nowMs: number }) {
+  const into = branch ? <span className="mono">{branch}</span> : "the integration branch";
   return (
     <>
       <h4>Merge into integration branch</h4>
-      <p className="hint">{phase === "Merged" ? "Merged into the integration branch." : "Not merged yet."}</p>
+      {merge || phase === "Merged" ? (
+        <p className="hint merged-note">
+          <Icon name="check" /> Merged into {into}
+          {merge ? <> · {merge.sha ? <span className="sha">{merge.sha}</span> : <Unknown />} · {formatDuration(nowMs - Date.parse(merge.at))} ago</> : null}
+        </p>
+      ) : <p className="hint">Not merged yet: merges into {into} after Committed.</p>}
     </>
   );
 }

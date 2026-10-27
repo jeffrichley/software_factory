@@ -47,11 +47,11 @@ An issue produced by `to-spec` describing a feature to build.
 _Avoid_: PRD, design doc
 
 **Ticket**:
-A child of a Spec: one implementable vertical slice produced by `to-tickets`.
+A child of a Spec: one implementable vertical slice produced by `to-tickets`. A Ticket split again (an Epic) has child Tickets of its own, at any depth.
 _Avoid_: Task, story, slice
 
 **Mismatch**:
-A skill started against a Work item of a kind it isn't meant for, such as `implement` on a Spec; flagged, never blocked.
+A skill started against a Work item of a kind it isn't meant for, such as `implement` on a Spec, or `implement-spec` on a Work item with no child Tickets; flagged, never blocked.
 _Avoid_: Wrong kind, error
 
 ### Running work
@@ -65,7 +65,7 @@ Where a Job is in its life: In progress, PR open, Merged, Closed or Abandoned; s
 _Avoid_: Job status, Phase
 
 **Step**:
-One Ticket being worked inside a Job; a Spec's Job has one Step per Ticket, a Ticket Job has one.
+One Ticket being worked inside a Job; a Spec Job has one Step per child Ticket of its Work item (a Spec, or a Ticket split again), a Ticket Job has one.
 _Avoid_: Subtask, stage
 
 **Phase**:

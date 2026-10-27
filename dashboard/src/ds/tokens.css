@@ -35,8 +35,10 @@
   --fs-2xl: 40px;
   --fs-3xl: 64px;
 
-  /* spacing */
+  /* spacing (--s0 and --s1h are the half steps for tight inline gaps) */
+  --s0: 2px;
   --s1: 4px;
+  --s1h: 6px;
   --s2: 8px;
   --s3: 12px;
   --s4: 16px;
@@ -55,11 +57,16 @@
   /* layout */
   --top-h: 64px;
   --inbox-w: 360px;
+  --map-side-w: 320px;
   --flow-label: 132px;
   --chip-h: 24px;
   --control-h: 40px;
   --pill-h: 34px;
   --tip-w: 320px;
+  --narrow-w: 720px; /* a narrow box, e.g. a fitted graph's specimen */
+  --clock-w: 76px; /* the header clock: room for HH:MM:SS so the header doesn't shift */
+  --hist-outcome-w: 150px; /* History row columns: outcome, then Work item, then took and ago */
+  --hist-time-w: 96px;
 
   /* motion */
   --dur: 200ms;

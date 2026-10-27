@@ -1,12 +1,14 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   AdHocView,
+  Clock,
   DoneCard,
   DoneUnseenCount,
   Empty,
   FlowStrip,
   HIDDEN_MACHINES_KEY,
   HiddenNeedsBadge,
+  HiddenSessionsCount,
   HistoryCount,
   HistoryList,
   Icon,
@@ -17,7 +19,7 @@ import {
   NeedsCount,
   NeedsYouCard,
   SectionHeading,
-  SessionTable,
+  HiddenSessions,
   SoundToggle,
   SPEC_JOB,
   SpecJobView,
@@ -53,10 +55,15 @@ import {
   resumeCommand,
   viewOf,
   type NeedsReason,
-  type SessionRowData,
+  type SessionData,
+  type SessionHeaderProps,
+  selectedSessionOf,
   type SessionState,
   type SoundName,
   type StepDetailData,
+  type CheckData,
+  type MergeData,
+  type PrTrackEntry,
   type StepPhase,
   type TimelineEntry,
 } from "../ds";
@@ -94,8 +101,12 @@ interface FactoryState {
     /** The latest skill the skill table doesn't know. */
     unknown_skill: string | null;
     now: string | null;
+    /** What the headline leaves out, e.g. the full command; null when it says it all. */
+    now_detail: string | null;
     /** The last few actions, oldest first. */
     actions: TimelineEntry[];
+    /** Where it runs, e.g. "tmux · factory:2", as its SessionStart said; null when the hook couldn't tell. */
+    terminal: string | null;
   }[];
   /** Jobs in Tracked repos, oldest first. */
   jobs: {
@@ -111,7 +122,13 @@ interface FactoryState {
     branch: string | null;
     stage: string;
     pr: { number: number | null; url: string; draft: boolean } | null;
+    /** The stages its PR was seen to reach, with when. */
+    pr_track: PrTrackEntry[];
+    /** The CI checks on its PR's head; null until read. */
+    pr_checks: CheckData[] | null;
     started_at: string;
+    /** When the server first saw it Merged, Closed or Abandoned; null before. */
+    ended_at: string | null;
     /** The active Job already on its Work item when it started; flagged, not blocked. */
     duplicate_of: string | null;
   }[];
@@ -155,6 +172,8 @@ interface FactoryState {
     review: StepDetailData["review"];
     checklist: StepDetailData["checklist"];
     struggle: { failures: number | null; churn: string[]; silent_for_s: number | null } | null;
+    /** A Spec Job's Step: its merge into the integration branch, once seen. */
+    merge: MergeData | null;
   }>;
   /** Code-review findings on a whole Job (a Spec Job's integration branch), by Job id. */
   job_reviews: Record<string, NonNullable<StepDetailData["review"]>>;
@@ -172,13 +191,17 @@ interface FactoryState {
   sounds: { id: number; session_id: string; machine: string; sound: SoundName; at: string }[];
 }
 
-type Session = SessionRowData & {
+type Session = SessionData & {
   ccSessionId: string;
+  terminal: string | null;
   reason: NeedsReason | null;
   seen: boolean;
   hidden: boolean;
   actions: TimelineEntry[];
 };
+
+/** A session as its detail view takes it: with what its header shows besides the session itself. */
+type ViewSession = Session & Pick<SessionHeaderProps, "machineSilentForMs" | "needs" | "controls">;
 
 /** Live dashboard state: the SSE stream sends the full state on connect and on every change. */
 function useFactoryState(): FactoryState | null {
@@ -285,8 +308,9 @@ const SESSION_ID_CHARS = 8;
 export function Dashboard() {
   const state = useFactoryState();
   const now = useNow(1000);
+  // The session the human opened; until then (or once it is off show) the centre shows the default selection.
   const [selectedId, setSelectedId] = useState<string>();
-  // The Step opened with the session, from its flow-strip chip; none when opened from its row or card.
+  // The Step opened with the session, from its flow-strip chip; none when opened from its card.
   const [selectedStepId, setSelectedStepId] = useState<string>();
   const [showHiddenSessions, setShowHiddenSessions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -298,12 +322,11 @@ export function Dashboard() {
   useSounds(state?.sounds, soundOn);
   const sessions: Session[] = state?.sessions.map((s) => ({
     id: s.id, machine: s.machine, repo: s.repo, ccSessionId: s.cc_session_id, state: s.state, staleReason: s.stale_reason, reason: s.reason,
-    seen: s.seen, hidden: s.hidden, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, actions: s.actions,
+    seen: s.seen, hidden: s.hidden, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, nowDetail: s.now_detail, actions: s.actions, terminal: s.terminal,
     inStateMs: now - Date.parse(s.state_since),
     ...(s.quiet_since ? { quietMs: now - Date.parse(s.quiet_since) } : {}),
   })) ?? [];
   const view = viewOf(sessions, hiddenMachines);
-  const selected = [...view.shown, ...view.hiddenSessions].find((s) => s.id === selectedId);
   const { needs, doneUnseen } = inboxOf(view.shown);
   // A repo shows while any Machine that tracks it does.
   const repos = state?.repos.filter((r) => r.machines.some((m) => !hiddenMachines.includes(m)));
@@ -313,11 +336,16 @@ export function Dashboard() {
   const setHidden = (id: string, hidden: boolean) =>
     void fetch(`/api/sessions/${id}/${hidden ? "hide" : "show"}`, { method: "POST" }).catch(() => {});
   const jobs: JobData[] = (state?.jobs ?? []).map((j) => ({
-    id: j.id, sessionId: j.session_id, machine: j.machine, kind: j.kind, repo: j.repo, startedAt: j.started_at, duplicateOf: j.duplicate_of,
+    id: j.id, sessionId: j.session_id, machine: j.machine, kind: j.kind, repo: j.repo, startedAt: j.started_at, endedAt: j.ended_at, duplicateOf: j.duplicate_of,
     number: j.number, stage: j.stage, branch: j.branch,
-    worktree: j.worktree, pr: j.pr, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
+    worktree: j.worktree, pr: j.pr, prTrack: j.pr_track, prChecks: j.pr_checks, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
   }));
   const history = historyOf(jobs, hiddenMachines);
+  // The centre's session: the one opened (a hidden one too: opened from the list, or hidden while open), else the
+  // default like variant E.
+  const selected = selectedSessionOf(view.shown, jobs, selectedId, view.hiddenSessions);
+  // The session marked as open in the flow strip and inbox; none while History or a Replay has the centre.
+  const openId = showHistory ? undefined : selected?.id;
   // A replay of a Job on a Machine hidden since closes with it.
   const replayJob = history.find((j) => j.id === replayId);
   const abandon = (jobId: string) => {
@@ -334,7 +362,7 @@ export function Dashboard() {
   const details: Record<string, StepDetailData> = Object.fromEntries(
     Object.entries(state?.step_details ?? {}).map(([id, d]) => [id, {
       phaseEvents: d.phase_events, tests: d.tests, files: d.files, commits: d.commits, pr: d.pr, review: d.review,
-      checklist: d.checklist, struggle: d.struggle && { failures: d.struggle.failures, churn: d.struggle.churn, silentForS: d.struggle.silent_for_s },
+      checklist: d.checklist, merge: d.merge, struggle: d.struggle && { failures: d.struggle.failures, churn: d.struggle.churn, silentForS: d.struggle.silent_for_s },
     }]),
   );
   const ticketStepOf = (job: JobData | null) => {
@@ -344,7 +372,7 @@ export function Dashboard() {
   const flow = flowRows(repos?.map((r) => r.repo) ?? [], view.shown, jobs, steps).map((r) => ({
     repo: r.repo,
     chips: r.chips.map(({ sessionId, stepId, ...c }) => ({
-      ...c, selected: sessionId === selectedId && (!stepId || !selectedStepId || stepId === selectedStepId),
+      ...c, selected: sessionId === openId && (!stepId || !selectedStepId || stepId === selectedStepId),
       onOpen: () => open(sessionId, stepId),
     })),
   }));
@@ -394,7 +422,7 @@ export function Dashboard() {
     if (j) abandon(j.id);
   };
   /** Each session kind's detail view; kinds without their own view yet show the ad hoc view, titled by their kind. */
-  const detailByKind: Record<string, (s: Session) => ReactNode> = {
+  const detailByKind: Record<string, (s: ViewSession) => ReactNode> = {
     [TICKET_JOB]: (s) => (
       <TicketJobView {...s} job={jobOf(s.id)} step={ticketStepOf(jobOf(s.id))} nowMs={now} onAbandon={abandonJobOf(s)} />
     ),
@@ -419,14 +447,44 @@ export function Dashboard() {
     ),
     [TO_TICKETS]: (s) => <ToTicketsView key={s.id} {...s} toTickets={toTicketsOf(s.id)} spec={itemRef(s.repo, toTicketsOf(s.id)?.spec)} />,
   };
-  const detailOf = (s: Session) => detailByKind[s.kind]?.(s) ?? <AdHocView {...s} />;
+  /** What a session's header shows besides the session itself: its Machine's silence, its Needs you block, Hide/Show. */
+  const viewSession = (s: Session): ViewSession => {
+    const m = state?.machines.find((x) => x.machine === s.machine);
+    return {
+      ...s,
+      machineSilentForMs: m?.silent ? now - Date.parse(m.last_seen) : undefined,
+      needs: s.state === "Needs you" ? {
+        reason: s.reason, session: s.ccSessionId.slice(0, SESSION_ID_CHARS), terminal: s.terminal, resumeCommand: resumeCommand(s.ccSessionId), onCopy: copy,
+      } : undefined,
+      controls: (
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            // Hidden, it stays open (with its Show button) until the human opens something else.
+            setSelectedId(s.id);
+            setHidden(s.id, !s.hidden);
+          }}
+        >
+          <Icon name={s.hidden ? "eye" : "eye-off"} />
+          {s.hidden ? "Show this session" : "Hide this session"}
+        </button>
+      ),
+    };
+  };
+  const detailOf = (s: Session) => {
+    const v = viewSession(s);
+    return detailByKind[s.kind]?.(v) ?? <AdHocView {...v} />;
+  };
 
   const seen = (id: string) => void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
-  /** Opening a session's detail, from its row, its inbox card or a flow-strip chip (with that chip's Step open),
-   * makes its Done seen. */
+  /** Opening a session's detail, from its inbox card or a flow-strip chip (with that chip's Step open), puts it in the
+   * centre in place of History or a Replay, and makes its Done seen. */
   const open = (id: string, stepId?: string) => {
     setSelectedId(id);
     setSelectedStepId(stepId);
+    setShowHistory(false);
+    setReplayId(undefined);
     seen(id);
   };
 
@@ -449,11 +507,15 @@ export function Dashboard() {
           <HiddenNeedsBadge count={view.hiddenNeeds.length} onShow={() => showMachines(view.hiddenNeeds.map((s) => s.machine))} />
           <NeedsCount count={needs.length} />
           <DoneUnseenCount count={doneUnseen.length} />
-          <HistoryCount count={history.length} open={showHistory} onToggle={() => { setShowHistory(!showHistory); setReplayId(undefined); }} />
-          <SoundToggle on={soundOn} onToggle={toggleSound} />
+          <HiddenSessionsCount count={view.hiddenSessions.length} onOpen={() => setShowHiddenSessions(true)} />
         </div>
+        <HistoryCount count={history.length} open={showHistory} onToggle={() => { setShowHistory(!showHistory); setReplayId(undefined); }} />
+        <SoundToggle on={soundOn} onToggle={toggleSound} />
+        <Clock now={now} />
       </TopBar>
       <Split
+        view={showHistory ? `history:${replayJob?.id ?? ""}` : `session:${selected?.id ?? ""}`}
+        top={repos ? <FlowStrip rows={flow} /> : null}
         side={
           <Inbox>
             <InboxHeader count={needs.length} />
@@ -468,9 +530,9 @@ export function Dashboard() {
                   workItem={workItemOf(s)}
                   machine={s.machine}
                   session={s.ccSessionId.slice(0, SESSION_ID_CHARS)}
-                  terminal={null}
+                  terminal={s.terminal}
                   resumeCommand={resumeCommand(s.ccSessionId)}
-                  selected={s.id === selectedId}
+                  selected={s.id === openId}
                   onCopy={copy}
                   onOpen={() => open(s.id)}
                 />
@@ -489,43 +551,32 @@ export function Dashboard() {
                   machine={s.machine}
                   agoMs={s.inStateMs}
                   now={s.now}
+                  nowDetail={s.nowDetail}
                   onOpen={() => open(s.id)}
                 />
               ))
             ) : (
               <Empty>Everything Done has been seen.</Empty>
             )}
+            <HiddenSessions
+              sessions={view.hiddenSessions}
+              open={showHiddenSessions}
+              onToggle={() => setShowHiddenSessions(!showHiddenSessions)}
+              selectedId={openId}
+              onOpen={(id) => open(id)}
+            />
           </Inbox>
         }
       >
         {showHistory ? (
           replayJob ? (
-            <ReplayView key={replayJob.id} job={replayJob} replay={replay?.job_id === replayJob.id ? replay : null} onBack={() => setReplayId(undefined)} />
-          ) : <HistoryList jobs={history} onReplay={setReplayId} />
+            <ReplayView key={replayJob.id} job={replayJob} nowMs={now} replay={replay?.job_id === replayJob.id ? replay : null} onBack={() => setReplayId(undefined)} />
+          ) : <HistoryList jobs={history} nowMs={now} onReplay={setReplayId} />
+        ) : selected ? (
+          detailOf(selected)
+        ) : state ? (
+          <Empty>No Tracked sessions on show. Start Claude Code in a Tracked repo, or show a hidden Machine.</Empty>
         ) : null}
-        {repos ? <FlowStrip rows={flow} /> : null}
-        {state ? (
-          <SessionTable
-            sessions={showHiddenSessions ? [...view.shown, ...view.hiddenSessions] : view.shown}
-            selectedId={selectedId}
-            onSelect={(id) => open(id)}
-          />
-        ) : null}
-        {view.hiddenSessions.length ? (
-          <div className="toolbar">
-            <button type="button" className={`btn${showHiddenSessions ? " btn-on" : ""}`} aria-pressed={showHiddenSessions} onClick={() => setShowHiddenSessions(!showHiddenSessions)}>
-              {showHiddenSessions ? "Leave out" : "List"} {view.hiddenSessions.length} hidden session(s)
-            </button>
-          </div>
-        ) : null}
-        {selected ? (
-          <div className="toolbar">
-            <button type="button" className="btn" onClick={() => setHidden(selected.id, !selected.hidden)}>
-              {selected.hidden ? "Show this session" : "Hide this session"}
-            </button>
-          </div>
-        ) : null}
-        {selected ? detailOf(selected) : null}
       </Split>
     </>
   );

@@ -49,3 +49,9 @@
   .g-type { grid-template-columns: minmax(0, 1fr) 80px; }
   .g-type > span:last-child:not(:nth-child(2)) { display: none; }
 }
+/* The page specimen: its own height, not the window's. */
+.g-split { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.g-split .split { height: auto; }
+.g-narrowbox { max-width: var(--narrow-w); }
+/* Top bar specimens sit in the page, not stuck over the gallery's own header. */
+.g-section .top { position: static; }

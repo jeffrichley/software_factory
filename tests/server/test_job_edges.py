@@ -132,6 +132,16 @@ def test_the_human_can_abandon_a_job(client, ticket):
     assert (row["state"], row["seen"]) == ("Done", True)
 
 
+def test_an_ended_job_says_when_it_ended_for_history(client, ticket, clock):
+    job_id = implement(client, "#5")["job_id"]
+    clock.advance(42 * 60)
+
+    client.post(f"/api/jobs/{job_id}/abandon")
+
+    job = jobs(client)[0]
+    assert (job["started_at"], job["ended_at"]) == ("2026-10-26T12:00:00Z", "2026-10-26T12:42:00Z")
+
+
 def test_abandoning_an_unknown_job_is_not_found(client, ticket):
     assert client.post("/api/jobs/999/abandon").status_code == 404
 

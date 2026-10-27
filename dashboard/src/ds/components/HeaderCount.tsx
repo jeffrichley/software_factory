@@ -28,3 +28,14 @@ export function HiddenNeedsBadge({ count, onShow }: { count: number; onShow?: ()
     </button>
   );
 }
+
+/** "N hidden": how many sessions the human hid (on Machines on show); opens their list. Nothing when none are. */
+export function HiddenSessionsCount({ count, onOpen }: { count: number; onOpen: () => void }) {
+  if (!count) return null;
+  return (
+    <button type="button" className="count count-hidden-sessions" title="List the hidden sessions" onClick={onOpen}>
+      <Icon name="eye-off" />
+      <b>{count}</b> hidden
+    </button>
+  );
+}

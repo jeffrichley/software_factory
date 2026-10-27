@@ -1,4 +1,5 @@
 import { formatDuration } from "./format";
+import type { MergeData } from "./specJob";
 
 /** One change of a Step's Phase; null = Phase unknown. */
 export interface PhaseChangeData {
@@ -53,7 +54,8 @@ export interface StepDetailData {
   phaseEvents: PhaseChangeData[];
   /** null until a test run. */
   tests: { last: "pass" | "fail"; passed: number | null; failed: number | null; runs: TestRunData[] } | null;
-  files: { path: string; edits: number }[];
+  /** Lines each file's edits added and deleted; null when some edit's patch couldn't be read. */
+  files: { path: string; edits: number; added: number | null; deleted: number | null }[];
   commits: CommitData[];
   /** A Ticket Job's PR; checks null until read. A Spec Job's Steps merge into its integration branch instead. */
   pr: { number: number | null; url: string; draft: boolean; checks: CheckData[] | null } | null;
@@ -61,6 +63,8 @@ export interface StepDetailData {
   /** null: the agent has no todo or task tools, so no checklist. */
   checklist: ChecklistItem[] | null;
   struggle: StruggleData | null;
+  /** A Spec Job's Step: its merge into the integration branch, once seen. */
+  merge?: MergeData | null;
 }
 
 /** The struggle badge's tags, one per reason that holds. */

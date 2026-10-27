@@ -62,3 +62,8 @@ export function layoutGraph(
     }),
   );
 }
+
+/** How much a graph `width` wide is shrunk to fit a box `box` wide: never enlarged, and 1:1 until the box is measured. */
+export function fitZoom(width: number, box: number): number {
+  return box > 0 && width > box ? box / width : 1;
+}

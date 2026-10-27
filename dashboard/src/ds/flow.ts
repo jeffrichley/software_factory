@@ -1,6 +1,6 @@
 import type { IconName } from "./components/Icon";
 import { currentJob } from "./jobs";
-import { PENDING, PHASES, type Phase, type SessionState, type StepPhase } from "./types";
+import { PENDING, PHASES, SPEC_JOB, type Phase, type SessionState, type StepPhase } from "./types";
 
 export const FLOW_COLUMNS = ["Phase unknown", ...PHASES, "Planning / ad hoc"] as const;
 
@@ -59,10 +59,31 @@ export interface FlowChipData {
   seen: boolean;
   phase: Phase | null | "planning";
   planIcon?: IconName;
+  /** A Spec Job's Step chip: the Spec's initials (its number until its title is polled). */
+  specInitials?: string;
+  /** A Spec Job's Step chip: the Spec named in full, for the tooltip. */
+  specName?: string;
   machine: string;
   repo: string;
   staleReason?: string;
   quietMs?: number;
+}
+
+/** A Job as the flow strip needs it; its kind and Work item mark a Spec Job's Step chips with the Spec. */
+export interface FlowJob {
+  id: string;
+  sessionId: string;
+  kind?: string;
+  number?: number | null;
+  workItem?: { name: string } | null;
+}
+
+/** A Spec Job's Spec on its Step chips: initials (its number until its title is polled), and its name in full. */
+function specOf(job: FlowJob): { specInitials: string; specName: string } | null {
+  if (job.kind !== SPEC_JOB) return null;
+  const name = job.workItem?.name;
+  if (name) return { specInitials: specInitials(name), specName: `${SPEC_JOB} · ${name}` };
+  return job.number ? { specInitials: `#${job.number}`, specName: `${SPEC_JOB} · #${job.number}` } : null;
 }
 
 /** Each planning kind's icon on its chip; any other kind (ad hoc) shows a terminal. */
@@ -72,12 +93,12 @@ const PLAN_ICONS: Record<string, IconName> = { Wayfinder: "flag", research: "sea
  * The flow strip's rows: one per Tracked repo shown, in order. Each session shown puts its current Job's Steps in
  * their Phases, leaving out Pending ones (a Job with no Step under way shows once, Phase unknown); a session with no
  * Job goes in Planning / ad hoc.
- * Chips take their session's state.
+ * Chips take their session's state; a Spec Job's Step chips carry its Spec's initials.
  */
 export function flowRows(
   repos: string[],
   sessions: FlowSession[],
-  jobs: { id: string; sessionId: string }[],
+  jobs: FlowJob[],
   steps: FlowStepData[],
 ): { repo: string; chips: FlowChipData[] }[] {
   const rows = repos.map((repo) => ({ repo, chips: [] as FlowChipData[] }));
@@ -95,12 +116,13 @@ export function flowRows(
       continue;
     }
     const mine = steps.filter((st) => st.jobId === job.id);
+    const spec = specOf(job);
     let shown = 0;
     for (const st of mine) {
       if (st.phase === PENDING) continue;
       const ticket = st.number === null ? "Ticket unknown" : `#${st.number}`;
       row.chips.push({
-        id: `step-${st.id}`, stepId: st.id, label: st.title ?? ticket, name: st.title ? `${ticket} ${st.title}` : ticket, phase: st.phase, ...look,
+        id: `step-${st.id}`, stepId: st.id, label: st.title ?? ticket, name: st.title ? `${ticket} ${st.title}` : ticket, phase: st.phase, ...spec, ...look,
       });
       shown++;
     }

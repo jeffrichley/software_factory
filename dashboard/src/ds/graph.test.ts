@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyGraph, layoutGraph, type GraphItem } from "./graph";
+import { classifyGraph, fitZoom, layoutGraph, type GraphItem } from "./graph";
 
 // A Spec: schema is merged; api waits on schema (now merged) and is blocked by auth; auth is open.
 const spec: GraphItem[] = [
@@ -43,5 +43,19 @@ describe("layoutGraph", () => {
     const pos = layoutGraph(spec, { width: 200, height: 80 });
     expect(pos.schema.x).toBe(pos.auth.x);
     expect(Math.abs(pos.schema.y - pos.auth.y)).toBeGreaterThanOrEqual(80);
+  });
+});
+
+describe("fitZoom", () => {
+  it("shrinks a graph wider than its box to the box's width", () => {
+    expect(fitZoom(2000, 1000)).toBe(0.5);
+  });
+
+  it("never enlarges a graph narrower than its box", () => {
+    expect(fitZoom(600, 1000)).toBe(1);
+  });
+
+  it("leaves the graph 1:1 until the box has been measured", () => {
+    expect(fitZoom(2000, 0)).toBe(1);
   });
 });

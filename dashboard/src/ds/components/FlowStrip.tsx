@@ -2,6 +2,7 @@ import { LayoutGroup } from "framer-motion";
 import { FLOW_COLUMNS, flowColumn } from "../flow";
 import { phaseClass } from "../format";
 import type { Phase } from "../types";
+import { RepoName } from "./RepoName";
 import { StateChip, type StateChipProps } from "./StateChip";
 
 export interface FlowRow {
@@ -37,7 +38,7 @@ function FlowStripRow({ row }: { row: FlowRow }) {
   return (
     <div className={`frow${row.chips.some((c) => c.state === "Needs you") ? " has-needs" : ""}`}>
       <div className="flabel">
-        <span className="truncate mono" title={row.repo}>{row.repo}</span>
+        <RepoName className="truncate mono" repo={row.repo} />
       </div>
       {cells.map((chips, i) => (
         <FlowCell key={FLOW_COLUMNS[i]} className={edgeColumn(i) ?? ""} chips={chips} />

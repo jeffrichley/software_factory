@@ -12,9 +12,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.responses import Response
+from starlette.types import Scope
 
 from . import sounds, states
-from .activity import running_skill, started_skill, tool_headline
+from .activity import running_skill, started_skill, tool_detail, tool_headline
 from .github import GitHub, read_blocked_by, read_checks, read_issues
 from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, is_agent_worktree, merge_of, spec_job_start,
                    spec_step_start, ticket_job_start, tickets_named, worktree_of)
@@ -22,8 +24,8 @@ from . import planning
 from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import QUIET_AFTER, as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
-from .step_detail import (CODE_REVIEW, REVIEW_AXES, checklist_after, commit_made, repo_relative, review_counts, review_report_ask,
-                          test_counts, test_output)
+from .step_detail import (CODE_REVIEW, REVIEW_AXES, checklist_after, commit_made, lines_changed, merge_sha, repo_relative, review_counts,
+                          review_report_ask, test_counts, test_output, tool_response)
 from .store import Store
 from .wayfinder import (WAITS_ON_HUMAN, WAYFINDER, claims, closes, created_numbers, creates, mode_of, questions)
 from .work_items import pull_requests, work_items
@@ -65,6 +67,11 @@ class Envelope(BaseModel):
     event: dict
     # Sent with SessionStart only: the installed mattpocock-skills version, for the skill table's version ranges.
     mattpocock_skills_version: str | None = None
+    # Sent with SessionStart only: where the session runs, e.g. "tmux · factory:2"; None when the hook can't tell.
+    terminal: str | None = None
+    # Sent with PostToolUse of a `git merge`: the commit its cwd is on just after it, short (git prints none for a real
+    # merge); None when the hook couldn't read it.
+    head: str | None = None
     # Set on an event that was queued while the server was down: when it happened on the Machine.
     queued_at: datetime | None = None
 
@@ -105,6 +112,17 @@ class Broadcaster:
                     state = current()
         finally:
             self.queues.pop(q, None)
+
+
+class DashboardFiles(StaticFiles):
+    """The built dashboard. The page is revalidated on every load, so a normal refresh picks up a new build; its
+    assets are named by content hash (a new build, new names), so the browser may keep them."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        if not path.startswith("assets/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def create_app(
@@ -171,12 +189,21 @@ def create_app(
                 "blocked_by": sorted(set(t["blocked_by"]) | set(item["blocked_by"]))}
 
     def mismatches() -> list[dict]:
-        """Skill starts in live sessions against the wrong kind of Work item."""
+        """Skill starts in live sessions against the wrong kind of Work item.
+
+        A Spec Job works its Work item's sub-issues, so its fit is having some, whatever the Work item's kind.
+        """
         found = []
         for start in store.live_skill_starts():
             role = skills.role(start["skill"], start.pop("mattpocock_skills_version"))
             expected = list(role.work_items) if role else []
-            if expected and start["kind"] and start["kind"] not in expected:
+            if not (expected and start["kind"]):
+                continue
+            if role.role == SPEC_JOB:
+                wrong = not store.child_tickets(start["repo"], start["number"])
+            else:
+                wrong = start["kind"] not in expected
+            if wrong:
                 found.append({**start, "expected": expected})
         return found
 
@@ -226,9 +253,9 @@ def create_app(
             add_spec_steps(job_id, repo)
 
     def add_spec_steps(job_id: int, repo: str) -> None:
-        """A Step, Pending, for each of the Spec's Tickets the Job has none for yet."""
-        spec = store.job_number(job_id)
-        for number in store.spec_tickets(repo, spec) if spec else []:
+        """A Step, Pending, for each child Ticket of the Job's Work item (a Spec, or an Epic-like Ticket) it has none for yet."""
+        parent = store.job_number(job_id)
+        for number in store.child_tickets(repo, parent) if parent else []:
             if store.job_step_numbered(job_id, number) is None:
                 store.add_step(job_id, number, clock(), PENDING)
 
@@ -283,7 +310,7 @@ def create_app(
                 store.classify(session_id, role.kind, name)
             store.record_action(session_id, started_skill(name), now)
         elif event.get("hook_event_name") == "PreToolUse":
-            store.record_action(session_id, tool_headline(event), now)
+            store.record_action(session_id, tool_headline(event), now, detail=tool_detail(event))
 
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
@@ -337,6 +364,7 @@ def create_app(
                     sounds.schedule(store, session_id, event, now)
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
+                    store.set_terminal(session_id, envelope.terminal)
                 observe(session_id, event, now)
                 signal = phase_rules.load().signal(event, envelope.repo) if job_id is not None else None
                 if signal == "merge" and spec_job and not into_integration(job_id, event, envelope.repo_path):
@@ -348,6 +376,8 @@ def create_app(
                     store.step_active(step_id, now)
                     infer_phase(step_id, job_id, signal, session_id, now)
                     record_detail(step_id, event, signal, envelope.repo_path, now)
+                    if signal == "merge" and spec_job:
+                        store.record_merge(step_id, merge_sha(event) or head_after_merge(event, envelope.head), now)
         hub.publish(state())
         return Reply(
             session_id=None if session_id is None else str(session_id),
@@ -380,7 +410,7 @@ def create_app(
                     if main and store.wayfinder(session_id)["ticket"] is None:
                         store.set_wayfinder(session_id, ticket=number)
             case "PostToolUse" if command:
-                response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+                response = tool_response(event)
                 for is_map in creates(command, repo):
                     for number in created_numbers(response.get("stdout"), repo):
                         if is_map:
@@ -409,7 +439,7 @@ def create_app(
         facts = store.plan(session_id, kind) or planning.empty(kind)
         tool_name = event.get("tool_name")
         tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
-        response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+        response = tool_response(event)
         command = str(tool_input.get("command") or "") if tool_name == "Bash" else ""
         match event.get("hook_event_name"), kind:
             case "PreToolUse", planning.RESEARCH if tool_name == "WebSearch" and tool_input.get("query"):
@@ -497,7 +527,7 @@ def create_app(
         PostToolUse(Agent) names its agentId, and its description or prompt the Ticket), or from the subagent
         running `factory step --ticket N`."""
         tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
-        response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+        response = tool_response(event)
         agent_id, named = None, []
         if event.get("hook_event_name") == "PostToolUse" and event.get("tool_name") == "Agent" and "agent_id" not in event:
             agent_id = response.get("agentId")
@@ -527,6 +557,13 @@ def create_app(
                       if not kind or (i.get("subagent_type") or "general-purpose") == kind]
         return bool(candidates) and all(
             any(store.job_step_numbered(job_id, n) is not None for n in launch_tickets(i, repo)) for i in candidates)
+
+    def head_after_merge(event: dict, head: str | None) -> str | None:
+        """The commit a merge left its branch on, from the HEAD the hook read in the event's cwd just after it: only
+        when the merge ran there (not `git -C` elsewhere)."""
+        tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+        merge = merge_of(str(tool_input.get("command") or ""), event.get("cwd"))
+        return head if head and merge is not None and merge[0] == event.get("cwd") else None
 
     def into_integration(job_id: int, event: dict, main_tree: str) -> bool:
         """Whether a `git merge` merges into the Job's integration branch: run in the Job's worktree when that is
@@ -566,7 +603,8 @@ def create_app(
         if signal in ("test_edit", "source_edit"):
             tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
             path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
-            store.record_edit(step_id, repo_relative(path, worktree_of(event.get("cwd"), main_tree), main_tree))
+            store.record_edit(step_id, repo_relative(path, worktree_of(event.get("cwd"), main_tree), main_tree),
+                              lines_changed(event))
         elif signal == "commit" and (commit := commit_made(event)):
             store.record_commit(step_id, commit, now)
         elif signal in ("test_pass", "test_fail"):
@@ -607,7 +645,7 @@ def create_app(
 
     def follow_worktree(job_id: int, event: dict, main_tree: str) -> None:
         """Where the Job works: the worktree EnterWorktree made, else the session's own cwd when in one."""
-        response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+        response = tool_response(event)
         if event.get("hook_event_name") == "PostToolUse" and event.get("tool_name") == "EnterWorktree" and response.get("worktreePath"):
             store.set_job_worktree(job_id, response["worktreePath"], response.get("worktreeBranch"))
         elif worktree := worktree_of(event.get("cwd"), main_tree):
@@ -749,5 +787,5 @@ def create_app(
         return StreamingResponse(hub.stream(state, refresh_s), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
     if DASHBOARD_DIR.is_dir():
-        app.mount("/", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
+        app.mount("/", DashboardFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
     return app

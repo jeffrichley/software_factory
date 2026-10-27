@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .skills import bare_name, check_range, in_range, skill_invocation
+from .step_detail import tool_response
 
 log = logging.getLogger("factory_server")
 
@@ -78,7 +79,7 @@ class Rules:
             if failed:
                 return "test_fail" if str(event.get("error", "")).startswith("Exit code") else None
             # A piped run exits with the last command's status: its output's summary line decides.
-            response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+            response = tool_response(event)
             output = f"{response.get('stdout', '')}\n{response.get('stderr', '')}"
             return "test_fail" if self.matches("failed_summary", output, repo) else "test_pass"
         if failed:

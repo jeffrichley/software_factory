@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { formatDuration } from "../format";
 import { Icon, type IconName } from "./Icon";
 import { NowLine } from "./NowLine";
+import { RepoName } from "./RepoName";
 import { Unknown } from "./Unknown";
 
 export type NeedsReason = (
@@ -96,7 +97,7 @@ export function NeedsYouCard(p: NeedsYouCardProps) {
       </header>
       <div className="nb">
         <span className="nwhat">
-          <b>{p.repo}</b> · {p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} />
+          <b><RepoName repo={p.repo} /></b> · {p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} />
           {p.reason?.step_ticket ? <> · Ticket <span className="mono">#{p.reason.step_ticket}</span></> : null}
         </span>
         <NeedsBody reason={p.reason} />
@@ -119,6 +120,47 @@ export function NeedsYouCard(p: NeedsYouCardProps) {
   );
 }
 
+export interface NeedsDetailProps {
+  /** Why the session Needs you; null while unknown. */
+  reason: NeedsReason | null;
+  waitingMs: number;
+  machine: string;
+  /** The Claude Code session, shortened. */
+  session: string;
+  terminal: string | null;
+  resumeCommand: string;
+  onCopy?: (text: string) => void;
+}
+
+/** The centre's Needs you block on a waiting session's detail: why it waits, where, and its resume command. */
+export function NeedsDetail(p: NeedsDetailProps) {
+  const [title, icon] = p.reason ? REASON[p.reason.kind] : UNKNOWN_REASON;
+  return (
+    <section className="needs-detail" aria-label="Needs you">
+      <header>
+        <Icon name={icon} size="20px" />
+        {p.reason ? `Needs you · ${title}` : title}
+        <span className="wait">waiting {formatDuration(p.waitingMs)}</span>
+      </header>
+      <div className="needs-body">
+        <NeedsBody reason={p.reason} />
+        <dl className="where">
+          <div><dt>Machine</dt><dd>{p.machine}</dd></div>
+          <div><dt>Session</dt><dd>{p.session}</dd></div>
+          <div><dt>Terminal</dt><dd>{p.terminal ?? <Unknown />}</dd></div>
+        </dl>
+        <div className="nact">
+          <button type="button" className="btn btn-needs" onClick={() => p.onCopy?.(p.resumeCommand)}>
+            <Icon name="copy" />
+            Copy resume command
+          </button>
+          <span className="mono muted">{p.resumeCommand}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export interface DoneCardProps {
   /** Session kind; null while unknown. */
   kind: string | null;
@@ -127,6 +169,7 @@ export interface DoneCardProps {
   machine: string;
   agoMs: number;
   now: string | null;
+  nowDetail?: string | null;
   onOpen?: () => void;
 }
 
@@ -135,8 +178,8 @@ export function DoneCard(p: DoneCardProps) {
   return (
     <div className="dcard">
       <span className="dt">{p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} /></span>
-      <span className="dm">{p.repo} · {p.machine} · {formatDuration(p.agoMs)} ago</span>
-      <NowLine now={p.now} />
+      <span className="dm"><RepoName repo={p.repo} /> · {p.machine} · {formatDuration(p.agoMs)} ago</span>
+      <NowLine now={p.now} detail={p.nowDetail} />
       <div className="nact">
         <button type="button" className="btn" onClick={p.onOpen}>Open</button>
       </div>
@@ -161,6 +204,49 @@ export function InboxHeader({ count }: { count: number }) {
         <h2>Needs you</h2>
         <p>Oldest first. Each one is a session waiting on you.</p>
       </div>
+    </div>
+  );
+}
+
+export interface HiddenSessionsProps {
+  /** Sessions the human hid, on Machines on show. */
+  sessions: { id: string; kind: string; repo: string; machine: string }[];
+  /** Whether they are listed. */
+  open: boolean;
+  onToggle: () => void;
+  selectedId?: string;
+  /** Opens a hidden session's detail, where it can be shown again. */
+  onOpen: (id: string) => void;
+}
+
+/** Under the inbox: how many sessions are hidden, listed on demand (also from the header's `HiddenSessionsCount`);
+ * nothing when none are. */
+export function HiddenSessions({ sessions, open, onToggle, selectedId, onOpen }: HiddenSessionsProps) {
+  const box = useRef<HTMLDivElement>(null);
+  // Opened from the header's count, the list may sit below the fold: bring it into view.
+  useEffect(() => {
+    if (open) box.current?.scrollIntoView?.({ block: "nearest" });
+  }, [open]);
+  if (!sessions.length) return null;
+  return (
+    <div className="hidden-sessions" ref={box}>
+      <div>
+        <button type="button" className={`btn${open ? " btn-on" : ""}`} aria-pressed={open} onClick={onToggle}>
+          <Icon name="eye-off" />
+          {open ? "Leave out" : "List"} {sessions.length} hidden session{sessions.length === 1 ? "" : "s"}
+        </button>
+      </div>
+      {open ? (
+        <ul aria-label="Hidden sessions">
+          {sessions.map((s) => (
+            <li key={s.id}>
+              <button type="button" className={`linkbtn${s.id === selectedId ? " sel" : ""}`} onClick={() => onOpen(s.id)}>
+                {s.kind} · <RepoName className="mono" repo={s.repo} /> · <span className="mono">{s.machine}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

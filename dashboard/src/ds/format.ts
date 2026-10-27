@@ -9,10 +9,28 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+const DAY_MS = 86_400_000;
+
+/** How long ago, as variant E's History shows it: 45s ago · 3h 10m ago · 1d ago. */
+export function formatAgo(ms: number): string {
+  return ms >= DAY_MS ? `${Math.floor(ms / DAY_MS)}d ago` : `${formatDuration(ms)} ago`;
+}
+
+/** A Tracked repo by its bare name, as variant E shows it (the owner goes in the tooltip): software_factory. */
+export function repoName(repo: string): string {
+  return repo.slice(repo.lastIndexOf("/") + 1);
+}
+
 /** A timeline entry's time, in local hours and minutes: 09:05. */
 export function formatClock(iso: string): string {
   const t = new Date(iso);
   return `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+}
+
+/** The header clock, in local hours, minutes and seconds: 09:05:07. */
+export function formatWallClock(ms: number): string {
+  const t = new Date(ms);
+  return [t.getHours(), t.getMinutes(), t.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
 export interface StateLook {

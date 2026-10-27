@@ -1,47 +1,60 @@
-import { formatClock } from "../format";
-import type { JobData } from "../jobs";
+import { endedJob, type JobData } from "../jobs";
 import { Icon } from "./Icon";
-import { WorkItemLink } from "./InboxCards";
-import { Empty, Panel } from "./Panel";
-import { PrLink } from "./SessionDetail";
-import { Tag } from "./Tag";
+import { Empty, Eyebrow, Panel } from "./Panel";
+import { RepoName } from "./RepoName";
+import { Detail, Hint } from "./SessionDetail";
+import { Unknown } from "./Unknown";
 
-/** The header's History button: how many Jobs have ended; opens the History list. */
+/** The header's History button (variant E's), with how many Jobs have ended; opens the History list. */
 export function HistoryCount({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
   return (
-    <button type="button" className={`count count-history${open ? " on" : ""}`} aria-pressed={open} onClick={onToggle}>
-      <Icon name="clock" />
-      <b>{count}</b>History
+    <button type="button" className={`btn${open ? " btn-on" : ""}`} aria-pressed={open} onClick={onToggle}>
+      <Icon name="history" />
+      History<b className="btn-count">{count}</b>
     </button>
   );
 }
 
-/** Ended Jobs (Merged, Closed, Abandoned), each with its outcome, Work item, repo, Machine, PR and start time, and a Replay. */
-export function HistoryList({ jobs, onReplay }: { jobs: JobData[]; onReplay?: (jobId: string) => void }) {
+/** Ended Jobs (Merged, Closed, Abandoned), as variant E's rows: outcome and PR, Work item, kind · repo · Machine, how long
+ * it took and how long ago it ended; picking one replays it. */
+export function HistoryList({ jobs, nowMs, onReplay }: { jobs: JobData[]; nowMs: number; onReplay?: (jobId: string) => void }) {
   return (
-    <Panel title={`History · ${jobs.length}`} label="History">
+    <Detail label="History">
+      <nav className="crumbs" aria-label="Zoom level">
+        <span>Overview</span><span aria-hidden="true">›</span><span className="cur">History</span>
+      </nav>
+      <header className="sd-h">
+        <Eyebrow>History</Eyebrow>
+        <h2>Finished Jobs</h2>
+        <Hint>Pick a Job to replay its events.</Hint>
+      </header>
       {jobs.length ? (
-        <ul className="hist">
-          {jobs.map((j) => (
-            <li key={j.id}>
-              <Tag tone={j.stage === "Merged" ? "plain" : "unknown"}>{j.stage}</Tag>
-              <span className="hist-item">
-                {j.workItem ? <WorkItemLink item={j.workItem} /> : j.number ? <span className="mono">#{j.number}</span> : <WorkItemLink item={null} />}
-              </span>
-              <span className="mono hist-meta">{j.repo}</span>
-              <span className="mono hist-meta">{j.machine}</span>
-              <span className="hist-meta">{j.kind} {j.id}</span>
-              <span className="hist-meta">PR <PrLink pr={j.pr} /></span>
-              <time className="hist-meta" dateTime={j.startedAt}>started {formatClock(j.startedAt)}</time>
-              {onReplay ? (
-                <button type="button" className="btn" onClick={() => onReplay(j.id)}><Icon name="play" />Replay</button>
-              ) : null}
-            </li>
-          ))}
+        <ul className="hlist" aria-label={`Ended Jobs · ${jobs.length}`}>
+          {jobs.map((j) => {
+            const e = endedJob(j, nowMs);
+            const name = j.workItem?.name ?? (j.number ? `#${j.number}` : `${j.kind} ${j.id}`);
+            return (
+              <li key={j.id}>
+                <button type="button" className="hrow" onClick={() => onReplay?.(j.id)} aria-label={`Replay ${name} — ${e.outcome}`}>
+                  <span className={`hout out-${e.tone}`}>
+                    <Icon name={e.icon} />{e.outcome}{j.pr?.number ? <span className="mono">#{j.pr.number}</span> : null}
+                  </span>
+                  <span className="hname">
+                    <span className="ht truncate" title={name}>{name}</span>
+                    <span className="hm truncate">{j.kind} · <RepoName repo={j.repo} /> · {j.machine}</span>
+                  </span>
+                  <span className="hdur" title="How long it took">{e.took ?? <Unknown />}</span>
+                  <span className="hago">{j.endedAt ? <time dateTime={j.endedAt}>{e.ago}</time> : <Unknown />}</span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       ) : (
-        <Empty>No Job has ended yet. Merged, Closed and Abandoned Jobs land here.</Empty>
+        <Panel title="Ended Jobs · 0">
+          <Empty>No Job has ended yet. Merged, Closed and Abandoned Jobs land here.</Empty>
+        </Panel>
       )}
-    </Panel>
+    </Detail>
   );
 }

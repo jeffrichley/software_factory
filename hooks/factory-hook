@@ -7,12 +7,15 @@
 stdlib-only and never blocks or fails the session (ADR 0001).
 
 Exits at once unless this Machine tracks the repo; otherwise POSTs the event, unchanged,
-stamped with Machine, repo and the session's cached ids, and caches the reply's ids.
+stamped with Machine, repo and the session's cached ids (plus, after a `git merge`, the commit HEAD
+is on, which git doesn't print for a real merge), and caches the reply's ids.
 With the server down it queues the event and exits; the next event delivers the queue first.
 """
 
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -29,6 +32,8 @@ CONTEXT_EVENTS = {
     "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SubagentStop",
 }
 REPLY_IDS = ("session_id", "job_id", "step_id")
+# A Bash command that runs `git merge` (the server decides whether it is one that counts).
+GIT_MERGE = re.compile(r"\bgit\b[^;&|]*\bmerge\b")
 
 
 def mattpocock_skills_version() -> str | None:
@@ -38,6 +43,45 @@ def mattpocock_skills_version() -> str | None:
         return installed["plugins"]["mattpocock-skills@mattpocock"][0]["version"]
     except (OSError, ValueError, LookupError, TypeError):
         return None
+
+
+# TERM_PROGRAM values with a better-known name; any other value is shown as it is.
+TERM_PROGRAMS = {"Apple_Terminal": "Terminal.app", "iTerm.app": "iTerm2", "vscode": "VS Code", "WezTerm": "WezTerm"}
+
+
+def terminal() -> str | None:
+    """Where the session runs, from the environment Claude Code passes its hooks: the tmux session and window
+    (e.g. "tmux · factory:2"), else the terminal app; None when nothing says."""
+    if os.environ.get("TMUX"):
+        pane = os.environ.get("TMUX_PANE")
+        try:
+            where = subprocess.run(
+                ["tmux", "display-message", "-p", "-t", pane, "#S:#I"] if pane else ["tmux", "display-message", "-p", "#S:#I"],
+                capture_output=True, text=True, timeout=1,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            where = ""
+        return f"tmux · {where}" if where else "tmux"
+    if os.environ.get("STY"):
+        return f"screen · {os.environ['STY'].split('.', 1)[-1]}"
+    if os.environ.get("WT_SESSION"):
+        return "Windows Terminal"
+    program = os.environ.get("TERM_PROGRAM")
+    return TERM_PROGRAMS.get(program, program) if program else None
+
+
+def head_after_merge(event: dict) -> str | None:
+    """After a Bash `git merge`, the commit HEAD is on in the event's cwd, short: git prints no SHA for a real merge
+    ("Merge made by the 'ort' strategy."), so the hook reads it while it still is the merge. None otherwise."""
+    command = (event.get("tool_input") or {}).get("command") if isinstance(event.get("tool_input"), dict) else None
+    if event.get("tool_name") != "Bash" or not isinstance(command, str) or not GIT_MERGE.search(command):
+        return None
+    try:
+        done = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=event.get("cwd") or None,
+                              capture_output=True, text=True, timeout=1)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (done.stdout.strip() or None) if done.returncode == 0 else None
 
 
 def main() -> None:
@@ -60,6 +104,9 @@ def main() -> None:
     body = {"machine": machine, "repo": marker["repo"], "repo_path": str(main_tree), "ids": ids, "event": event}
     if event.get("hook_event_name") == "SessionStart":
         body["mattpocock_skills_version"] = mattpocock_skills_version()
+        body["terminal"] = terminal()
+    if event.get("hook_event_name") == "PostToolUse" and (head := head_after_merge(event)):
+        body["head"] = head
 
     try:
         # Queued events go first, in order; with the server down (or out of time) this one joins them.

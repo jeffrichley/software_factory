@@ -12,25 +12,25 @@ export const flowRows: FlowRow[] = [
     repo: "software_factory",
     chips: [
       { ...base, id: "glide", label: "Glide demo", name: "#30 Phases and the flow strip", state: "Working", phase: "Green" },
-      { ...base, id: "f1", label: "Tracer bullet", name: "#19 Tracer bullet", state: "Needs you", phase: "Red", group: specInitials("The Factory"), groupName: "Spec Job · The Factory" },
-      { ...base, id: "f2", label: "Design system", name: "#20 Design system", state: "Working", phase: "Refactor", group: specInitials("The Factory"), groupName: "Spec Job · The Factory" },
-      { ...base, id: "f3", label: "Install for real", name: "#21 Install, uninstall and status", state: "Working", phase: "Exploring", group: specInitials("The Factory"), groupName: "Spec Job · The Factory", blocked: true },
+      { ...base, id: "f1", label: "Tracer bullet", name: "#19 Tracer bullet", state: "Needs you", phase: "Red", specInitials: specInitials("The Factory"), specName: "Spec Job · The Factory" },
+      { ...base, id: "f2", label: "Design system", name: "#20 Design system", state: "Working", phase: "Refactor", specInitials: specInitials("The Factory"), specName: "Spec Job · The Factory" },
+      { ...base, id: "f3", label: "Install for real", name: "#21 Install, uninstall and status", state: "Working", phase: "Exploring", specInitials: specInitials("The Factory"), specName: "Spec Job · The Factory", blocked: true },
       { ...base, id: "f4", label: "Sounds", name: "#24 Needs you and Done sounds", state: "Done", phase: "Merged", machine: "wsl-desk" },
       { ...base, id: "f5", label: "Machine pills", name: "#22 Server down, Stale sessions", state: "Done", seen: true, phase: "Merged" },
       { ...base, id: "f6", label: "Cleanup", name: "#36 Worktree cleanup command", state: "Working", phase: null },
-      { ...base, id: "f7", label: "Wayfinder", name: "Software Factory: chart the way", state: "Needs you", phase: "planning", planIcon: "flag", groupName: "Wayfinder" },
+      { ...base, id: "f7", label: "Wayfinder", name: "Software Factory: chart the way", state: "Needs you", phase: "planning", planIcon: "flag" },
     ],
   },
   {
     repo: "gateway",
     chips: [
       { ...base, repo: "gateway", id: "g1", label: "Buyer interviews", name: "#7 Buyer validation interviews", state: "Stale", staleReason: "Machine silent", phase: "Reviewing", machine: "mbp-travel" },
-      { ...base, repo: "gateway", id: "g2", label: "research", name: "research session", state: "Done", phase: "planning", planIcon: "search", groupName: "research" },
-      { ...base, repo: "gateway", id: "g3", label: "ad hoc", name: "ad hoc session", state: "Working", phase: "planning", planIcon: "terminal", groupName: "ad hoc" },
+      { ...base, repo: "gateway", id: "g2", label: "research", name: "research session", state: "Done", phase: "planning", planIcon: "search" },
+      { ...base, repo: "gateway", id: "g3", label: "ad hoc", name: "ad hoc session", state: "Working", phase: "planning", planIcon: "terminal" },
       // A crowded cell: wraps to two lines, then clips.
       ...Array.from({ length: 9 }, (_, i) => ({
         ...base, repo: "gateway", id: `crowd-${i}`, label: `Ticket number ${i + 1} with a long name`, name: `#${50 + i} Ticket with a long name`,
-        state: i % 3 === 0 ? ("Needs you" as const) : ("Working" as const), phase: "Committed" as const, group: specInitials("Gateway"), groupName: "Spec Job · Gateway",
+        state: i % 3 === 0 ? ("Needs you" as const) : ("Working" as const), phase: "Committed" as const, specInitials: specInitials("Gateway"), specName: "Spec Job · Gateway",
       })),
     ],
   },
@@ -98,8 +98,9 @@ export const ticketStep: { step: StepData; detail: StepDetailData } = {
       runs: ["pass", "fail", "fail", "fail", "fail"].map((result, i) => ({ at: at(20 - i), result: result as "pass" | "fail", passed: 31, failed: result === "fail" ? 2 : 0 })),
     },
     files: [
-      { path: "server/factory_server/step_detail.py", edits: 7 },
-      { path: "tests/server/test_step_detail.py", edits: 3 },
+      { path: "server/factory_server/step_detail.py", edits: 7, added: 96, deleted: 21 },
+      { path: "tests/server/test_step_detail.py", edits: 3, added: 62, deleted: 0 },
+      { path: "docs/notes.ipynb", edits: 1, added: null, deleted: null },
     ],
     commits: [
       { sha: "77d3a90", message: "Step detail: Phase track and test pulse", files: 4, added: 158, deleted: 12 },
@@ -128,8 +129,8 @@ export const freshStep: { step: StepData; detail: StepDetailData } = {
 /** A merged Ticket Job and its timeline, for the replay. */
 export const REPLAY_JOB: JobData = {
   id: "21", sessionId: "7", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T15:30:00Z",
-  duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" },
-  stage: "Merged", branch: "ticket-29-job-edges", worktree: null, pr: { number: 48, url: "https://github.com/jeff/widgets/pull/48", draft: false },
+  endedAt: "2026-10-26T16:42:00Z", duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" },
+  stage: "Merged", branch: "ticket-29-job-edges", worktree: null, pr: { number: 48, url: "https://github.com/jeff/widgets/pull/48", draft: false }, prTrack: [], prChecks: null,
 };
 
 const rev = (t: number, kind: string, text: string, phase: string | null = null) => ({
@@ -162,10 +163,12 @@ export const REPLAY: ReplayData = {
 
 /** A Spec Job part-way through: Tickets merged, one in Red, one blocked, one not started. */
 export const SPEC_JOB: JobData = {
-  id: "30", sessionId: "9", machine: "wsl-desk", kind: "Spec Job", repo: "jeff/widgets", startedAt: at(90), duplicateOf: null,
+  id: "30", sessionId: "9", machine: "wsl-desk", kind: "Spec Job", repo: "jeff/widgets", startedAt: at(90), endedAt: null, duplicateOf: null,
   number: 18, workItem: { name: "#18 The Factory", url: "https://github.com/jeff/widgets/issues/18" }, stage: "In progress",
   branch: "worktree-spec-18-the-factory", worktree: "/home/jeff/widgets/.claude/worktrees/spec-18-the-factory",
   pr: { number: 60, url: "https://github.com/jeff/widgets/pull/60", draft: true },
+  prTrack: [{ stage: "Draft", at: at(40) }],
+  prChecks: [{ name: "lint", status: "pass" }, { name: "unit", status: "pass" }, { name: "integration", status: "pending" }],
 };
 export const specSteps: SpecStepData[] = [
   { id: "s24", number: 24, title: "Tracer bullet", phase: "Merged", phaseSince: at(70), blockedBy: [] },
@@ -174,7 +177,12 @@ export const specSteps: SpecStepData[] = [
   { id: "s30", number: 30, title: "Phases and the flow strip", phase: null, phaseSince: at(2), blockedBy: [25] },
   { id: "s31", number: 31, title: "Step detail", phase: "Pending", phaseSince: at(90), blockedBy: [28, 30] },
 ];
-export const specDetails: Record<string, StepDetailData> = { s28: { ...ticketStep.detail, pr: null, review: null } };
+const merged = (sha: string | null, minutesAgo: number): StepDetailData => ({
+  ...freshStep.detail, struggle: null, merge: { sha, at: at(minutesAgo) },
+});
+export const specDetails: Record<string, StepDetailData> = {
+  s24: merged("a41c9e2", 70), s25: merged(null, 50), s28: { ...ticketStep.detail, pr: null, review: null },
+};
 
 /** A Map with Decision tickets closed, claimed by this session, and open. */
 export const MAP: MapData = {

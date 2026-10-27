@@ -9,7 +9,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from .jobs import ENDED, SPEC_JOB, stage_of
+from .jobs import ENDED, SPEC_JOB, pr_stage, stage_of
 from .step_detail import CHURN_EDITS, KEEP_RUNS, struggle_of
 from .skills import AD_HOC
 from .wayfinder import mode_of
@@ -149,13 +149,16 @@ CREATE TABLE IF NOT EXISTS test_runs (
   failed INTEGER
 );
 CREATE INDEX IF NOT EXISTS test_runs_by_step ON test_runs (step_id, id);
--- Each file a Step's agent edited, with its edits in all and since the Step's tests last passed (for churn).
+-- Each file a Step's agent edited, with its edits in all and since the Step's tests last passed (for churn), and
+-- the lines its edits added and deleted (NULL = unknown: some edit's patch couldn't be read).
 CREATE TABLE IF NOT EXISTS step_files (
   id INTEGER PRIMARY KEY,
   step_id INTEGER NOT NULL REFERENCES steps (id),
   path TEXT NOT NULL,
   edits INTEGER NOT NULL,
   since_pass INTEGER NOT NULL,
+  added INTEGER,
+  deleted INTEGER,
   UNIQUE (step_id, path)
 );
 -- Each commit a Step's agent made, with its diffstat.
@@ -226,7 +229,9 @@ SESSION_COLUMNS = {
     "kind": f"TEXT NOT NULL DEFAULT '{AD_HOC}'",
     "skill": "TEXT",
     "headline": "TEXT",
+    "headline_detail": "TEXT",  # what the headline leaves out, e.g. the full command: shown on hover
     "mattpocock_skills_version": "TEXT",
+    "terminal": "TEXT",  # where the session runs, as its SessionStart said: "tmux · factory:2", "Windows Terminal"
     "base": "TEXT NOT NULL DEFAULT 'Working'",  # the state shown when no prompt is waiting
     "base_reason": "TEXT",
     "reason": "TEXT",  # JSON reason shown with Needs you
@@ -247,11 +252,18 @@ JOB_COLUMNS = {
     "duplicate_of": "INTEGER",  # the active Job already on its Work item when it started (or learnt it): flagged, not blocked
     "reviewed": "INTEGER NOT NULL DEFAULT 0",  # code-review has run in the Job: its summary line may follow
     "ended_at": "TEXT",  # when the Job was first seen Merged, Closed or Abandoned: its replay ends there
+    "pr_track": "TEXT NOT NULL DEFAULT '[]'",  # JSON: each PR stage (Draft, Ready, Merged, Closed) its PR was seen reach, with when
 }
 STEP_COLUMNS = {
     "first_phase": "TEXT",  # the Phase it was added in (Pending, or NULL = unknown): where its replay starts
     "checklist": "TEXT",  # JSON: the agent's live checklist; NULL while it has none (no todo or task tools)
     "active_at": "TEXT",  # the Step's latest event; NULL before any
+    "merged_at": "TEXT",  # a Spec Job's Step: when it was first merged into the integration branch
+    "merged_sha": "TEXT",  # ...and the commit that left it on, when git printed it
+}
+STEP_FILE_COLUMNS = {
+    "added": "INTEGER",  # lines its edits added; NULL = unknown (and for files recorded before it was kept)
+    "deleted": "INTEGER",
 }
 PULL_REQUEST_COLUMNS = {
     "closes": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues its body closes
@@ -309,7 +321,8 @@ class Store:
         self.db.executescript(SCHEMA)
         with self.db:
             for table, columns in (("sessions", SESSION_COLUMNS), ("work_items", WORK_ITEM_COLUMNS),
-                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS), ("steps", STEP_COLUMNS)):
+                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS), ("steps", STEP_COLUMNS),
+                                   ("step_files", STEP_FILE_COLUMNS)):
                 have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
                 for column, decl in columns.items():
                     if column not in have:
@@ -362,6 +375,11 @@ class Store:
             self.db.execute("UPDATE sessions SET mattpocock_skills_version = ? WHERE id = ?", (version, session_id))
 
     @locked
+    def set_terminal(self, session_id: int, terminal: str | None) -> None:
+        with self.db:
+            self.db.execute("UPDATE sessions SET terminal = ? WHERE id = ?", (terminal, session_id))
+
+    @locked
     def session(self, session_id: int) -> sqlite3.Row:
         return self.db.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
 
@@ -376,14 +394,14 @@ class Store:
             self.db.execute("INSERT INTO unknown_skills (session_id, skill, at) VALUES (?, ?, ?)", (session_id, skill, iso(now)))
 
     @locked
-    def record_action(self, session_id: int, text: str, now: datetime) -> None:
-        """The session's headline is now `text`; it joins the timeline, which keeps the last few, and the
-        replay of the session's current Job, which keeps them all."""
+    def record_action(self, session_id: int, text: str, now: datetime, detail: str | None = None) -> None:
+        """The session's headline is now `text` (with `detail`, what it leaves out); it joins the timeline, which keeps
+        the last few, and the replay of the session's current Job, which keeps them all."""
         with self.db:
             job = self.db.execute("SELECT id FROM jobs WHERE session_id = ? ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
             if job:
                 self._job_event(job["id"], now, "action", text)
-            self.db.execute("UPDATE sessions SET headline = ? WHERE id = ?", (text, session_id))
+            self.db.execute("UPDATE sessions SET headline = ?, headline_detail = ? WHERE id = ?", (text, detail, session_id))
             self.db.execute("INSERT INTO actions (session_id, at, text) VALUES (?, ?, ?)", (session_id, iso(now), text))
             self.db.execute(
                 "DELETE FROM actions WHERE session_id = ? AND id NOT IN"
@@ -395,7 +413,7 @@ class Store:
     def live_sessions(self) -> list[dict]:
         """Live rows, Needs you first (longest waiting first), then the rest in order of first sight."""
         rows = self.db.execute(
-            "SELECT id, machine, repo, cc_session_id, state, state_since, reason, seen, hidden, kind, skill, headline,"
+            "SELECT id, machine, repo, cc_session_id, state, state_since, reason, seen, hidden, kind, skill, headline, headline_detail, terminal,"
             " COALESCE(last_event_at, state_since) AS last_event_at,"
             " (SELECT skill FROM unknown_skills u WHERE u.session_id = sessions.id ORDER BY u.id DESC LIMIT 1) AS unknown_skill"
             " FROM sessions WHERE ended_at IS NULL"
@@ -412,8 +430,8 @@ class Store:
                 "id": str(r["id"]), "machine": r["machine"], "repo": r["repo"], "cc_session_id": r["cc_session_id"],
                 "state": r["state"], "state_since": r["state_since"], "last_event_at": r["last_event_at"],
                 "reason": r["reason"] and json.loads(r["reason"]), "seen": bool(r["seen"]), "hidden": bool(r["hidden"]),
-                "kind": r["kind"], "skill": r["skill"], "unknown_skill": r["unknown_skill"], "now": r["headline"],
-                "actions": actions.get(r["id"], []),
+                "kind": r["kind"], "skill": r["skill"], "unknown_skill": r["unknown_skill"], "now": r["headline"], "now_detail": r["headline_detail"],
+                "actions": actions.get(r["id"], []), "terminal": r["terminal"],
             }
             for r in rows
         ]
@@ -789,10 +807,10 @@ class Store:
             ).lastrowid
 
     @locked
-    def spec_tickets(self, repo: str, spec: int) -> list[int]:
-        """The Spec's child Tickets, as last polled."""
+    def child_tickets(self, repo: str, number: int) -> list[int]:
+        """The Work item's child Tickets (its sub-issues, whether it is a Spec or a Ticket split again), as last polled."""
         rows = self.db.execute(
-            "SELECT number FROM work_items WHERE repo = ? AND parent = ? AND kind = 'Ticket' ORDER BY number", (repo, spec)
+            "SELECT number FROM work_items WHERE repo = ? AND parent = ? AND kind = 'Ticket' ORDER BY number", (repo, number)
         )
         return [r["number"] for r in rows]
 
@@ -933,6 +951,12 @@ class Store:
             return {"number": int(m[1]) if m else None, "url": job["pr_url"], "draft": False, "state": "open"}
         return None
 
+    def _pr_checks(self, repo: str, pr: dict | None) -> list[dict] | None:
+        """The CI checks on the PR's head, as last read; None until read."""
+        row = pr and self.db.execute(
+            "SELECT checks FROM pr_checks WHERE repo = ? AND number = ?", (repo, pr["number"])).fetchone()
+        return json.loads(row["checks"]) if row else None
+
     def _original_active(self, job: sqlite3.Row) -> bool:
         """Whether the Job is a duplicate whose original is still going: a PR closing their Work item is the original's."""
         if job["duplicate_of"] is None:
@@ -962,7 +986,7 @@ class Store:
 
     @locked
     def jobs(self) -> list[dict]:
-        """Jobs in repos some Machine tracks, oldest first, with their Machine, Work item, PR and stage."""
+        """Jobs in repos some Machine tracks, oldest first, with their Machine, Work item, PR, stage and (once over) end."""
         rows = self.db.execute(
             "SELECT j.*, w.title, w.url, s.machine FROM jobs j JOIN sessions s ON s.id = j.session_id"
             " LEFT JOIN work_items w ON w.repo = j.repo AND w.number = j.number WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY j.id"
@@ -976,7 +1000,9 @@ class Store:
                 "work_item": {"title": j["title"], "url": j["url"]} if j["title"] is not None else None,
                 "worktree": j["worktree"], "branch": j["branch"],
                 "stage": self._stage(j, pr),
-                "pr": pr and {k: pr[k] for k in ("number", "url", "draft")}, "started_at": j["started_at"],
+                "pr": pr and {k: pr[k] for k in ("number", "url", "draft")}, "started_at": j["started_at"], "ended_at": j["ended_at"],
+                "pr_checks": self._pr_checks(j["repo"], pr),
+                "pr_track": [{"stage": t["stage"], "at": t["at"]} for t in json.loads(j["pr_track"]) if pr and t["url"] == pr["url"]],
                 "duplicate_of": None if j["duplicate_of"] is None else str(j["duplicate_of"]),
             })
         return out
@@ -1083,6 +1109,12 @@ class Store:
                 "SELECT 1 FROM job_events WHERE job_id = ? AND kind = 'pr' AND text = ?", (job_id, f"PR: {pr['url']}")
             ).fetchone():
                 self._job_event(job_id, now, "pr", f"PR: {pr['url']}")
+            if pr:
+                track = json.loads(job["pr_track"])
+                seen = [t["stage"] for t in track if t["url"] == pr["url"]]
+                if not seen or seen[-1] != pr_stage(pr):
+                    track.append({"url": pr["url"], "stage": pr_stage(pr), "at": iso(now)})
+                    self.db.execute("UPDATE jobs SET pr_track = ? WHERE id = ?", (json.dumps(track), job_id))
             stage = self._stage(job, pr)
             if stage in ENDED and job["ended_at"] is None:
                 self.db.execute("UPDATE jobs SET ended_at = ? WHERE id = ?", (iso(now), job_id))
@@ -1210,12 +1242,24 @@ class Store:
             )
 
     @locked
-    def record_edit(self, step_id: int, path: str) -> None:
+    def record_merge(self, step_id: int, sha: str | None, now: datetime) -> None:
+        """A Spec Job's Step merged into its integration branch: the first merge's time, the latest known SHA."""
         with self.db:
             self.db.execute(
-                "INSERT INTO step_files (step_id, path, edits, since_pass) VALUES (?, ?, 1, 1)"
-                " ON CONFLICT (step_id, path) DO UPDATE SET edits = edits + 1, since_pass = since_pass + 1",
-                (step_id, path),
+                "UPDATE steps SET merged_at = COALESCE(merged_at, ?), merged_sha = COALESCE(?, merged_sha) WHERE id = ?",
+                (iso(now), sha, step_id),
+            )
+
+    @locked
+    def record_edit(self, step_id: int, path: str, lines: tuple[int, int] | None) -> None:
+        """One edit to a file, with the (added, deleted) lines of its patch; None (unknown) makes the file's unknown."""
+        added, deleted = lines or (None, None)
+        with self.db:
+            self.db.execute(
+                "INSERT INTO step_files (step_id, path, edits, since_pass, added, deleted) VALUES (?, ?, 1, 1, ?, ?)"
+                " ON CONFLICT (step_id, path) DO UPDATE SET edits = edits + 1, since_pass = since_pass + 1,"
+                " added = added + excluded.added, deleted = deleted + excluded.deleted",
+                (step_id, path, added, deleted),
             )
 
     @locked
@@ -1223,35 +1267,34 @@ class Store:
         """What each Step (of a Job in a repo some Machine tracks) has done, by Step id, and whether it is
         struggling; `working` holds the ids of the sessions Working (Stale included), whose Steps can be silent."""
         rows = self.db.execute(
-            "SELECT j.*, s.id AS step_id, s.checklist, s.phase, s.first_phase, COALESCE(s.active_at, s.phase_since) AS active_at"
+            "SELECT j.*, s.id AS step_id, s.checklist, s.phase, s.merged_at, s.merged_sha, s.first_phase, COALESCE(s.active_at, s.phase_since) AS active_at"
             " FROM steps s JOIN jobs j ON j.id = s.job_id WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY s.id"
         ).fetchall()
         ids = [r["step_id"] for r in rows]
         details: dict[str, dict] = {str(i): {"phase_events": [], "tests": None, "files": [], "commits": [], "pr": None,
-                                    "review": None, "checklist": None} for i in ids}
+                                    "review": None, "checklist": None, "merge": None} for i in ids}
         # The Phase track: each Step's Phase changes from its replay, each from the Phase before (first the one it began in).
         phase = {str(r["step_id"]): r["first_phase"] for r in rows}
         for e in self.db.execute("SELECT step_id, at, phase FROM job_events WHERE kind = 'phase' AND step_id IS NOT NULL ORDER BY id"):
             if (d := details.get(str(e["step_id"]))) is not None:
                 d["phase_events"].append({"at": e["at"], "from": phase[str(e["step_id"])], "to": e["phase"]})
                 phase[str(e["step_id"])] = e["phase"]
-        for f in self.db.execute("SELECT step_id, path, edits FROM step_files ORDER BY id"):
+        for f in self.db.execute("SELECT step_id, path, edits, added, deleted FROM step_files ORDER BY id"):
             if (d := details.get(str(f["step_id"]))) is not None:
-                d["files"].append({"path": f["path"], "edits": f["edits"]})
+                d["files"].append({k: f[k] for k in ("path", "edits", "added", "deleted")})
         for c in self.db.execute("SELECT * FROM step_commits ORDER BY id"):
             if (d := details.get(str(c["step_id"]))) is not None:
                 d["commits"].append({k: c[k] for k in ("sha", "message", "files", "added", "deleted")})
         for r in rows:
+            if r["merged_at"]:
+                details[str(r["step_id"])]["merge"] = {"sha": r["merged_sha"], "at": r["merged_at"]}
             if r["checklist"]:
                 details[str(r["step_id"])]["checklist"] = [
                     {"text": i["text"], "status": i["status"]} for i in json.loads(r["checklist"])]
             # A Ticket Job's Step ends as the Job's PR; a Spec Job's Steps merge into its integration branch.
             if r["kind"] == "Ticket Job" and (pr := self._job_pr(r)):
-                checks = self.db.execute(
-                    "SELECT checks FROM pr_checks WHERE repo = ? AND number = ?", (r["repo"], pr["number"])
-                ).fetchone()
                 details[str(r["step_id"])]["pr"] = {**{k: pr[k] for k in ("number", "url", "draft")},
-                                            "checks": json.loads(checks["checks"]) if checks else None}
+                                            "checks": self._pr_checks(r["repo"], pr)}
         for v in self.db.execute("SELECT * FROM reviews WHERE step_id != 0"):
             if (d := details.get(str(v["step_id"]))) is not None:
                 d["review"] = {k: v[k] for k in ("standards", "spec", "source")}

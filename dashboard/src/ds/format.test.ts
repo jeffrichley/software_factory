@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClock, formatDuration, phaseClass, stateLook } from "./format";
+import { formatAgo, formatClock, formatDuration, formatWallClock, phaseClass, repoName, stateLook } from "./format";
 
 describe("formatDuration", () => {
   it("shows seconds under a minute, minutes under an hour, then hours and minutes", () => {
@@ -43,5 +43,27 @@ describe("formatClock", () => {
   it("shows a timeline time as local hours and minutes", () => {
     expect(formatClock(new Date(2026, 9, 26, 9, 5, 42).toISOString())).toBe("09:05");
     expect(formatClock(new Date(2026, 9, 26, 23, 59).toISOString())).toBe("23:59");
+  });
+});
+
+describe("repoName", () => {
+  it("shows a repo by its bare name, leaving out the owner", () => {
+    expect(repoName("jeffrichley/software_factory")).toBe("software_factory");
+    expect(repoName("widgets")).toBe("widgets");
+  });
+});
+
+describe("formatAgo", () => {
+  it("says how long ago, in days once it is a day or more", () => {
+    expect(formatAgo(3 * 3_600_000 + 10 * 60_000)).toBe("3h 10m ago");
+    expect(formatAgo(26 * 3_600_000)).toBe("1d ago");
+    expect(formatAgo(45_000)).toBe("45s ago");
+  });
+});
+
+describe("formatWallClock", () => {
+  it("shows the header clock as local hours, minutes and seconds", () => {
+    expect(formatWallClock(new Date(2026, 9, 26, 9, 5, 7).getTime())).toBe("09:05:07");
+    expect(formatWallClock(new Date(2026, 9, 26, 23, 59, 59).getTime())).toBe("23:59:59");
   });
 });
