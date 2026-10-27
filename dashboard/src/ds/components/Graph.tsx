@@ -13,13 +13,13 @@ import "@xyflow/react/dist/base.css";
 import { useMemo } from "react";
 import { formatDuration, phaseClass } from "../format";
 import { classifyGraph, layoutGraph, type EdgeKind, type GraphItem } from "../graph";
-import type { Phase } from "../types";
+import { PENDING, type StepPhase } from "../types";
 import { PhaseTrack } from "./PhaseTrack";
 import { Tag } from "./Tag";
 
 /** What a node shows, by kind: Spec Steps, Map Decision tickets, to-tickets output. */
 export type GraphNodeBody =
-  | { kind: "step"; ticket: string; phase: Phase | null; phaseForMs?: number }
+  | { kind: "step"; ticket: string; phase: StepPhase; phaseForMs?: number }
   | {
       kind: "decision";
       name: string;
@@ -50,18 +50,19 @@ function Badge({ text, cls = "" }: { text: string; cls?: string }) {
 }
 
 function StepBody({ b, d }: { b: Extract<GraphNodeBody, { kind: "step" }>; d: NodeData }) {
+  const pending = b.phase === PENDING;
   return (
     <>
       <span className="gt one">{b.ticket}</span>
       <span className="grow">
-        <span className={`np ${phaseClass(b.phase)}`}>
+        <span className={`np ${phaseClass(b.phase === PENDING ? null : b.phase)}`}>
           {b.phase ? b.phase : "Phase unknown"}
-          {b.phase && b.phase !== "Merged" && b.phaseForMs !== undefined ? ` · ${formatDuration(b.phaseForMs)}` : ""}
+          {b.phase && !pending && b.phase !== "Merged" && b.phaseForMs !== undefined ? ` · ${formatDuration(b.phaseForMs)}` : ""}
         </span>
         <span className="spacer" />
         {d.blocked ? <Badge text="BLOCKED" cls="blk" /> : d.frontier ? <Badge text="FRONTIER" cls="fr" /> : null}
       </span>
-      {b.phase ? <PhaseTrack phase={b.phase} compact /> : null}
+      {b.phase && b.phase !== PENDING ? <PhaseTrack phase={b.phase} compact /> : null}
     </>
   );
 }

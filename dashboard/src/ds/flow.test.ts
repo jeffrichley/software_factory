@@ -99,3 +99,22 @@ describe("specInitials", () => {
     expect(specInitials("Factory")).toBe("F");
   });
 });
+
+describe("flowRows for a Spec Job", () => {
+  const session = { id: "s1", machine: "wsl", repo: "jeff/widgets", state: "Working" as const, seen: false, kind: "Spec Job" };
+  const step = (id: string, phase: FlowStepData["phase"]): FlowStepData => ({
+    id, jobId: "1", sessionId: "s1", repo: "jeff/widgets", number: Number(id), title: null, phase,
+  });
+
+  it("leaves out Steps still Pending: only Tickets being worked move through the Phases", () => {
+    const [row] = flowRows(["jeff/widgets"], [session], [{ id: "1", sessionId: "s1" }], [step("5", "Red"), step("6", "Pending")]);
+
+    expect(row.chips.map((c) => [c.id, c.phase])).toEqual([["step-5", "Red"]]);
+  });
+
+  it("shows the session once, Phase unknown, while every Step is Pending", () => {
+    const [row] = flowRows(["jeff/widgets"], [session], [{ id: "1", sessionId: "s1" }], [step("5", "Pending")]);
+
+    expect(row.chips.map((c) => [c.id, c.phase])).toEqual([["session-s1", null]]);
+  });
+});

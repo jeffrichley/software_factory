@@ -1,6 +1,6 @@
 import type { IconName } from "./components/Icon";
 import { currentJob } from "./jobs";
-import { PHASES, type Phase, type SessionState } from "./types";
+import { PENDING, PHASES, type Phase, type SessionState, type StepPhase } from "./types";
 
 export const FLOW_COLUMNS = ["Phase unknown", ...PHASES, "Planning / ad hoc"] as const;
 
@@ -41,8 +41,8 @@ export interface FlowStepData {
   number: number | null;
   /** The Ticket's title; null until polled. */
   title: string | null;
-  /** null = Phase unknown. */
-  phase: Phase | null;
+  /** null = Phase unknown; Pending = a Spec Job's Step not started yet. */
+  phase: StepPhase;
 }
 
 /** A flow-strip chip before the dashboard wires it up: the session it opens, and how it looks. */
@@ -65,7 +65,8 @@ const PLAN_ICONS: Record<string, IconName> = { Wayfinder: "flag", research: "sea
 
 /**
  * The flow strip's rows: one per Tracked repo shown, in order. Each session shown puts its current Job's Steps in
- * their Phases (a Job with no Steps yet shows once, Phase unknown); a session with no Job goes in Planning / ad hoc.
+ * their Phases, leaving out Pending ones (a Job with no Step under way shows once, Phase unknown); a session with no
+ * Job goes in Planning / ad hoc.
  * Chips take their session's state.
  */
 export function flowRows(
@@ -88,13 +89,16 @@ export function flowRows(
       continue;
     }
     const mine = steps.filter((st) => st.jobId === job.id);
-    if (!mine.length) row.chips.push({ id: `session-${s.id}`, label: s.kind, name: `${s.kind} session`, phase: null, ...look });
+    let shown = 0;
     for (const st of mine) {
+      if (st.phase === PENDING) continue;
       const ticket = st.number === null ? "Ticket unknown" : `#${st.number}`;
       row.chips.push({
         id: `step-${st.id}`, label: st.title ?? ticket, name: st.title ? `${ticket} ${st.title}` : ticket, phase: st.phase, ...look,
       });
+      shown++;
     }
+    if (!shown) row.chips.push({ id: `session-${s.id}`, label: s.kind, name: `${s.kind} session`, phase: null, ...look });
   }
   return rows;
 }
