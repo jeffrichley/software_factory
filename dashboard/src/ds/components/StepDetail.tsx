@@ -135,6 +135,12 @@ function Files({ files, churn }: { files: StepDetailData["files"]; churn: string
         <li key={f.path}>
           <span className="path">{f.path}</span>
           <span className={`mono ${churn.includes(f.path) ? "churn" : "muted"}`}>{f.edits} {f.edits === 1 ? "edit" : "edits"}</span>
+          {f.added === null || f.deleted === null ? <Unknown /> : (
+            <>
+              <span className="add">+{f.added}</span>
+              <span className="del">−{f.deleted}</span>
+            </>
+          )}
         </li>
       ))}
     </ul>

@@ -48,6 +48,19 @@ def repo_relative(path: str, *trees: str | None) -> str:
     return path
 
 
+def lines_changed(event: dict) -> tuple[int, int] | None:
+    """(added, deleted) lines of an Edit, MultiEdit or Write, from the structuredPatch Claude Code reports in
+    tool_response (a new file's patch may be empty: then its content's lines); None when there is none to read."""
+    response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+    patch = response.get("structuredPatch")
+    if not isinstance(patch, list):
+        return None
+    if not patch and response.get("type") == "create" and isinstance(response.get("content"), str):
+        return len(response["content"].splitlines()), 0
+    lines = [line for hunk in patch if isinstance(hunk, dict) for line in hunk.get("lines") or [] if isinstance(line, str)]
+    return sum(line.startswith("+") for line in lines), sum(line.startswith("-") for line in lines)
+
+
 def commit_made(event: dict) -> dict | None:
     """The commit a successful `git commit` made, from what it printed; None when it printed nothing to read."""
     response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}

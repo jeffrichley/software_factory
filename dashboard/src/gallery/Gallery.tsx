@@ -288,7 +288,7 @@ export function Gallery() {
           <SessionHeader machine="wsl-desk" repo="jeff/gadgets" kind="ad hoc" state="Working" quietMs={23 * 60_000} inStateMs={41 * 60_000} now="running uv run pytest" title="Working · quiet (no events for 23m)" />
         </Section>
 
-        <Section id="step" title="Step detail" note="StepDetail on its own: a Step's Phase track and time in Phase, test pulse, files, commits, PR with checks, review findings, the agent's checklist and the struggle badge; in a Spec Job, Blocked by and no PR of its own.">
+        <Section id="step" title="Step detail" note="StepDetail on its own: a Step's Phase track and time in Phase, test pulse, files with edits and +/− lines (one unknown), commits, PR with checks, review findings, the agent's checklist and the struggle badge; in a Spec Job, Blocked by and no PR of its own.">
           <Eyebrow>Ticket Job Step · struggling, every part known</Eyebrow>
           <StepDetail step={ticketStep.step} detail={ticketStep.detail} nowMs={Date.now()} />
           <Eyebrow>Spec Job Step · blocked, Phase unknown, no detail yet</Eyebrow>

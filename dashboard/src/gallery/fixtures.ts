@@ -98,8 +98,9 @@ export const ticketStep: { step: StepData; detail: StepDetailData } = {
       runs: ["pass", "fail", "fail", "fail", "fail"].map((result, i) => ({ at: at(20 - i), result: result as "pass" | "fail", passed: 31, failed: result === "fail" ? 2 : 0 })),
     },
     files: [
-      { path: "server/factory_server/step_detail.py", edits: 7 },
-      { path: "tests/server/test_step_detail.py", edits: 3 },
+      { path: "server/factory_server/step_detail.py", edits: 7, added: 96, deleted: 21 },
+      { path: "tests/server/test_step_detail.py", edits: 3, added: 62, deleted: 0 },
+      { path: "docs/notes.ipynb", edits: 1, added: null, deleted: null },
     ],
     commits: [
       { sha: "77d3a90", message: "Step detail: Phase track and test pulse", files: 4, added: 158, deleted: 12 },

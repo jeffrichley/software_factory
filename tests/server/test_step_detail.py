@@ -116,10 +116,49 @@ def test_files_touched_are_listed_where_the_job_works_with_their_edit_counts(cli
     write(client, "/tmp/scratch.txt")
 
     assert detail(client, step_id)["files"] == [
-        {"path": "tests/test_api.py", "edits": 1},
-        {"path": "src/api.py", "edits": 3},
-        {"path": "/tmp/scratch.txt", "edits": 1},
+        {"path": "tests/test_api.py", "edits": 1, "added": None, "deleted": None},
+        {"path": "src/api.py", "edits": 3, "added": None, "deleted": None},
+        {"path": "/tmp/scratch.txt", "edits": 1, "added": None, "deleted": None},
     ]
+
+
+def hunk(*lines: str) -> dict:
+    """One hunk of the structuredPatch Claude Code's Edit and Write report in tool_response."""
+    return {"oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": 0, "lines": list(lines)}
+
+
+def test_each_files_added_and_deleted_lines_add_up_from_its_edits_patches(client, ticket):
+    step_id = implement(client, "#5")["step_id"]
+    path = "/home/jeff/widgets/src/api.py"
+    tool(client, "Write", {"file_path": path, "content": "a\nb\nc\n"},
+         response={"type": "create", "filePath": path, "content": "a\nb\nc\n", "structuredPatch": [], "originalFile": None})
+    tool(client, "Edit", {"file_path": path, "old_string": "b", "new_string": "B\nB2"},
+         response={"filePath": path, "structuredPatch": [hunk(" a", "-b", "+B", "+B2", " c")]})
+    tool(client, "MultiEdit", {"file_path": path, "edits": []},
+         response={"filePath": path, "structuredPatch": [hunk("-a", "+A"), hunk(" B2", "-c")]})
+
+    assert detail(client, step_id)["files"] == [{"path": "src/api.py", "edits": 3, "added": 6, "deleted": 3}]
+
+
+def test_a_write_over_a_file_counts_its_patch_not_its_whole_content(client, ticket):
+    step_id = implement(client, "#5")["step_id"]
+    path = "/home/jeff/widgets/src/api.py"
+    tool(client, "Write", {"file_path": path, "content": "a\nb\nc\n"},
+         response={"type": "update", "filePath": path, "content": "a\nb\nc\n", "structuredPatch": [hunk(" a", "-x", "+b", " c")]})
+
+    assert detail(client, step_id)["files"] == [{"path": "src/api.py", "edits": 1, "added": 1, "deleted": 1}]
+
+
+def test_one_edit_without_a_readable_patch_leaves_the_files_lines_unknown(client, ticket):
+    step_id = implement(client, "#5")["step_id"]
+    path = "/home/jeff/widgets/src/api.py"
+    tool(client, "Edit", {"file_path": path, "old_string": "a", "new_string": "b"},
+         response={"filePath": path, "structuredPatch": [hunk("-a", "+b")]})
+    tool(client, "Edit", {"file_path": path, "old_string": "b", "new_string": "c"}, response={"filePath": path})
+    tool(client, "Edit", {"file_path": path, "old_string": "c", "new_string": "d"},
+         response={"filePath": path, "structuredPatch": [hunk("-c", "+d")]})
+
+    assert detail(client, step_id)["files"] == [{"path": "src/api.py", "edits": 3, "added": None, "deleted": None}]
 
 
 def test_commits_are_listed_with_their_diffstat_from_git_commits_output(client, ticket):
