@@ -87,7 +87,8 @@ def create_app(
     github: GitHub,
     clock: Callable[[], datetime],
     skill_table: Path = DEFAULT_SKILL_TABLE,
-    refresh_s: float = 5,
+    # Often enough that a sound whose grace runs out reaches the dashboard about on time.
+    refresh_s: float = 1,
 ) -> FastAPI:
     store = Store(db_path)
     skills = SkillTable(skill_table)
