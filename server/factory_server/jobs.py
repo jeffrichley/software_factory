@@ -2,6 +2,10 @@
 
 import re
 
+# The Job roles the skill table gives.
+TICKET_JOB = "Ticket Job"
+SPEC_JOB = "Spec Job"
+
 # Job stages; Merged, Closed and Abandoned come with the Job's end, and move it to History.
 IN_PROGRESS = "In progress"
 PR_OPEN = "PR open"

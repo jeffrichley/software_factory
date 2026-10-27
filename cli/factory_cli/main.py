@@ -304,6 +304,29 @@ def job_(issue: Annotated[int, typer.Option("--issue", help="The Work item's iss
     self_report("job_issue", job, issue=issue)
 
 
+# The Phases a Step moves through; the server's Phase rules use the same names.
+PHASES = ("Exploring", "Red", "Green", "Refactor", "Reviewing", "Committed", "Merged")
+
+
+@app.command("phase")
+def phase_(
+    name: Annotated[str, typer.Argument(help=f"The Phase: one of {', '.join(PHASES)} (any case).")],
+    job: JobOption,
+    ticket: Annotated[int | None, typer.Option("--ticket", help="The Step's Ticket, in a Spec Job.")] = None,
+) -> None:
+    """The Phase a Step is in, for when the Factory can't tell from what the agent does."""
+    phase = next((p for p in PHASES if p.lower() == name.strip().lower()), None)
+    if phase is None:
+        fail(f"'{name}' is not a Phase: use one of {', '.join(PHASES)}.")
+    self_report("report_phase", job, phase=phase, **({} if ticket is None else {"ticket": ticket}))
+
+
+def server_table(given: Path | None, file_name: str, shipped: Path) -> Path:
+    """An edited copy in the data dir survives plugin updates; the shipped table is the fallback."""
+    edited = data_dir() / "server" / file_name
+    return given or (edited if edited.is_file() else shipped)
+
+
 @app.command()
 def escalate(reason: Annotated[str, typer.Argument(help="Why the Job needs the human.")], job: JobOption) -> None:
     """The Job is stopping to ask the human for approval or help: it shows as Needs you with this reason."""
@@ -318,18 +341,21 @@ def server(
     skill_table: Annotated[
         Path | None, typer.Option(help="Skill table (TOML). Default: server/skills.toml in the data dir if present, else the shipped one.")
     ] = None,
+    phase_rules: Annotated[
+        Path | None, typer.Option(help="Phase rules (TOML). Default: server/phases.toml in the data dir if present, else the shipped one.")
+    ] = None,
 ) -> None:
     """Run the Factory server in the foreground."""
     import uvicorn
 
     sys.path.insert(0, str(PLUGIN_ROOT / "server"))
-    from factory_server import DEFAULT_SKILL_TABLE, GhCli, create_app
+    from factory_server import DEFAULT_PHASE_RULES, DEFAULT_SKILL_TABLE, GhCli, create_app
 
     db = db or data_dir() / "server" / "factory.db"
     db.parent.mkdir(parents=True, exist_ok=True)
-    # An edited copy in the data dir survives plugin updates; the shipped table is the fallback.
-    edited = data_dir() / "server" / "skills.toml"
-    skill_table = skill_table or (edited if edited.is_file() else DEFAULT_SKILL_TABLE)
-    typer.echo(f"Factory server on http://{host}:{port} (state in {db}, skill table {skill_table})")
-    app_ = create_app(db_path=db, github=GhCli(), clock=lambda: datetime.now(UTC), skill_table=skill_table)
+    skill_table = server_table(skill_table, "skills.toml", DEFAULT_SKILL_TABLE)
+    phase_rules = server_table(phase_rules, "phases.toml", DEFAULT_PHASE_RULES)
+    typer.echo(f"Factory server on http://{host}:{port} (state in {db}, skill table {skill_table}, Phase rules {phase_rules})")
+    app_ = create_app(db_path=db, github=GhCli(), clock=lambda: datetime.now(UTC), skill_table=skill_table,
+                      phase_rules_path=phase_rules)
     uvicorn.run(app_, host=host, port=port)
