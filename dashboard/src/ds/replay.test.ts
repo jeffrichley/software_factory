@@ -9,7 +9,7 @@ const REPLAY: ReplayData = {
   job_id: "3",
   started_at: "2026-10-26T12:00:00Z",
   ended_at: "2026-10-26T12:10:00Z",
-  steps: [{ id: "7", number: 5, title: "Add the widget API!" }],
+  steps: [{ id: "7", number: 5, title: "Add the widget API!", phase: null }],
   events: [
     ev(0, "start", "Job started: #5"),
     ev(30, "phase", "#5 Exploring", "7", "Exploring"),
@@ -27,6 +27,11 @@ describe("replayFrame", () => {
   it("at a time, each Step is in the Phase it last changed to, and the current event is the last one reached", () => {
     expect(replayFrame(REPLAY, 150)).toEqual({ phases: { "7": "Red" }, current: 3 });
     expect(replayFrame(REPLAY, 200)).toEqual({ phases: { "7": "Green" }, current: 4 });
+  });
+
+  it("a Step added Pending (a Spec Job's Ticket) is Pending until it starts", () => {
+    const spec = { ...REPLAY, steps: [...REPLAY.steps, { id: "8", number: 6, title: null, phase: "Pending" as const }] };
+    expect(replayFrame(spec, 150).phases).toEqual({ "7": "Red", "8": "Pending" });
   });
 
   it("before the first event there is no current event", () => {

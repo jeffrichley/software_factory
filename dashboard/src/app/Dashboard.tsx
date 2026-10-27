@@ -19,6 +19,8 @@ import {
   SectionHeading,
   SessionTable,
   SoundToggle,
+  SPEC_JOB,
+  SpecJobView,
   Split,
   TICKET_JOB,
   TicketJobView,
@@ -37,10 +39,10 @@ import {
   resumeCommand,
   viewOf,
   type NeedsReason,
-  type Phase,
   type SessionRowData,
   type SessionState,
   type SoundName,
+  type StepPhase,
   type TimelineEntry,
 } from "../ds";
 
@@ -94,7 +96,7 @@ interface FactoryState {
     /** The active Job already on its Work item when it started; flagged, not blocked. */
     duplicate_of: string | null;
   }[];
-  /** Steps of those Jobs, oldest first: a Ticket Job has one. */
+  /** Steps of those Jobs, oldest first: a Ticket Job has one, a Spec Job one per Ticket of its Spec. */
   steps: {
     id: string;
     job_id: string;
@@ -102,9 +104,11 @@ interface FactoryState {
     repo: string;
     number: number | null;
     title: string | null;
-    /** null = Phase unknown. */
-    phase: Phase | null;
+    /** null = Phase unknown; Pending = a Spec Job's Step not started yet. */
+    phase: StepPhase;
     phase_since: string;
+    /** The Tickets that block this one. */
+    blocked_by: number[];
   }[];
   /** The latest sounds the server has played, one per transition; ids only grow. */
   sounds: { id: number; session_id: string; machine: string; sound: SoundName; at: string }[];
@@ -263,7 +267,9 @@ export function Dashboard() {
   const jobOf = (sessionId: string) => currentJob(jobs, sessionId);
   const steps = (state?.steps ?? []).map((s) => ({
     id: s.id, jobId: s.job_id, sessionId: s.session_id, repo: s.repo, number: s.number, title: s.title, phase: s.phase,
+    phaseSince: s.phase_since, blockedBy: s.blocked_by,
   }));
+  const stepsOf = (job: JobData | null) => (job ? steps.filter((s) => s.jobId === job.id) : []);
   const flow = flowRows(repos?.map((r) => r.repo) ?? [], view.shown, jobs, steps).map((r) => ({
     repo: r.repo,
     chips: r.chips.map(({ sessionId, ...c }) => ({ ...c, selected: sessionId === selectedId, onOpen: () => open(sessionId) })),
@@ -376,7 +382,18 @@ export function Dashboard() {
         {selected ? (
           selected.kind === TICKET_JOB ? (
             <TicketJobView {...selected} job={jobOf(selected.id)} onAbandon={() => { const j = jobOf(selected.id); if (j) abandon(j.id); }} />
-          ) : <AdHocView {...selected} />
+          ) : selected.kind === SPEC_JOB ? (
+            <SpecJobView
+              key={selected.id}
+              {...selected}
+              job={jobOf(selected.id)}
+              steps={stepsOf(jobOf(selected.id))}
+              nowMs={now}
+              onAbandon={() => { const j = jobOf(selected.id); if (j) abandon(j.id); }}
+            />
+          ) : (
+            <AdHocView {...selected} />
+          )
         ) : null}
       </Split>
     </>

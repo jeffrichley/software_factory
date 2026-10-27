@@ -15,9 +15,10 @@ from pydantic import BaseModel
 
 from . import sounds, states
 from .activity import running_skill, started_skill, tool_headline
-from .github import GitHub, read_issues
-from .jobs import IN_PROGRESS, TICKET_JOB, ticket_job_start, worktree_of
-from .phases import DEFAULT_PHASE_RULES, PHASES, PhaseRules, phase_named
+from .github import GitHub, read_blocked_by, read_issues
+from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, spec_job_start, spec_step_start, ticket_job_start,
+                   tickets_named, worktree_of)
+from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
 from .store import Store
@@ -162,8 +163,7 @@ def create_app(
         """Read every due repo from GitHub (blocking). A repo whose read or save fails keeps its last poll."""
         for repo in due():
             try:
-                issues = read_issues(github, repo)
-                store.save_poll(repo, work_items(repo, issues), pull_requests(issues))
+                read_repo(repo)
                 for job_id in store.repo_jobs(repo):
                     store.chronicle_job(job_id, clock())
                 prs_arrived(repo)
@@ -171,6 +171,21 @@ def create_app(
                 hub.publish(state())
             except Exception:
                 log.exception("GitHub poll of %s failed", repo)
+
+    def read_repo(repo: str) -> None:
+        """The repo's issues, PRs and blocking from GitHub (blocking), saved; each Spec Job takes up new Tickets."""
+        issues = read_issues(github, repo)
+        blocked_by = read_blocked_by(github, repo, issues)
+        store.save_poll(repo, work_items(repo, issues, blocked_by), pull_requests(issues))
+        for job_id in store.jobs_of_kind(repo, SPEC_JOB):
+            add_spec_steps(job_id, repo)
+
+    def add_spec_steps(job_id: int, repo: str) -> None:
+        """A Step, Pending, for each of the Spec's Tickets the Job has none for yet."""
+        spec = store.job_number(job_id)
+        for number in store.spec_tickets(repo, spec) if spec else []:
+            if store.job_step_numbered(job_id, number) is None:
+                store.add_step(job_id, number, clock(), PENDING)
 
     def prs_arrived(repo: str) -> None:
         """A poll may bring the non-draft PR of a Job that already stopped without one, or end that Job."""
@@ -238,7 +253,7 @@ def create_app(
             case "repo_uninstalled":
                 store.untrack_repo(envelope.repo, envelope.machine, now)
                 polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
-            case "report_pr" | "job_issue" | "report_phase" | "escalate" as name:
+            case "report_pr" | "job_issue" | "report_phase" | "report_step" | "escalate" as name:
                 session_id, job_id, step_id = self_report(name, event, now)
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
@@ -250,17 +265,25 @@ def create_app(
                     if skill and number:
                         store.record_skill_start(session_id, skill, envelope.repo, number, typed=typed)
                     if typed and skill:
-                        inject = start_job(session_id, skill, number, envelope, now)
+                        inject = await start_job(session_id, skill, number, envelope, now)
                 job_id = store.current_job(session_id)
                 if job_id is not None and "agent_id" not in event:
                     follow_worktree(job_id, event, envelope.repo_path)
+                spec_job = job_id is not None and store.job_kind(job_id) == SPEC_JOB
+                if spec_job:
+                    map_subagent(job_id, event, envelope.repo, now)
+                step_id = step_of(job_id, event)
+                if spec_job and name == "SubagentStart" and step_id is None:
+                    inject = spec_step_start(str(job_id))
                 if name == "SessionEnd":
                     store.end_session(session_id, now)
                 else:
                     # A resumed session, or one still running when its repo was uninstalled and reinstalled.
                     store.resume_session(session_id, now)
                     without_pr = job_id is not None and store.job_stage(job_id) == IN_PROGRESS
-                    states.apply(store, session_id, event, now, job_without_pr=without_pr)
+                    # A Spec Job's subagent asking for the human asks about its Step's Ticket.
+                    ticket = store.step_number(step_id) if spec_job and step_id is not None else None
+                    states.apply(store, session_id, event, now, job_without_pr=without_pr, ticket=ticket)
                     sounds.schedule(store, session_id, event, now)
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
@@ -269,7 +292,6 @@ def create_app(
                 if signal in REPLAY_SIGNALS:
                     kind, label = REPLAY_SIGNALS[signal]
                     store.record_job_event(job_id, now, kind, f"{label}: {signal_subject(event)}")
-                step_id = step_of(job_id)
                 if step_id is not None:
                     infer_phase(step_id, job_id, signal, session_id, now)
         hub.publish(state())
@@ -280,11 +302,40 @@ def create_app(
             inject=inject,
         )
 
-    def step_of(job_id: int | None) -> int | None:
-        """The Step an event of the Job belongs to: a Ticket Job's one Step."""
-        if job_id is None or store.job_kind(job_id) != TICKET_JOB:
+    def step_of(job_id: int | None, event: dict | None = None) -> int | None:
+        """The Step an event of the Job belongs to: a Ticket Job's one Step; in a Spec Job, the Step of the
+        subagent it comes from (none for the main session, or a subagent tied to no Ticket)."""
+        if job_id is None:
+            return None
+        if store.job_kind(job_id) == SPEC_JOB:
+            agent_id = (event or {}).get("agent_id")
+            return store.agent_step(job_id, agent_id) if agent_id else None
+        if store.job_kind(job_id) != TICKET_JOB:
             return None
         return next(iter(store.job_steps(job_id)), None)
+
+    def map_subagent(job_id: int, event: dict, repo: str, now: datetime) -> None:
+        """Tie a Spec Job's subagent to the Step of the Ticket it works: from its launch (the main session's
+        PostToolUse(Agent) names its agentId, and its description or prompt the Ticket), or from the subagent
+        running `factory step --ticket N`."""
+        tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+        response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+        agent_id, named = None, []
+        if event.get("hook_event_name") == "PostToolUse" and event.get("tool_name") == "Agent" and "agent_id" not in event:
+            agent_id = response.get("agentId")
+            text = f"{tool_input.get('description') or ''}\n{tool_input.get('prompt') or ''}"
+            named = tickets_named(text, repo)
+        elif event.get("hook_event_name") == "PreToolUse" and event.get("tool_name") == "Bash" and event.get("agent_id"):
+            agent_id = event["agent_id"]
+            named = [int(m[1]) for m in [STEP_REPORT.search(str(tool_input.get("command") or ""))] if m]
+        if not agent_id:
+            return
+        step_id = next((s for n in named if (s := store.job_step_numbered(job_id, n)) is not None), None)
+        if step_id is None:
+            return
+        store.map_agent(job_id, str(agent_id), step_id)
+        if store.step_phase(step_id) == PENDING:
+            store.set_phase(step_id, None, now)  # started: Phase unknown until a signal says more
 
     def infer_phase(step_id: int, job_id: int, signal: str | None, session_id: int, now: datetime) -> None:
         """The Step's Phase after a signal, by the Phase rules."""
@@ -295,18 +346,28 @@ def create_app(
         if to is not None:
             store.set_phase(step_id, to, now)
 
-    def start_job(session_id: int, skill: str, number: int | None, envelope: Envelope, now: datetime) -> str | None:
+    async def start_job(session_id: int, skill: str, number: int | None, envelope: Envelope, now: datetime) -> str | None:
         """A typed Job skill starts a new Job (older ones carry on); returns what to tell the agent."""
         role = skills.role(skill, store.session(session_id)["mattpocock_skills_version"])
-        if role is None or role.role != TICKET_JOB:
+        if role is None or role.role not in (TICKET_JOB, SPEC_JOB):
             return None
         job_id = store.start_job(session_id, role.role, envelope.repo, number, now)
-        store.add_step(job_id, number, now)  # a Ticket Job's one Step works its Ticket
+        if role.role == TICKET_JOB:
+            store.add_step(job_id, number, now)  # a Ticket Job's one Step works its Ticket
+        elif number:
+            # A Spec Job's Steps are its Spec's Tickets as GitHub has them now; with GitHub unreachable, as last polled.
+            polled_at[envelope.repo] = clock()
+            try:
+                await asyncio.to_thread(read_repo, envelope.repo)
+            except Exception:
+                log.exception("GitHub read of %s at the start of Spec Job %s failed", envelope.repo, job_id)
+            add_spec_steps(job_id, envelope.repo)
         item = store.work_item(envelope.repo, number) if number else None
         worktree = worktree_of(envelope.event.get("cwd"), envelope.repo_path)
         duplicate_of = store.duplicate_of(job_id)
-        return ticket_job_start(str(job_id), number, item and item["title"], worktree,
-                                duplicate_of=None if duplicate_of is None else str(duplicate_of))
+        starting = ticket_job_start if role.role == TICKET_JOB else spec_job_start
+        return starting(str(job_id), number, item and item["title"], worktree,
+                        duplicate_of=None if duplicate_of is None else str(duplicate_of))
 
     def follow_worktree(job_id: int, event: dict, main_tree: str) -> None:
         """Where the Job works: the worktree EnterWorktree made, else the session's own cwd when in one."""
@@ -336,12 +397,24 @@ def create_app(
                 store.set_job_number(job_id, int(event["issue"]))
             case "report_phase":
                 step_id = report_phase(job_id, event, now)
+            case "report_step":
+                step_id = report_step(job_id, event)
             case "escalate":
                 states.escalate(store, session_id, str(event.get("reason") or ""), now)
                 sounds.schedule(store, session_id, event, now)
         if store.current_job(session_id) == job_id and store.job_stage(job_id) != IN_PROGRESS:
             pr_arrived(session_id, now)
         return session_id, job_id, step_id
+
+    def report_step(job_id: int, event: dict) -> int:
+        """`factory step --ticket N`: a subagent names the Ticket it works (its own Bash call ties it to the Step)."""
+        ticket = event.get("ticket")
+        if not str(ticket).isdigit():
+            raise HTTPException(status_code=422, detail="`factory step` needs --ticket <number>")
+        step_id = store.job_step_numbered(job_id, int(ticket))
+        if step_id is None:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} has no Step for #{ticket}")
+        return step_id
 
     def report_phase(job_id: int, event: dict, now: datetime) -> int:
         """`factory phase <name>`: the Step's Phase as its agent says, for when the rules can't tell."""

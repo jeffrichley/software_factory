@@ -19,8 +19,9 @@ BODY_PARENT = re.compile(r"^(?:Part of #(\d+)|## Parent\s+#(\d+))", re.MULTILINE
 SPEC_SECTIONS = ("## Problem Statement", "## Solution")
 
 
-def work_items(repo: str, issues: list[dict]) -> list[dict]:
-    """The repo's Work items: its issues (PRs left out) that are a Map, Decision ticket, Spec or Ticket."""
+def work_items(repo: str, issues: list[dict], blocked_by: dict[int, list[int]] | None = None) -> list[dict]:
+    """The repo's Work items: its issues (PRs left out) that are a Map, Decision ticket, Spec or Ticket, each with
+    its parent's number and the issues that block it (`blocked_by`, read separately)."""
     by_number = {i["number"]: i for i in issues if "pull_request" not in i}
     known: dict[int, Kind | None] = {}
 
@@ -50,7 +51,8 @@ def work_items(repo: str, issues: list[dict]) -> list[dict]:
         return None
 
     rows = [
-        {"number": n, "title": i["title"], "state": i["state"], "url": i["html_url"], "kind": kind(n)}
+        {"number": n, "title": i["title"], "state": i["state"], "url": i["html_url"], "kind": kind(n),
+         "parent": parent_of(repo, i), "blocked_by": (blocked_by or {}).get(n, [])}
         for n, i in by_number.items()
     ]
     return [row for row in rows if row["kind"]]

@@ -29,7 +29,7 @@ def test_a_replay_starts_with_the_job_and_tracks_each_phase_change_over_time(cli
 
     assert r["job_id"] == job_id
     assert r["started_at"] == "2026-10-26T12:00:00Z"
-    assert r["steps"] == [{"id": step_id, "number": 5, "title": "Add the widget API!"}]
+    assert r["steps"] == [{"id": step_id, "number": 5, "title": "Add the widget API!", "phase": None}]
     assert [(e["t"], e["kind"], e["step_id"], e["phase"]) for e in r["events"] if e["kind"] == "phase"] == [
         (30, "phase", step_id, "Exploring"),
         (90, "phase", step_id, "Red"),

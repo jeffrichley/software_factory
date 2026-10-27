@@ -130,6 +130,13 @@ CREATE TABLE IF NOT EXISTS job_events (
   phase TEXT
 );
 CREATE INDEX IF NOT EXISTS job_events_by_job ON job_events (job_id, id);
+-- The Step each subagent of a Spec Job works, by the subagent's agent_id.
+CREATE TABLE IF NOT EXISTS step_agents (
+  job_id INTEGER NOT NULL REFERENCES jobs (id),
+  agent_id TEXT NOT NULL,
+  step_id INTEGER NOT NULL REFERENCES steps (id),
+  PRIMARY KEY (job_id, agent_id)
+);
 -- A sound for one transition of a session's state, due at `due`. It plays (gets `seq`, the order the
 -- dashboard plays sounds in) once due if the session is still in that transition, else it is dropped.
 CREATE TABLE IF NOT EXISTS sounds (
@@ -155,10 +162,17 @@ SESSION_COLUMNS = {
     "hidden": "INTEGER NOT NULL DEFAULT 0",  # hidden by the human: out of the dashboard's views, and silent
     "transitions": "INTEGER NOT NULL DEFAULT 0",  # counts changes of shown state: a sound belongs to one
 }
+WORK_ITEM_COLUMNS = {
+    "parent": "INTEGER",  # the parent issue's number: a Ticket's Spec, a Decision ticket's Map
+    "blocked_by": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues in this repo that block it
+}
 JOB_COLUMNS = {
     "abandoned_at": "TEXT",  # when the human abandoned the Job on the dashboard
-    "duplicate_of": "INTEGER",
-    "ended_at": "TEXT",  # when the Job was first seen Merged, Closed or Abandoned: its replay ends there  # the active Job already on its Work item when it started (or learnt it): flagged, not blocked
+    "duplicate_of": "INTEGER",  # the active Job already on its Work item when it started (or learnt it): flagged, not blocked
+    "ended_at": "TEXT",  # when the Job was first seen Merged, Closed or Abandoned: its replay ends there
+}
+STEP_COLUMNS = {
+    "first_phase": "TEXT",  # the Phase it was added in (Pending, or NULL = unknown): where its replay starts
 }
 PULL_REQUEST_COLUMNS = {
     "closes": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues its body closes
@@ -212,7 +226,8 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         with self.db:
-            for table, columns in (("sessions", SESSION_COLUMNS), ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS)):
+            for table, columns in (("sessions", SESSION_COLUMNS), ("work_items", WORK_ITEM_COLUMNS),
+                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS), ("steps", STEP_COLUMNS)):
                 have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
                 for column, decl in columns.items():
                     if column not in have:
@@ -543,9 +558,10 @@ class Store:
         with self.db:
             self.db.execute("DELETE FROM work_items WHERE repo = ?", (repo,))
             self.db.executemany(
-                "INSERT INTO work_items (repo, number, title, state, url, kind)"
-                " VALUES (:repo, :number, :title, :state, :url, :kind)",
-                [{**item, "repo": repo} for item in items],
+                "INSERT INTO work_items (repo, number, title, state, url, kind, parent, blocked_by)"
+                " VALUES (:repo, :number, :title, :state, :url, :kind, :parent, :blocked_by)",
+                [{"parent": None, **item, "repo": repo, "blocked_by": json.dumps(item.get("blocked_by", []))}
+                 for item in items],
             )
             self.db.execute("DELETE FROM pull_requests WHERE repo = ?", (repo,))
             self.db.executemany(
@@ -667,12 +683,30 @@ class Store:
     # ---------- Steps and Phases (rules in phases.py) ----------
 
     @locked
-    def add_step(self, job_id: int, number: int | None, now: datetime) -> int:
-        """A Step of the Job, its Phase unknown."""
+    def add_step(self, job_id: int, number: int | None, now: datetime, phase: str | None = None) -> int:
+        """A Step of the Job, its Phase unknown unless given."""
         with self.db:
             return self.db.execute(
-                "INSERT INTO steps (job_id, number, phase_since) VALUES (?, ?, ?)", (job_id, number, iso(now))
+                "INSERT INTO steps (job_id, number, phase, first_phase, phase_since) VALUES (?, ?, ?, ?, ?)",
+                (job_id, number, phase, phase, iso(now)),
             ).lastrowid
+
+    @locked
+    def spec_tickets(self, repo: str, spec: int) -> list[int]:
+        """The Spec's child Tickets, as last polled."""
+        rows = self.db.execute(
+            "SELECT number FROM work_items WHERE repo = ? AND parent = ? AND kind = 'Ticket' ORDER BY number", (repo, spec)
+        )
+        return [r["number"] for r in rows]
+
+    @locked
+    def jobs_of_kind(self, repo: str, kind: str) -> list[int]:
+        return [r["id"] for r in self.db.execute("SELECT id FROM jobs WHERE repo = ? AND kind = ? ORDER BY id", (repo, kind))]
+
+    @locked
+    def job_number(self, job_id: int) -> int | None:
+        row = self.db.execute("SELECT number FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return row["number"] if row else None
 
     @locked
     def job_steps(self, job_id: int) -> list[int]:
@@ -683,6 +717,22 @@ class Store:
         """The Job's Step for that Ticket."""
         row = self.db.execute("SELECT id FROM steps WHERE job_id = ? AND number = ? ORDER BY id LIMIT 1", (job_id, number)).fetchone()
         return row["id"] if row else None
+
+    @locked
+    def map_agent(self, job_id: int, agent_id: str, step_id: int) -> None:
+        """The Job's subagent works this Step."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO step_agents VALUES (?, ?, ?)", (job_id, agent_id, step_id))
+
+    @locked
+    def agent_step(self, job_id: int, agent_id: str) -> int | None:
+        row = self.db.execute("SELECT step_id FROM step_agents WHERE job_id = ? AND agent_id = ?", (job_id, agent_id)).fetchone()
+        return row["step_id"] if row else None
+
+    @locked
+    def step_number(self, step_id: int) -> int | None:
+        row = self.db.execute("SELECT number FROM steps WHERE id = ?", (step_id,)).fetchone()
+        return row["number"] if row else None
 
     @locked
     def step_phase(self, step_id: int) -> str | None:
@@ -696,7 +746,8 @@ class Store:
             step = self.db.execute("SELECT job_id, number, phase FROM steps WHERE id = ?", (step_id,)).fetchone()
             if step and step["phase"] != phase:
                 ticket = f"#{step['number']} " if step["number"] is not None else ""
-                self._job_event(step["job_id"], now, "phase", f"{ticket}{phase}", step_id, phase)
+                text = phase if phase is not None else "started: Phase unknown"
+                self._job_event(step["job_id"], now, "phase", f"{ticket}{text}", step_id, phase)
             self.db.execute(
                 "UPDATE steps SET phase_since = CASE WHEN phase IS ? THEN phase_since ELSE ? END, phase = ? WHERE id = ?",
                 (phase, iso(now), phase, step_id),
@@ -706,13 +757,14 @@ class Store:
     def steps(self) -> list[dict]:
         """Steps of Jobs in repos some Machine tracks, oldest first, each with its Ticket's title once polled."""
         rows = self.db.execute(
-            "SELECT s.id, s.job_id, j.session_id, j.repo, s.number, w.title, s.phase, s.phase_since"
+            "SELECT s.id, s.job_id, j.session_id, j.repo, s.number, w.title, s.phase, s.phase_since, w.blocked_by"
             " FROM steps s JOIN jobs j ON j.id = s.job_id"
             " LEFT JOIN work_items w ON w.repo = j.repo AND w.number = s.number"
             " WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY s.id"
         ).fetchall()
         return [
-            {**dict(r), "id": str(r["id"]), "job_id": str(r["job_id"]), "session_id": str(r["session_id"])}
+            {**dict(r), "id": str(r["id"]), "job_id": str(r["job_id"]), "session_id": str(r["session_id"]),
+             "blocked_by": json.loads(r["blocked_by"] or "[]")}
             for r in rows
         ]
 
@@ -751,13 +803,17 @@ class Store:
 
     def _job_pr(self, job: sqlite3.Row) -> dict | None:
         """The Job's PR: the one it reported (as the poll knows it, if it does), else an open or merged PR
-        closing its Work item. A reported PR the poll hasn't seen yet counts as non-draft, as the Job was told."""
+        closing its Work item or one of its Steps' Tickets (a Spec Job's PR may close only the Tickets). A reported
+        PR the poll hasn't seen yet counts as non-draft, as the Job was told."""
         pulls = self.db.execute(
             "SELECT number, url, draft, state, closes FROM pull_requests WHERE repo = ? ORDER BY number DESC", (job["repo"],)
         ).fetchall()
         found = next((p for p in pulls if p["url"] == job["pr_url"]), None)
         if found is None and job["pr_url"] is None and job["number"] is not None:
-            found = next((p for p in pulls if p["state"] != "closed" and job["number"] in json.loads(p["closes"])), None)
+            items = {job["number"]} | {
+                r["number"] for r in self.db.execute("SELECT number FROM steps WHERE job_id = ? AND number IS NOT NULL", (job["id"],))
+            }
+            found = next((p for p in pulls if p["state"] != "closed" and items & set(json.loads(p["closes"]))), None)
         if found is not None:
             return {"number": found["number"], "url": found["url"], "draft": bool(found["draft"]), "state": found["state"]}
         if job["pr_url"]:
@@ -840,7 +896,7 @@ class Store:
             return None
         start = datetime.fromisoformat(job["started_at"])
         steps = self.db.execute(
-            "SELECT s.id, s.number, w.title FROM steps s JOIN jobs j ON j.id = s.job_id"
+            "SELECT s.id, s.number, w.title, s.first_phase FROM steps s JOIN jobs j ON j.id = s.job_id"
             " LEFT JOIN work_items w ON w.repo = j.repo AND w.number = s.number WHERE s.job_id = ? ORDER BY s.id",
             (job_id,),
         ).fetchall()
@@ -849,7 +905,9 @@ class Store:
             "job_id": str(job_id),
             "started_at": job["started_at"],
             "ended_at": job["ended_at"],
-            "steps": [{"id": str(s["id"]), "number": s["number"], "title": s["title"]} for s in steps],
+            "steps": [
+                {"id": str(s["id"]), "number": s["number"], "title": s["title"], "phase": s["first_phase"]} for s in steps
+            ],
             "events": [
                 {
                     "t": round((datetime.fromisoformat(e["at"]) - start).total_seconds()), "at": e["at"],

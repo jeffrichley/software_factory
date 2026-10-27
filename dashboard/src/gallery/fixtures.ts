@@ -95,7 +95,7 @@ export const REPLAY: ReplayData = {
   job_id: "21",
   started_at: "2026-10-26T15:30:00Z",
   ended_at: "2026-10-26T15:42:00Z",
-  steps: [{ id: "9", number: 29, title: "Job edges, abandonment and the History list" }],
+  steps: [{ id: "9", number: 29, title: "Job edges, abandonment and the History list", phase: null }],
   events: [
     rev(0, "start", "Job started: #29"),
     rev(12, "action", "reading server/factory_server/store.py"),

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { JobData } from "../jobs";
 import { formatOffset, MARKED_KINDS, replayFrame, replayLength, type ReplayData } from "../replay";
+import { PENDING, type Phase } from "../types";
 import { Icon } from "./Icon";
 import { WorkItemLink } from "./InboxCards";
 import { Eyebrow, Panel } from "./Panel";
@@ -118,7 +119,7 @@ export function ReplayView({ job, replay, onBack, initialPos = 0 }: ReplayViewPr
               {replay.steps.length ? replay.steps.map((s) => (
                 <div key={s.id} className="rp-step">
                   {replay.steps.length > 1 ? <span className="rp-step-name">{stepName(s)}</span> : null}
-                  <PhaseTrack phase={frame.phases[s.id]} />
+                  {frame.phases[s.id] === PENDING ? <Tag tone="unknown">Pending</Tag> : <PhaseTrack phase={frame.phases[s.id] as Phase | null} />}
                 </div>
               )) : <Hint>This Job has no Steps.</Hint>}
             </Panel>

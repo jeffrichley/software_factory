@@ -1,4 +1,4 @@
-import type { Phase } from "./types";
+import type { StepPhase } from "./types";
 
 /**
  * History replay: a finished Job's timeline (GET /api/jobs/{id}/replay), scrubbed through time. Times are seconds
@@ -21,21 +21,22 @@ export interface ReplayData {
   started_at: string;
   /** When the Job was first seen Merged, Closed or Abandoned; null while it hasn't ended. */
   ended_at: string | null;
-  steps: { id: string; number: number | null; title: string | null }[];
+  /** Each Step with the Phase it was added in: Pending (a Spec Job's Ticket) or null = unknown. */
+  steps: { id: string; number: number | null; title: string | null; phase: StepPhase }[];
   events: ReplayEvent[];
 }
 
 /** The event kinds marked on the scrubber; actions are listed but too many to mark. */
 export const MARKED_KINDS = ["phase", "test_pass", "test_fail", "commit", "review", "needs", "pr", "end"] as const;
 
-/** The replay at time `t`: each Step's Phase then (null = unknown), and the index of the last event reached (-1 = none). */
-export function replayFrame(replay: ReplayData, t: number): { phases: Record<string, Phase | null>; current: number } {
-  const phases: Record<string, Phase | null> = Object.fromEntries(replay.steps.map((s) => [s.id, null]));
+/** The replay at time `t`: each Step's Phase then (Pending, or null = unknown), and the index of the last event reached (-1 = none). */
+export function replayFrame(replay: ReplayData, t: number): { phases: Record<string, StepPhase>; current: number } {
+  const phases: Record<string, StepPhase> = Object.fromEntries(replay.steps.map((s) => [s.id, s.phase]));
   let current = -1;
   replay.events.forEach((e, i) => {
     if (e.t > t) return;
     current = i;
-    if (e.kind === "phase" && e.step_id) phases[e.step_id] = e.phase as Phase;
+    if (e.kind === "phase" && e.step_id) phases[e.step_id] = e.phase as StepPhase;
   });
   return { phases, current };
 }

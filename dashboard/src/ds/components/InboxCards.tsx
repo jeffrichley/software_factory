@@ -4,13 +4,17 @@ import { Icon, type IconName } from "./Icon";
 import { NowLine } from "./NowLine";
 import { Unknown } from "./Unknown";
 
-export type NeedsReason =
+export type NeedsReason = (
   | { kind: "permission"; tool: string; command: string }
   | { kind: "question"; text: string }
   | { kind: "hitl"; ticket: string; questions?: string[] }
   | { kind: "escalation"; reason: string }
   | { kind: "error"; type: string }
-  | { kind: "no-pr" };
+  | { kind: "no-pr" }
+) & {
+  /** A Spec Job's subagent asked: the Ticket of the Step it works. */
+  step_ticket?: number;
+};
 
 const REASON: Record<NeedsReason["kind"], [string, IconName]> = {
   permission: ["Permission prompt", "shield"],
@@ -93,6 +97,7 @@ export function NeedsYouCard(p: NeedsYouCardProps) {
       <div className="nb">
         <span className="nwhat">
           <b>{p.repo}</b> · {p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} />
+          {p.reason?.step_ticket ? <> · Ticket <span className="mono">#{p.reason.step_ticket}</span></> : null}
         </span>
         <NeedsBody reason={p.reason} />
         <dl className="where">
