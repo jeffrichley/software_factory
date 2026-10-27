@@ -258,3 +258,17 @@ def test_the_draft_pr_is_a_link_until_marked_ready_then_the_job_is_pr_open_and_d
     assert jobs(client)[0]["stage"] == "PR open"
     [row] = client.get("/api/state").json()["sessions"]
     assert (row["state"], row["seen"]) == ("Done", False)
+
+
+def test_a_spec_jobs_replay_starts_its_steps_pending_and_shows_each_starting_and_moving(client, job):
+    launch(client, "a1", "Implement ticket #6")
+    hook(client, "SubagentStart", **agent("a1"))
+    tool(client, "Edit", {"file_path": "/w/tests/test_csv.py"}, **agent("a1"))
+
+    replay = client.get(f"/api/jobs/{job}/replay").json()
+
+    assert [(s["number"], s["phase"]) for s in replay["steps"]] == [(5, "Pending"), (6, "Pending")]
+    assert [(e["text"], e["phase"]) for e in replay["events"] if e["kind"] == "phase"] == [
+        ("#6 started: Phase unknown", None),
+        ("#6 Red", "Red"),
+    ]

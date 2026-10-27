@@ -34,7 +34,23 @@ POLL_CHECK_SECONDS = 5
 # Sent by 'factory hide' / 'factory show' for the session that runs them: is it hidden now.
 HIDE_EVENTS = dict(session_hidden=True, session_shown=False)
 
+# Phase signals that are events of their own on a Job's replay: kind and label.
+REPLAY_SIGNALS = {
+    "test_pass": ("test_pass", "Tests pass"),
+    "test_fail": ("test_fail", "Tests fail"),
+    "commit": ("commit", "Commit"),
+    "skill:code-review": ("review", "Review"),
+}
+
 log = logging.getLogger(__name__)
+
+
+def signal_subject(event: dict) -> str:
+    """What a replay event is about: the command run, or the skill started."""
+    if invocation := skill_invocation(event):
+        return bare_name(invocation[0]) or invocation[0]
+    tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+    return str(tool_input.get("command") or "")
 
 
 class Envelope(BaseModel):
@@ -155,6 +171,8 @@ def create_app(
         for repo in due():
             try:
                 read_repo(repo)
+                for job_id in store.repo_jobs(repo):
+                    store.chronicle_job(job_id, clock())
                 prs_arrived(repo)
                 prs_merged(repo)
                 hub.publish(state())
@@ -290,9 +308,12 @@ def create_app(
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
                 observe(session_id, event, now)
+                signal = phase_rules.load().signal(event, envelope.repo) if job_id is not None else None
+                if signal in REPLAY_SIGNALS:
+                    kind, label = REPLAY_SIGNALS[signal]
+                    store.record_job_event(job_id, now, kind, f"{label}: {signal_subject(event)}")
                 if step_id is not None:
                     store.step_active(step_id, now)
-                    signal = phase_rules.load().signal(event, envelope.repo)
                     infer_phase(step_id, job_id, signal, session_id, now)
                     record_detail(step_id, event, signal, envelope.repo_path, now)
         hub.publish(state())
@@ -421,6 +442,7 @@ def create_app(
         match name:
             case "report_pr":
                 store.set_job_pr(job_id, str(event.get("url") or ""))
+                store.chronicle_job(job_id, now)
             case "job_issue":
                 if not str(event.get("issue", "")).isdigit():
                     raise HTTPException(status_code=422, detail="`factory job` needs --issue <number>")
@@ -491,11 +513,20 @@ def create_app(
         """The human abandoned the Job on the dashboard: it moves to History, and its session waits for no PR."""
         if not store.abandon_job(job_id, clock()):
             raise HTTPException(status_code=404, detail="no such Job")
+        store.chronicle_job(job_id, clock())
         session_id = store.job_session(job_id)
         if store.current_job(session_id) == job_id:
             states.pr_no_longer_awaited(store, session_id, clock(), seen=True)
         hub.publish(state())
         return {"ok": True}
+
+    @app.get("/api/jobs/{job_id}/replay")
+    async def replay(job_id: int) -> dict:
+        """The Job's timeline, for its replay in History: Phase changes and events over time."""
+        found = store.job_replay(job_id)
+        if found is None:
+            raise HTTPException(status_code=404, detail="no such Job")
+        return found
 
     @app.post("/api/sessions/{session_id}/seen")
     async def seen(session_id: int) -> dict:
