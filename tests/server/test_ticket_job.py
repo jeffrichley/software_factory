@@ -195,6 +195,18 @@ def test_the_poll_finding_the_pr_makes_a_stopped_job_done(client, ticket, github
     assert (row["state"], row["reason"], row["seen"]) == ("Done", None, False)
 
 
+def test_a_stopped_job_turning_done_on_the_poll_plays_the_done_sound(client, ticket, github, clock):
+    implement(client, "#5")
+    hook(client, "Stop", stop_hook_active=False, last_assistant_message="Pushed.")
+    clock.advance(60)
+    assert [s["sound"] for s in client.get("/api/state").json()["sounds"]] == ["needs_you"]
+
+    github.issues["jeff/widgets"].append(pr(51, closes=5))
+    poll(client)
+
+    assert [s["sound"] for s in client.get("/api/state").json()["sounds"]] == ["needs_you", "done"]
+
+
 def test_a_draft_pr_is_only_a_link_and_the_job_is_not_done(client, ticket, github, clock):
     implement(client, "#5")
     github.issues["jeff/widgets"].append(pr(52, closes=5, draft=True))

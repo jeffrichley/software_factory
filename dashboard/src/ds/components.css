@@ -77,6 +77,8 @@ a { color: inherit; }
 .count-needs.hot { background: var(--needs); border-color: var(--needs); color: var(--needs-ink); }
 .count-needs.hot b { color: var(--needs-ink); }
 .count-hidden { border-color: var(--needs); color: var(--needs-fg); cursor: pointer; }
+.count-sound { margin-left: auto; cursor: pointer; color: var(--text); }
+.count-sound.off { color: var(--text-2); border-style: dashed; }
 
 /* ---------- State chip (flow strip) ---------- */
 .fchip { position: relative; overflow: hidden; display: flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; max-width: 100%; height: var(--chip-h); padding: 0 8px;
