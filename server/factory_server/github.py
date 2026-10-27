@@ -32,3 +32,17 @@ def read_issues(github: GitHub, repo: str) -> list[dict]:
         if len(batch) < PAGE:
             return issues
         page += 1
+
+
+def read_blocked_by(github: GitHub, repo: str, issues: list[dict]) -> dict[int, list[int]]:
+    """For each issue some other issue blocks, the numbers of its blockers in this repo. Only issues whose
+    dependency summary counts a blocker are read, so a repo without dependencies costs no extra reads."""
+    blocked: dict[int, list[int]] = {}
+    for i in issues:
+        summary = i.get("issue_dependencies_summary") or {}
+        if "pull_request" in i or not summary.get("total_blocked_by"):
+            continue
+        blockers = github.api(f"repos/{repo}/issues/{i['number']}/dependencies/blocked_by")
+        mine = f"github.com/{repo}/issues/"
+        blocked[i["number"]] = sorted(b["number"] for b in blockers if mine in b.get("html_url", ""))
+    return blocked

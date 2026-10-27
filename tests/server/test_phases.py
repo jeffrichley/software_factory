@@ -36,6 +36,7 @@ def test_a_ticket_job_has_one_step_whose_phase_is_unknown_at_first(client, ticke
         "title": "Add the widget API!",
         "phase": None,
         "phase_since": "2026-10-26T12:00:00Z",
+        "blocked_by": [],
     }]
 
 
