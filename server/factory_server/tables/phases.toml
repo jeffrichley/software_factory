@@ -24,6 +24,14 @@
 # The Phases: Exploring, Red, Green, Refactor, Reviewing, Committed, Merged.
 #
 # Patterns are Python regular expressions, searched anywhere in the path (with / separators) or command.
+#
+# A repo with test runners or a layout of its own adds patterns for its events only, in a section named
+# after it at the end of this file (they add to the lists in [signals], never replace them):
+#   [repos."owner/repo"]
+#   test_commands = ['\bmake\s+check\b']
+#   test_files = ['(^|/)checks/']
+#   failed_summary = ['\bERRORS?\b']
+#
 # Agents can also report a Phase with `factory phase <name> --job <id>`; the rules carry on from it.
 #
 # `version` is the table's format; this server reads version 1. A table that fails to parse or validate

@@ -21,7 +21,7 @@ from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, spec_job_star
 from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
-from .step_detail import (CODE_REVIEW, REVIEW_AXES, commit_made, repo_relative, review_counts, review_report_ask,
+from .step_detail import (CODE_REVIEW, REVIEW_AXES, checklist_after, commit_made, repo_relative, review_counts, review_report_ask,
                           test_counts, test_output)
 from .store import Store
 from .work_items import pull_requests, work_items
@@ -109,16 +109,19 @@ def create_app(
         store.release_sounds(now)
         machines = [{**m, "silent": is_silent(m["last_seen"], now)} for m in store.machines()]
         silent_since = {m["machine"]: m["last_seen"] for m in machines if m["silent"]}
+        sessions = [as_shown(s, silent_since.get(s["machine"])) for s in store.live_sessions()]
+        # A silent Step's Machine is often silent too: Stale is still Working, as far as it is known.
+        working = {s["id"] for s in sessions if s["state"] in ("Working", "Stale")}
         return {
             "server_version": SERVER_VERSION,
             "machines": machines,
             "repos": store.tracked_repos(),
-            "sessions": [as_shown(s, silent_since.get(s["machine"])) for s in store.live_sessions()],
+            "sessions": sessions,
             "work_items": store.work_items(),
             "pull_requests": store.pull_requests(),
             "jobs": store.jobs(),
             "steps": store.steps(),
-            "step_details": store.step_details(),
+            "step_details": store.step_details(now, working),
             "job_reviews": store.job_reviews(),
             "mismatches": mismatches(),
             "sounds": store.sounds(),
@@ -288,6 +291,7 @@ def create_app(
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
                 observe(session_id, event, now)
                 if step_id is not None:
+                    store.step_active(step_id, now)
                     signal = phase_rules.load().signal(event, envelope.repo)
                     infer_phase(step_id, job_id, signal, session_id, now)
                     record_detail(step_id, event, signal, envelope.repo_path, now)
@@ -352,6 +356,8 @@ def create_app(
 
     def record_detail(step_id: int, event: dict, signal: str | None, main_tree: str, now: datetime) -> None:
         """What the event adds to the Step's detail."""
+        if (checklist := checklist_after(store.checklist(step_id), event)) is not None:
+            store.set_checklist(step_id, checklist)
         if signal in ("test_edit", "source_edit"):
             tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
             path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")

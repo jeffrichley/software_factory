@@ -323,3 +323,100 @@ class TestSpecJob:
         report(client, "report_review", job, standards=0, spec=1, ticket=6)
 
         assert detail(client, self.step_id(client, 6))["review"] == {"standards": 0, "spec": 1, "source": "report"}
+
+
+def todo(content: str, status: str = "pending") -> dict:
+    return {"content": content, "status": status, "activeForm": f"Doing: {content}"}
+
+
+def test_without_todo_or_task_tools_the_checklist_is_unknown(client, ticket):
+    step_id = implement(client, "#5")["step_id"]
+    read(client)
+
+    assert detail(client, step_id)["checklist"] is None
+
+
+def test_the_checklist_is_the_latest_todo_list(client, ticket):
+    step_id = implement(client, "#5")["step_id"]
+    first = [todo("Failing test: GET /widgets", "in_progress"), todo("Implement it")]
+    tool(client, "TodoWrite", {"todos": first}, response={"oldTodos": [], "newTodos": first})
+    then = [todo("Failing test: GET /widgets", "completed"), todo("Implement it", "in_progress")]
+    tool(client, "TodoWrite", {"todos": then}, response={"oldTodos": first, "newTodos": then})
+
+    assert detail(client, step_id)["checklist"] == [
+        {"text": "Failing test: GET /widgets", "status": "completed"},
+        {"text": "Implement it", "status": "in_progress"},
+    ]
+
+
+def test_the_checklist_follows_task_tools(client, ticket):
+    step_id = implement(client, "#5")["step_id"]
+    hook(client, "TaskCreated", task_id="1", task_subject="Write the failing test", task_description="…")
+    hook(client, "TaskCreated", task_id="2", task_subject="Make it pass", task_description="…")
+    tool(client, "TaskUpdate", {"taskId": "1", "status": "in_progress"},
+         response={"success": True, "taskId": "1", "statusChange": {"from": "pending", "to": "in_progress"}})
+    hook(client, "TaskCompleted", task_id="1", task_subject="Write the failing test")
+
+    assert detail(client, step_id)["checklist"] == [
+        {"text": "Write the failing test", "status": "completed"},
+        {"text": "Make it pass", "status": "pending"},
+    ]
+
+
+def struggle(client, step_id: str) -> dict | None:
+    return detail(client, step_id)["struggle"]
+
+
+def test_a_step_doing_fine_shows_no_struggle(client, ticket):
+    step_id = implement(client, "#5")["step_id"]
+    bash(client, "pytest", exit_code=1, stdout="1 failed")
+    bash(client, "pytest", exit_code=1, stdout="1 failed")
+    bash(client, "pytest", stdout="2 passed")
+
+    assert struggle(client, step_id) is None
+
+
+def test_three_failing_test_runs_in_a_row_is_struggling(client, ticket):
+    step_id = implement(client, "#5")["step_id"]
+    for _ in range(4):
+        bash(client, "pytest", exit_code=1, stdout="1 failed")
+
+    assert struggle(client, step_id) == {"failures": 4, "churn": [], "silent_for_s": None}
+
+    bash(client, "pytest", stdout="2 passed")
+    assert struggle(client, step_id) is None
+
+
+def test_one_file_edited_five_times_without_a_passing_run_is_churn(client, ticket):
+    step_id = implement(client, "#5")["step_id"]
+    for _ in range(4):
+        write(client, "/home/jeff/widgets/src/api.py")
+    bash(client, "pytest", stdout="2 passed")
+    for _ in range(4):
+        write(client, "/home/jeff/widgets/src/api.py")
+    assert struggle(client, step_id) is None
+
+    write(client, "/home/jeff/widgets/src/api.py")
+
+    assert struggle(client, step_id) == {"failures": None, "churn": ["src/api.py"], "silent_for_s": None}
+
+
+def test_ten_minutes_without_a_sound_from_a_working_step_is_silence(client, ticket, clock):
+    step_id = implement(client, "#5")["step_id"]
+    read(client)
+    clock.advance(9 * 60)
+    assert struggle(client, step_id) is None
+
+    clock.advance(60)
+    assert struggle(client, step_id) == {"failures": None, "churn": [], "silent_for_s": 600}
+
+    read(client)
+    assert struggle(client, step_id) is None
+
+
+def test_a_step_waiting_on_the_human_or_done_is_not_silent(client, ticket, clock):
+    step_id = implement(client, "#5")["step_id"]
+    hook(client, "Stop", stop_hook_active=False)  # no PR yet: Needs you
+    clock.advance(30 * 60)
+
+    assert struggle(client, step_id) is None

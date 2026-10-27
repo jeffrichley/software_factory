@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .jobs import ENDED, stage_of
-from .step_detail import KEEP_RUNS
+from .step_detail import CHURN_EDITS, KEEP_RUNS, struggle_of
 from .skills import AD_HOC
 
 SCHEMA = """
@@ -195,6 +195,10 @@ CREATE TABLE IF NOT EXISTS sounds (
 );
 """
 # Columns added after the first release, so an existing database gains them on start.
+STEP_COLUMNS = {
+    "checklist": "TEXT",  # JSON: the agent's live checklist; NULL while it has none (no todo or task tools)
+    "active_at": "TEXT",  # the Step's latest event; NULL before any
+}
 SESSION_COLUMNS = {
     "kind": f"TEXT NOT NULL DEFAULT '{AD_HOC}'",
     "skill": "TEXT",
@@ -251,7 +255,8 @@ class Store:
         self.db.executescript(SCHEMA)
         with self.db:
             for table, columns in (("sessions", SESSION_COLUMNS), ("work_items", WORK_ITEM_COLUMNS),
-                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS)):
+                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS),
+                                   ("steps", STEP_COLUMNS)):
                 have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
                 for column, decl in columns.items():
                     if column not in have:
@@ -929,6 +934,21 @@ class Store:
         return {str(r["job_id"]): {k: r[k] for k in ("standards", "spec", "source")} for r in rows}
 
     @locked
+    def step_active(self, step_id: int, now: datetime) -> None:
+        with self.db:
+            self.db.execute("UPDATE steps SET active_at = ? WHERE id = ?", (iso(now), step_id))
+
+    @locked
+    def checklist(self, step_id: int) -> list[dict] | None:
+        row = self.db.execute("SELECT checklist FROM steps WHERE id = ?", (step_id,)).fetchone()
+        return json.loads(row["checklist"]) if row and row["checklist"] else None
+
+    @locked
+    def set_checklist(self, step_id: int, items: list[dict]) -> None:
+        with self.db:
+            self.db.execute("UPDATE steps SET checklist = ? WHERE id = ?", (json.dumps(items), step_id))
+
+    @locked
     def record_commit(self, step_id: int, commit: dict, now: datetime) -> None:
         with self.db:
             self.db.execute(
@@ -947,14 +967,16 @@ class Store:
             )
 
     @locked
-    def step_details(self) -> dict[str, dict]:
-        """What each Step (of a Job in a repo some Machine tracks) has done, by Step id."""
+    def step_details(self, now: datetime, working: set[str]) -> dict[str, dict]:
+        """What each Step (of a Job in a repo some Machine tracks) has done, by Step id, and whether it is
+        struggling; `working` holds the ids of the sessions Working (Stale included), whose Steps can be silent."""
         rows = self.db.execute(
-            "SELECT j.*, s.id AS step_id FROM steps s JOIN jobs j ON j.id = s.job_id WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY s.id"
+            "SELECT j.*, s.id AS step_id, s.checklist, s.phase, COALESCE(s.active_at, s.phase_since) AS active_at"
+            " FROM steps s JOIN jobs j ON j.id = s.job_id WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY s.id"
         ).fetchall()
         ids = [r["step_id"] for r in rows]
         details: dict[str, dict] = {str(i): {"phase_events": [], "tests": None, "files": [], "commits": [], "pr": None,
-                                    "review": None} for i in ids}
+                                    "review": None, "checklist": None} for i in ids}
         for e in self.db.execute("SELECT step_id, at, from_phase, to_phase FROM phase_events ORDER BY id"):
             if (d := details.get(str(e["step_id"]))) is not None:
                 d["phase_events"].append({"at": e["at"], "from": e["from_phase"], "to": e["to_phase"]})
@@ -965,6 +987,9 @@ class Store:
             if (d := details.get(str(c["step_id"]))) is not None:
                 d["commits"].append({k: c[k] for k in ("sha", "message", "files", "added", "deleted")})
         for r in rows:
+            if r["checklist"]:
+                details[str(r["step_id"])]["checklist"] = [
+                    {"text": i["text"], "status": i["status"]} for i in json.loads(r["checklist"])]
             # A Ticket Job's Step ends as the Job's PR; a Spec Job's Steps merge into its integration branch.
             if r["kind"] == "Ticket Job" and (pr := self._job_pr(r)):
                 checks = self.db.execute(
@@ -983,4 +1008,12 @@ class Store:
                 last = step_runs[-1]
                 d["tests"] = {"last": last["result"], "passed": last["passed"], "failed": last["failed"],
                               "runs": step_runs[-KEEP_RUNS:]}
+        for r in rows:
+            d = details[str(r["step_id"])]
+            churned = [f["path"] for f in self.db.execute(
+                "SELECT path FROM step_files WHERE step_id = ? AND since_pass >= ? ORDER BY id", (r["step_id"], CHURN_EDITS))]
+            going = (str(r["session_id"]) in working and r["phase"] not in ("Pending", "Merged")
+                     and self._stage(r, self._job_pr(r)) not in ENDED)
+            silent_for = int((now - datetime.fromisoformat(r["active_at"])).total_seconds()) if going else None
+            d["struggle"] = struggle_of([t["result"] for t in runs.get(str(r["step_id"]), [])], churned, silent_for)
         return details
