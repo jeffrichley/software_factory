@@ -16,7 +16,8 @@ from pydantic import BaseModel
 from . import sounds, states
 from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub, read_issues
-from .jobs import ticket_job_start, worktree_of
+from .jobs import TICKET_JOB, ticket_job_start, worktree_of
+from .phases import DEFAULT_PHASE_RULES, PHASES, PhaseRules, phase_named
 from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
 from .store import Store
@@ -90,11 +91,13 @@ def create_app(
     github: GitHub,
     clock: Callable[[], datetime],
     skill_table: Path = DEFAULT_SKILL_TABLE,
+    phase_rules_path: Path = DEFAULT_PHASE_RULES,
     # Often enough that a sound whose grace runs out reaches the dashboard about on time.
     refresh_s: float = 1,
 ) -> FastAPI:
     store = Store(db_path)
     skills = SkillTable(skill_table)
+    phase_rules = PhaseRules(phase_rules_path)
     hub = Broadcaster()
     polled_at: dict[str, datetime] = {}
 
@@ -111,6 +114,7 @@ def create_app(
             "work_items": store.work_items(),
             "pull_requests": store.pull_requests(),
             "jobs": store.jobs(),
+            "steps": store.steps(),
             "mismatches": mismatches(),
             "sounds": store.sounds(),
         }
@@ -145,6 +149,7 @@ def create_app(
                 issues = read_issues(github, repo)
                 store.save_poll(repo, work_items(repo, issues), pull_requests(issues))
                 prs_arrived(repo)
+                prs_merged(repo)
                 hub.publish(state())
             except Exception:
                 log.exception("GitHub poll of %s failed", repo)
@@ -155,6 +160,13 @@ def create_app(
             job_id = store.current_job(int(s["id"]))
             if s["repo"] == repo and job_id is not None and store.job_has_pr(job_id):
                 pr_arrived(int(s["id"]), clock())
+
+    def prs_merged(repo: str) -> None:
+        """A Job's PR merged is a signal to each of its Steps."""
+        for job_id in store.merged_jobs(repo):
+            session_id = store.job_session(job_id)
+            for step_id in store.job_steps(job_id):
+                infer_phase(step_id, job_id, "pr_merged", session_id, clock())
 
     def pr_arrived(session_id: int, now: datetime) -> None:
         states.pr_arrived(store, session_id, now)
@@ -201,15 +213,15 @@ def create_app(
         # The Machine reports now, but a queued event counts from when it happened (never later than now).
         store.machine_seen(envelope.machine, clock())
         now = min(envelope.queued_at, clock()) if envelope.queued_at else clock()
-        session_id = job_id = inject = None
+        session_id = job_id = step_id = inject = None
         match event.get("hook_event_name"):
             case "repo_installed":
                 store.track_repo(envelope.repo, envelope.machine, envelope.repo_path, now)
             case "repo_uninstalled":
                 store.untrack_repo(envelope.repo, envelope.machine, now)
                 polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
-            case "report_pr" | "job_issue" as name:
-                session_id, job_id = self_report(name, event, now)
+            case "report_pr" | "job_issue" | "report_phase" as name:
+                session_id, job_id, step_id = self_report(name, event, now)
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
                 if name in HIDE_EVENTS:
@@ -235,19 +247,39 @@ def create_app(
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
                 observe(session_id, event, now)
+                step_id = step_of(job_id)
+                if step_id is not None:
+                    infer_phase(step_id, job_id, phase_rules.load().signal(event), session_id, now)
         hub.publish(state())
         return Reply(
             session_id=None if session_id is None else str(session_id),
             job_id=None if job_id is None else str(job_id),
+            step_id=None if step_id is None else str(step_id),
             inject=inject,
         )
+
+    def step_of(job_id: int | None) -> int | None:
+        """The Step an event of the Job belongs to: a Ticket Job's one Step."""
+        if job_id is None or store.job_kind(job_id) != TICKET_JOB:
+            return None
+        return next(iter(store.job_steps(job_id)), None)
+
+    def infer_phase(step_id: int, job_id: int, signal: str | None, session_id: int, now: datetime) -> None:
+        """The Step's Phase after a signal, by the Phase rules."""
+        if signal is None:
+            return
+        version = store.session(session_id)["mattpocock_skills_version"]
+        to = phase_rules.load().next_phase(store.step_phase(step_id), signal, store.job_kind(job_id), version)
+        if to is not None:
+            store.set_phase(step_id, to, now)
 
     def start_job(session_id: int, skill: str, number: int | None, envelope: Envelope, now: datetime) -> str | None:
         """A typed Job skill starts a new Job (older ones carry on); returns what to tell the agent."""
         role = skills.role(skill, store.session(session_id)["mattpocock_skills_version"])
-        if role is None or role.role != "Ticket Job":
+        if role is None or role.role != TICKET_JOB:
             return None
         job_id = store.start_job(session_id, role.role, envelope.repo, number, now)
+        store.add_step(job_id, number, now)  # a Ticket Job's one Step works its Ticket
         item = store.work_item(envelope.repo, number) if number else None
         worktree = worktree_of(envelope.event.get("cwd"), envelope.repo_path)
         return ticket_job_start(str(job_id), number, item and item["title"], worktree)
@@ -260,7 +292,7 @@ def create_app(
         elif worktree := worktree_of(event.get("cwd"), main_tree):
             store.set_job_worktree(job_id, worktree)
 
-    def self_report(name: str, event: dict, now: datetime) -> tuple[int, int]:
+    def self_report(name: str, event: dict, now: datetime) -> tuple[int, int, int | None]:
         """A `factory` self-report about a Job; every one names its Job."""
         try:
             job_id = int(event.get("job_id"))
@@ -269,6 +301,7 @@ def create_app(
         session_id = store.job_session(job_id)
         if session_id is None:
             raise HTTPException(status_code=404, detail=f"no Job {job_id}")
+        step_id = step_of(job_id)
         match name:
             case "report_pr":
                 store.set_job_pr(job_id, str(event.get("url") or ""))
@@ -276,9 +309,28 @@ def create_app(
                 if not str(event.get("issue", "")).isdigit():
                     raise HTTPException(status_code=422, detail="`factory job` needs --issue <number>")
                 store.set_job_number(job_id, int(event["issue"]))
+            case "report_phase":
+                step_id = report_phase(job_id, event, now)
         if store.current_job(session_id) == job_id and store.job_has_pr(job_id):
             pr_arrived(session_id, now)
-        return session_id, job_id
+        return session_id, job_id, step_id
+
+    def report_phase(job_id: int, event: dict, now: datetime) -> int:
+        """`factory phase <name>`: the Step's Phase as its agent says, for when the rules can't tell."""
+        phase = phase_named(str(event.get("phase") or ""))
+        if phase is None:
+            raise HTTPException(status_code=422, detail=f"`factory phase` needs one of {', '.join(PHASES)}")
+        ticket = event.get("ticket")
+        if ticket is None:
+            step_id = step_of(job_id)
+        elif str(ticket).isdigit():
+            step_id = store.job_step_numbered(job_id, int(ticket))
+        else:
+            raise HTTPException(status_code=422, detail="--ticket needs an issue number")
+        if step_id is None:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} has no Step" + (f" for #{ticket}" if ticket else ""))
+        store.set_phase(step_id, phase, now)
+        return step_id
 
     @app.post("/api/sessions/{session_id}/seen")
     async def seen(session_id: int) -> dict:

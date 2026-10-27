@@ -109,6 +109,15 @@ CREATE TABLE IF NOT EXISTS jobs (
   pr_url TEXT
 );
 CREATE INDEX IF NOT EXISTS jobs_by_session ON jobs (session_id, id);
+-- A Step: one Ticket worked inside a Job. phase is NULL while unknown; phase_since is when it last changed.
+CREATE TABLE IF NOT EXISTS steps (
+  id INTEGER PRIMARY KEY,
+  job_id INTEGER NOT NULL REFERENCES jobs (id),
+  number INTEGER,
+  phase TEXT,
+  phase_since TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS steps_by_job ON steps (job_id, id);
 -- A sound for one transition of a session's state, due at `due`. It plays (gets `seq`, the order the
 -- dashboard plays sounds in) once due if the session is still in that transition, else it is dropped.
 CREATE TABLE IF NOT EXISTS sounds (
@@ -570,8 +579,75 @@ class Store:
 
     @locked
     def set_job_number(self, job_id: int, number: int) -> None:
+        """The Job's Work item; a Step that didn't know its Ticket (a Ticket Job's one Step) works the same one."""
         with self.db:
             self.db.execute("UPDATE jobs SET number = ? WHERE id = ?", (number, job_id))
+            self.db.execute("UPDATE steps SET number = ? WHERE job_id = ? AND number IS NULL", (number, job_id))
+
+    @locked
+    def job_kind(self, job_id: int) -> str | None:
+        row = self.db.execute("SELECT kind FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return row["kind"] if row else None
+
+    # ---------- Steps and Phases (rules in phases.py) ----------
+
+    @locked
+    def add_step(self, job_id: int, number: int | None, now: datetime) -> int:
+        """A Step of the Job, its Phase unknown."""
+        with self.db:
+            return self.db.execute(
+                "INSERT INTO steps (job_id, number, phase_since) VALUES (?, ?, ?)", (job_id, number, iso(now))
+            ).lastrowid
+
+    @locked
+    def job_steps(self, job_id: int) -> list[int]:
+        return [r["id"] for r in self.db.execute("SELECT id FROM steps WHERE job_id = ? ORDER BY id", (job_id,))]
+
+    @locked
+    def job_step_numbered(self, job_id: int, number: int) -> int | None:
+        """The Job's Step for that Ticket."""
+        row = self.db.execute("SELECT id FROM steps WHERE job_id = ? AND number = ? ORDER BY id LIMIT 1", (job_id, number)).fetchone()
+        return row["id"] if row else None
+
+    @locked
+    def step_phase(self, step_id: int) -> str | None:
+        row = self.db.execute("SELECT phase FROM steps WHERE id = ?", (step_id,)).fetchone()
+        return row["phase"] if row else None
+
+    @locked
+    def set_phase(self, step_id: int, phase: str, now: datetime) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE steps SET phase_since = CASE WHEN phase IS ? THEN phase_since ELSE ? END, phase = ? WHERE id = ?",
+                (phase, iso(now), phase, step_id),
+            )
+
+    @locked
+    def steps(self) -> list[dict]:
+        """Steps of Jobs in repos some Machine tracks, oldest first, each with its Ticket's title once polled."""
+        rows = self.db.execute(
+            "SELECT s.id, s.job_id, j.session_id, j.repo, s.number, w.title, s.phase, s.phase_since"
+            " FROM steps s JOIN jobs j ON j.id = s.job_id"
+            " LEFT JOIN work_items w ON w.repo = j.repo AND w.number = s.number"
+            " WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY s.id"
+        ).fetchall()
+        return [
+            {**dict(r), "id": str(r["id"]), "job_id": str(r["job_id"]), "session_id": str(r["session_id"])}
+            for r in rows
+        ]
+
+    @locked
+    def merged_jobs(self, repo: str) -> list[int]:
+        """Jobs in the repo whose PR has merged."""
+        rows = self.db.execute("SELECT * FROM jobs WHERE repo = ?", (repo,)).fetchall()
+        merged = []
+        for job in rows:
+            pr = self._job_pr(job)
+            if pr and self.db.execute(
+                "SELECT 1 FROM pull_requests WHERE repo = ? AND url = ? AND state = 'merged'", (repo, pr["url"])
+            ).fetchone():
+                merged.append(job["id"])
+        return merged
 
     @locked
     def set_job_worktree(self, job_id: int, worktree: str, branch: str | None = None) -> None:

@@ -2,6 +2,7 @@
 
 from .app import SERVER_VERSION, create_app
 from .github import GhCli
+from .phases import DEFAULT_PHASE_RULES
 from .skills import DEFAULT_SKILL_TABLE
 
-__all__ = ["DEFAULT_SKILL_TABLE", "SERVER_VERSION", "GhCli", "create_app"]
+__all__ = ["DEFAULT_PHASE_RULES", "DEFAULT_SKILL_TABLE", "SERVER_VERSION", "GhCli", "create_app"]
