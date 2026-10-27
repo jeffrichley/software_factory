@@ -239,6 +239,7 @@ export function Gallery() {
               { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", staleReason: "Machine silent", kind: "ad hoc", unknownSkill: null, now: null, inStateMs: 14 * 60_000 },
               { id: "5", machine: "mac-studio", repo: "jeff/gateway", state: "Working", kind: "Wayfinder", unknownSkill: null, now: "reading docs/agents/a-very-long-path/that/ellipsizes/in/the/headline/column/of/the/session/table.md", inStateMs: 7 * 60_000 },
               { id: "6", machine: "mac-studio", repo: "jeff/gadgets", state: "Done", seen: true, kind: "ad hoc", unknownSkill: null, now: "tidied the README", inStateMs: 5 * 60_000 },
+              { id: "7", machine: "wsl-desk", repo: "jeff/gadgets", state: "Working", quietMs: 23 * 60_000, kind: "ad hoc", unknownSkill: null, now: "running uv run pytest", inStateMs: 41 * 60_000 },
             ]}
           />
           <SessionTable sessions={[]} />
@@ -285,6 +286,7 @@ export function Gallery() {
           {headerStates.map(([state, seen]) => (
             <SessionHeader key={`${state}-${seen}`} machine="mac-studio" repo="jeff/widgets" kind="research" state={state} seen={seen} staleReason={state === "Stale" ? "Machine silent" : undefined} inStateMs={7 * 60_000} now={state === "Stale" ? null : "fetching https://docs.github.com/rest"} title="research session" />
           ))}
+          <SessionHeader machine="wsl-desk" repo="jeff/gadgets" kind="ad hoc" state="Working" quietMs={23 * 60_000} inStateMs={41 * 60_000} now="running uv run pytest" title="Working · quiet (no events for 23m)" />
         </Section>
 
         <Section id="step" title="Step detail" note="StepDetail on its own: a Step's Phase track and time in Phase, test pulse, files, commits, PR with checks, review findings, the agent's checklist and the struggle badge; in a Spec Job, Blocked by and no PR of its own.">
@@ -380,6 +382,7 @@ export function Gallery() {
             <Specimen label="Done · unseen"><StateChip {...chip({ id: "c4", state: "Done", phase: "Merged" })} /></Specimen>
             <Specimen label="Done · seen"><StateChip {...chip({ id: "c5", state: "Done", seen: true, phase: "Merged" })} /></Specimen>
             <Specimen label="Stale"><StateChip {...chip({ id: "c6", state: "Stale", staleReason: "Machine silent", phase: "Refactor" })} /></Specimen>
+            <Specimen label="Working · quiet (dimmed)"><StateChip {...chip({ id: "c6q", quietMs: 23 * 60_000, phase: "Green" })} /></Specimen>
             <Specimen label="Phase unknown"><StateChip {...chip({ id: "c7", phase: null, label: "Worktree cleanup" })} /></Specimen>
             <Specimen label="Spec Step (group initials)"><StateChip {...chip({ id: "c8", group: "TF", groupName: "Spec Job · The Factory", blocked: true, phase: "Exploring" })} /></Specimen>
             <Specimen label="Planning (Wayfinder)"><StateChip {...chip({ id: "c9", phase: "planning", label: "Wayfinder", planIcon: "flag", groupName: "Wayfinder" })} /></Specimen>

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import urllib.request
 import webbrowser
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -454,6 +454,9 @@ def server(
     phase_rules: Annotated[
         Path | None, typer.Option(help="Phase rules (TOML). Default: server/phases.toml in the data dir if present, else the shipped one.")
     ] = None,
+    quiet_minutes: Annotated[
+        float, typer.Option(help="Minutes without events before a Working session shows as quiet.")
+    ] = 10,
 ) -> None:
     """Run the Factory server in the foreground."""
     import uvicorn
@@ -467,5 +470,5 @@ def server(
     phase_rules = server_table(phase_rules, "phases.toml", DEFAULT_PHASE_RULES)
     typer.echo(f"Factory server on http://{host}:{port} (state in {db}, skill table {skill_table}, Phase rules {phase_rules})")
     app_ = create_app(db_path=db, github=GhCli(), clock=lambda: datetime.now(UTC), skill_table=skill_table,
-                      phase_rules_path=phase_rules)
+                      phase_rules_path=phase_rules, quiet_after=timedelta(minutes=quiet_minutes))
     uvicorn.run(app_, host=host, port=port)

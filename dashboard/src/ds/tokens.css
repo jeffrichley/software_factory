@@ -119,6 +119,7 @@
   --fog-opacity: 0.14;
   --flash: #ffffff;
   --flash-opacity: 0.16;
+  --quiet-opacity: 0.55; /* a quiet Working session's flow-strip chips */
   --cell-bg: light-dark(rgb(0 0 0 / 0.03), rgb(255 255 255 / 0.025));
   --shadow: 0 12px 32px rgb(0 0 0 / 0.5);
 }

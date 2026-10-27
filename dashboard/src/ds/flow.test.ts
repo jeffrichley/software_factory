@@ -91,6 +91,12 @@ describe("flowRows", () => {
 
     expect(row.chips[0].staleReason).toBe("Machine silent");
   });
+
+  it("carries how long a session has been quiet onto its chips", () => {
+    const [row] = flowRows(["jeff/widgets"], [session("s1", { quietMs: 12 * 60_000 })], jobs, [step("11", "s1", "2")]);
+
+    expect(row.chips[0].quietMs).toBe(12 * 60_000);
+  });
 });
 
 describe("specInitials", () => {

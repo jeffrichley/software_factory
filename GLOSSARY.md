@@ -107,3 +107,7 @@ _Avoid_: Idle, complete, finished
 **Stale**:
 The state of a Tracked session that was Working when its Machine went silent, so what it is doing can't be trusted; it says why ("Machine silent") and returns to its real state once the Machine reports again. Needs you and Done are never Stale.
 _Avoid_: Dead, lost, offline
+
+**Quiet**:
+A qualifier, not a state, on a Working session that has had no events of its own (its subagents' included) for ten minutes (configurable on the server) while its Machine still reports: "Working · quiet 23m", counting up until its next event. It stays Working, since a long tool call is silent too; a Silent Machine's Stale wins. No sound.
+_Avoid_: Idle, hung, stuck

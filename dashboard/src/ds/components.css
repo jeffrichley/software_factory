@@ -101,6 +101,7 @@ a { color: inherit; }
 .fs-done-seen .fdot { background: var(--done); opacity: .6; }
 .fs-stale { background: var(--stale-bg); border-style: dashed; color: var(--text-2); }
 .fs-stale .fdot { background: transparent; border: 1.5px dashed var(--stale); }
+.fchip.quiet { opacity: var(--quiet-opacity); }
 .fchip.ph-red { box-shadow: inset 0 -2px 0 var(--fail); }
 .fchip.ph-green { box-shadow: inset 0 -2px 0 var(--pass); }
 .fchip.ph-unknown { border-style: dotted; }
