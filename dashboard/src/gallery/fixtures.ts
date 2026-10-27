@@ -1,4 +1,4 @@
-import { specInitials, type FlowRow, type TimelineEntry, type GraphNodeInput, type NeedsYouCardProps } from "../ds";
+import { specInitials, type FlowRow, type TimelineEntry, type GraphNodeInput, type NeedsYouCardProps, type StepData, type StepDetailData } from "../ds";
 
 /** Fake data for the gallery only. */
 
@@ -79,3 +79,45 @@ export const adhocActions: TimelineEntry[] = [
   { at: at(1), text: "reading a/very/long/path/that/wraps/in/the/timeline/rather/than/overflowing/its/panel/at/narrow/widths.rs" },
   { at: at(0), text: "reading src/render/chunk.ts" },
 ];
+
+/** A Ticket Job's Step, struggling in Red, with every part of its detail known. */
+export const ticketStep: { step: StepData; detail: StepDetailData } = {
+  step: { number: 31, title: "Ticket Job Step detail", phase: "Red", phaseSince: at(23) },
+  detail: {
+    phaseEvents: [
+      { at: at(40), from: null, to: "Exploring" },
+      { at: at(30), from: "Exploring", to: "Red" },
+      { at: at(26), from: "Red", to: "Green" },
+      { at: at(23), from: "Green", to: "Red" },
+    ],
+    tests: {
+      last: "fail", passed: 31, failed: 2,
+      runs: ["pass", "fail", "fail", "fail", "fail"].map((result, i) => ({ at: at(20 - i), result: result as "pass" | "fail", passed: 31, failed: result === "fail" ? 2 : 0 })),
+    },
+    files: [
+      { path: "server/factory_server/step_detail.py", edits: 7 },
+      { path: "tests/server/test_step_detail.py", edits: 3 },
+    ],
+    commits: [
+      { sha: "77d3a90", message: "Step detail: Phase track and test pulse", files: 4, added: 158, deleted: 12 },
+      { sha: "1a7c0f2", message: "Fix review findings", files: 2, added: 14, deleted: 9 },
+    ],
+    pr: {
+      number: 52, url: "https://github.com/jeff/widgets/pull/52", draft: false,
+      checks: [{ name: "lint", status: "pass" }, { name: "pytest (ubuntu)", status: "fail" }, { name: "pytest (macos)", status: "pending" }, { name: "docs", status: "skipped" }],
+    },
+    review: { standards: 2, spec: 1, source: "report" },
+    checklist: [
+      { text: "Failing test: phase track", status: "completed" },
+      { text: "Make the tests pulse", status: "in_progress" },
+      { text: "Commits with diffstat", status: "pending" },
+    ],
+    struggle: { failures: 4, churn: ["server/factory_server/step_detail.py"], silentForS: null },
+  },
+};
+
+/** A Step just started: nothing known yet, and no todo tools. */
+export const freshStep: { step: StepData; detail: StepDetailData } = {
+  step: { number: 33, title: null, phase: null, phaseSince: at(1) },
+  detail: { phaseEvents: [], tests: null, files: [], commits: [], pr: null, review: null, checklist: null, struggle: { failures: null, churn: [], silentForS: 720 } },
+};

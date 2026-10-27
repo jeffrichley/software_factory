@@ -40,6 +40,7 @@ import {
   type SessionRowData,
   type SessionState,
   type SoundName,
+  type StepDetailData,
   type StepPhase,
   type TimelineEntry,
 } from "../ds";
@@ -106,6 +107,19 @@ interface FactoryState {
     /** The Tickets that block this one. */
     blocked_by: number[];
   }[];
+  /** What each Step has done, by Step id. */
+  step_details: Record<string, {
+    phase_events: { at: string; from: string | null; to: string | null }[];
+    tests: StepDetailData["tests"];
+    files: StepDetailData["files"];
+    commits: StepDetailData["commits"];
+    pr: StepDetailData["pr"];
+    review: StepDetailData["review"];
+    checklist: StepDetailData["checklist"];
+    struggle: { failures: number | null; churn: string[]; silent_for_s: number | null } | null;
+  }>;
+  /** Code-review findings on a whole Job (a Spec Job's integration branch), by Job id. */
+  job_reviews: Record<string, NonNullable<StepDetailData["review"]>>;
   /** The latest sounds the server has played, one per transition; ids only grow. */
   sounds: { id: number; session_id: string; machine: string; sound: SoundName; at: string }[];
 }
@@ -246,6 +260,16 @@ export function Dashboard() {
     phaseSince: s.phase_since, blockedBy: s.blocked_by,
   }));
   const stepsOf = (job: JobData | null) => (job ? steps.filter((s) => s.jobId === job.id) : []);
+  const details: Record<string, StepDetailData> = Object.fromEntries(
+    Object.entries(state?.step_details ?? {}).map(([id, d]) => [id, {
+      phaseEvents: d.phase_events, tests: d.tests, files: d.files, commits: d.commits, pr: d.pr, review: d.review,
+      checklist: d.checklist, struggle: d.struggle && { failures: d.struggle.failures, churn: d.struggle.churn, silentForS: d.struggle.silent_for_s },
+    }]),
+  );
+  const ticketStepOf = (job: JobData | null) => {
+    const [step] = stepsOf(job);
+    return step ? { step, detail: details[step.id] ?? null } : null;
+  };
   const flow = flowRows(repos?.map((r) => r.repo) ?? [], view.shown, jobs, steps).map((r) => ({
     repo: r.repo,
     chips: r.chips.map(({ sessionId, ...c }) => ({ ...c, selected: sessionId === selectedId, onOpen: () => open(sessionId) })),
@@ -353,13 +377,15 @@ export function Dashboard() {
         {/* Kinds without their own detail view yet show the ad hoc view, titled by their kind. */}
         {selected ? (
           selected.kind === TICKET_JOB ? (
-            <TicketJobView {...selected} job={jobOf(selected.id)} onAbandon={() => { const j = jobOf(selected.id); if (j) abandon(j.id); }} />
+            <TicketJobView {...selected} job={jobOf(selected.id)} step={ticketStepOf(jobOf(selected.id))} nowMs={now} onAbandon={() => { const j = jobOf(selected.id); if (j) abandon(j.id); }} />
           ) : selected.kind === SPEC_JOB ? (
             <SpecJobView
               key={selected.id}
               {...selected}
               job={jobOf(selected.id)}
               steps={stepsOf(jobOf(selected.id))}
+              details={details}
+              review={state?.job_reviews[jobOf(selected.id)?.id ?? ""] ?? null}
               nowMs={now}
               onAbandon={() => { const j = jobOf(selected.id); if (j) abandon(j.id); }}
             />
