@@ -49,6 +49,8 @@ export interface FlowStepData {
 export interface FlowChipData {
   id: string;
   sessionId: string;
+  /** The Step a Step chip shows, opened with its session; none on a session's own chip. */
+  stepId?: string;
   label: string;
   name: string;
   state: SessionState;
@@ -94,7 +96,7 @@ export function flowRows(
       if (st.phase === PENDING) continue;
       const ticket = st.number === null ? "Ticket unknown" : `#${st.number}`;
       row.chips.push({
-        id: `step-${st.id}`, label: st.title ?? ticket, name: st.title ? `${ticket} ${st.title}` : ticket, phase: st.phase, ...look,
+        id: `step-${st.id}`, stepId: st.id, label: st.title ?? ticket, name: st.title ? `${ticket} ${st.title}` : ticket, phase: st.phase, ...look,
       });
       shown++;
     }

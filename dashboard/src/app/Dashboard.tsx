@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   AdHocView,
   DoneCard,
@@ -284,6 +284,8 @@ export function Dashboard() {
   const state = useFactoryState();
   const now = useNow(1000);
   const [selectedId, setSelectedId] = useState<string>();
+  // The Step opened with the session, from its flow-strip chip; none when opened from its row or card.
+  const [selectedStepId, setSelectedStepId] = useState<string>();
   const [showHiddenSessions, setShowHiddenSessions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [replayId, setReplayId] = useState<string>();
@@ -338,7 +340,10 @@ export function Dashboard() {
   };
   const flow = flowRows(repos?.map((r) => r.repo) ?? [], view.shown, jobs, steps).map((r) => ({
     repo: r.repo,
-    chips: r.chips.map(({ sessionId, ...c }) => ({ ...c, selected: sessionId === selectedId, onOpen: () => open(sessionId) })),
+    chips: r.chips.map(({ sessionId, stepId, ...c }) => ({
+      ...c, selected: sessionId === selectedId && (!stepId || !selectedStepId || stepId === selectedStepId),
+      onOpen: () => open(sessionId, stepId),
+    })),
   }));
   const plans: WayfinderData[] = (state?.wayfinder ?? []).map((w) => ({
     sessionId: w.session_id, map: w.map, ticket: w.ticket, questions: w.questions, created: w.created, closed: w.closed,
@@ -369,23 +374,56 @@ export function Dashboard() {
     const n = planOf(s.id)?.map;
     return maps.find((m) => m.repo === s.repo && m.number === n) ?? null;
   };
-  /** A Job's Work item, or a Wayfinder session's Map. */
-  const workItemOf = (sessionId: string) => {
-    const s = sessions.find((x) => x.id === sessionId);
-    const m = s && s.kind === WAYFINDER ? mapOf(s) : null;
-    if (m) return { name: `#${m.number} ${m.title}`, url: m.url };
-    if (s?.kind === TO_SPEC) {
-      const t = toSpecs.find((x) => x.sessionId === sessionId);
-      return itemRef(s.repo, t?.spec ?? t?.map);
-    }
-    if (s?.kind === TO_TICKETS) return itemRef(s.repo, toTickets.find((x) => x.sessionId === sessionId)?.spec);
-    return jobOf(sessionId)?.workItem ?? null;
+  const toSpecOf = (sessionId: string) => toSpecs.find((t) => t.sessionId === sessionId) ?? null;
+  const toTicketsOf = (sessionId: string) => toTickets.find((t) => t.sessionId === sessionId) ?? null;
+  /** What a session of each planning kind works on; any other session, its Job's Work item. */
+  const workItemByKind: Record<string, (s: Session) => { name: string; url: string } | null> = {
+    [WAYFINDER]: (s) => {
+      const m = mapOf(s);
+      return m && { name: `#${m.number} ${m.title}`, url: m.url };
+    },
+    [TO_SPEC]: (s) => itemRef(s.repo, toSpecOf(s.id)?.spec ?? toSpecOf(s.id)?.map),
+    [TO_TICKETS]: (s) => itemRef(s.repo, toTicketsOf(s.id)?.spec),
   };
+  const workItemOf = (s: Session) => workItemByKind[s.kind]?.(s) ?? jobOf(s.id)?.workItem ?? null;
+  const abandonJobOf = (s: Session) => () => {
+    const j = jobOf(s.id);
+    if (j) abandon(j.id);
+  };
+  /** Each session kind's detail view; kinds without their own view yet show the ad hoc view, titled by their kind. */
+  const detailByKind: Record<string, (s: Session) => ReactNode> = {
+    [TICKET_JOB]: (s) => (
+      <TicketJobView {...s} job={jobOf(s.id)} step={ticketStepOf(jobOf(s.id))} nowMs={now} onAbandon={abandonJobOf(s)} />
+    ),
+    [SPEC_JOB]: (s) => (
+      <SpecJobView
+        key={s.id}
+        {...s}
+        job={jobOf(s.id)}
+        steps={stepsOf(jobOf(s.id))}
+        details={details}
+        review={state?.job_reviews[jobOf(s.id)?.id ?? ""] ?? null}
+        nowMs={now}
+        onAbandon={abandonJobOf(s)}
+        stepId={selectedStepId}
+        onSelectStep={setSelectedStepId}
+      />
+    ),
+    [WAYFINDER]: (s) => <WayfinderView key={s.id} {...s} plan={planOf(s.id)} map={mapOf(s)} />,
+    [RESEARCH]: (s) => <ResearchView key={s.id} {...s} research={research.find((r) => r.sessionId === s.id) ?? null} />,
+    [TO_SPEC]: (s) => (
+      <ToSpecView key={s.id} {...s} toSpec={toSpecOf(s.id)} map={itemRef(s.repo, toSpecOf(s.id)?.map)} spec={itemRef(s.repo, toSpecOf(s.id)?.spec)} />
+    ),
+    [TO_TICKETS]: (s) => <ToTicketsView key={s.id} {...s} toTickets={toTicketsOf(s.id)} spec={itemRef(s.repo, toTicketsOf(s.id)?.spec)} />,
+  };
+  const detailOf = (s: Session) => detailByKind[s.kind]?.(s) ?? <AdHocView {...s} />;
 
   const seen = (id: string) => void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
-  /** Opening a session's detail, from its row or its inbox card, makes its Done seen. */
-  const open = (id: string) => {
+  /** Opening a session's detail, from its row, its inbox card or a flow-strip chip (with that chip's Step open),
+   * makes its Done seen. */
+  const open = (id: string, stepId?: string) => {
     setSelectedId(id);
+    setSelectedStepId(stepId);
     seen(id);
   };
 
@@ -424,7 +462,7 @@ export function Dashboard() {
                   waitingMs={s.inStateMs}
                   repo={s.repo}
                   kind={s.kind}
-                  workItem={workItemOf(s.id)}
+                  workItem={workItemOf(s)}
                   machine={s.machine}
                   session={s.ccSessionId.slice(0, SESSION_ID_CHARS)}
                   terminal={null}
@@ -443,7 +481,7 @@ export function Dashboard() {
                 <DoneCard
                   key={s.id}
                   kind={s.kind}
-                  workItem={workItemOf(s.id)}
+                  workItem={workItemOf(s)}
                   repo={s.repo}
                   machine={s.machine}
                   agoMs={s.inStateMs}
@@ -467,7 +505,7 @@ export function Dashboard() {
           <SessionTable
             sessions={showHiddenSessions ? [...view.shown, ...view.hiddenSessions] : view.shown}
             selectedId={selectedId}
-            onSelect={open}
+            onSelect={(id) => open(id)}
           />
         ) : null}
         {view.hiddenSessions.length ? (
@@ -484,44 +522,7 @@ export function Dashboard() {
             </button>
           </div>
         ) : null}
-        {/* Kinds without their own detail view yet show the ad hoc view, titled by their kind. */}
-        {selected ? (
-          selected.kind === TICKET_JOB ? (
-            <TicketJobView {...selected} job={jobOf(selected.id)} step={ticketStepOf(jobOf(selected.id))} nowMs={now} onAbandon={() => { const j = jobOf(selected.id); if (j) abandon(j.id); }} />
-          ) : selected.kind === SPEC_JOB ? (
-            <SpecJobView
-              key={selected.id}
-              {...selected}
-              job={jobOf(selected.id)}
-              steps={stepsOf(jobOf(selected.id))}
-              details={details}
-              review={state?.job_reviews[jobOf(selected.id)?.id ?? ""] ?? null}
-              nowMs={now}
-              onAbandon={() => { const j = jobOf(selected.id); if (j) abandon(j.id); }}
-            />
-          ) : selected.kind === WAYFINDER ? (
-            <WayfinderView key={selected.id} {...selected} plan={planOf(selected.id)} map={mapOf(selected)} />
-          ) : selected.kind === RESEARCH ? (
-            <ResearchView key={selected.id} {...selected} research={research.find((r) => r.sessionId === selected.id) ?? null} />
-          ) : selected.kind === TO_SPEC ? (
-            <ToSpecView
-              key={selected.id}
-              {...selected}
-              toSpec={toSpecs.find((t) => t.sessionId === selected.id) ?? null}
-              map={itemRef(selected.repo, toSpecs.find((t) => t.sessionId === selected.id)?.map)}
-              spec={itemRef(selected.repo, toSpecs.find((t) => t.sessionId === selected.id)?.spec)}
-            />
-          ) : selected.kind === TO_TICKETS ? (
-            <ToTicketsView
-              key={selected.id}
-              {...selected}
-              toTickets={toTickets.find((t) => t.sessionId === selected.id) ?? null}
-              spec={itemRef(selected.repo, toTickets.find((t) => t.sessionId === selected.id)?.spec)}
-            />
-          ) : (
-            <AdHocView {...selected} />
-          )
-        ) : null}
+        {selected ? detailOf(selected) : null}
       </Split>
     </>
   );

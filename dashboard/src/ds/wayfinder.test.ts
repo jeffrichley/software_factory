@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { classifyGraph } from "./graph";
 import { mapGraph, decisionName, type DecisionTicketData, type MapData } from "./wayfinder";
 
+const TITLES: Record<number, string> = { 2: "Pick the export format", 3: "Choose the columns", 4: "Prototype the download", 5: "Name the file" };
 const t = (number: number, over: Partial<DecisionTicketData> = {}): DecisionTicketData => ({
-  number, title: `Ticket ${number}`, url: `https://github.com/jeff/widgets/issues/${number}`, state: "open",
+  number, title: TITLES[number] ?? "Untitled decision", url: `https://github.com/jeff/widgets/issues/${number}`, state: "open",
   type: "grilling", mode: "HITL", assignees: [], gist: null, blockedBy: [], ...over,
 });
 const map = (tickets: DecisionTicketData[]): MapData => ({
@@ -19,9 +20,9 @@ describe("mapGraph", () => {
     ]), { ticket: null, needs: false });
 
     expect(nodes.map((n) => [n.id, n.resolved, n.claimed, n.muted, n.body])).toEqual([
-      ["2", true, false, true, { kind: "decision", name: "#2 Ticket 2", type: "research", mode: "AFK", status: { state: "closed", gist: "CSV first" }, needs: false }],
-      ["3", false, true, false, { kind: "decision", name: "#3 Ticket 3", type: "grilling", mode: "HITL", status: { state: "claimed", by: "jeffrichley" }, needs: false }],
-      ["4", false, false, false, { kind: "decision", name: "#4 Ticket 4", type: "prototype", mode: "HITL", status: { state: "open" }, needs: false }],
+      ["2", true, false, true, { kind: "decision", name: "#2 Pick the export format", type: "research", mode: "AFK", status: { state: "closed", gist: "CSV first" }, needs: false }],
+      ["3", false, true, false, { kind: "decision", name: "#3 Choose the columns", type: "grilling", mode: "HITL", status: { state: "claimed", by: "jeffrichley" }, needs: false }],
+      ["4", false, false, false, { kind: "decision", name: "#4 Prototype the download", type: "prototype", mode: "HITL", status: { state: "open" }, needs: false }],
     ]);
   });
 
@@ -49,7 +50,7 @@ describe("mapGraph", () => {
     const { edges, frontier } = classifyGraph(nodes);
     expect(edges.map((e) => [e.id, e.kind])).toEqual([["2->4", "resolved"], ["3->4", "waiting"], ["3->5", "blocking"]]);
     expect(frontier).toEqual(["3"]);
-    expect(nodes[3].body).toMatchObject({ blockedByName: "#3 Ticket 3" });
+    expect(nodes[3].body).toMatchObject({ blockedByName: "#3 Choose the columns" });
   });
 });
 

@@ -24,11 +24,19 @@ export interface SpecJobViewProps extends Omit<SessionHeaderProps, "title"> {
   actions: TimelineEntry[];
   /** Marks the Job abandoned; offered only while the Job is active. */
   onAbandon?: () => void;
+  /** The Step whose detail is open, when the dashboard chooses it (e.g. its flow-strip chip was clicked). */
+  stepId?: string;
+  /** A Step picked in the Ticket DAG; without it the view keeps the choice itself. */
+  onSelectStep?: (stepId: string) => void;
 }
 
 /** A Spec Job: its Spec, integration branch, stage and PR, its Ticket DAG, and the Step opened from the DAG. */
-export function SpecJobView({ job, steps, details = {}, review = null, nowMs, actions, onAbandon, ...header }: SpecJobViewProps) {
-  const [stepId, setStepId] = useState<string>();
+export function SpecJobView({
+  job, steps, details = {}, review = null, nowMs, actions, onAbandon, stepId: chosen, onSelectStep, ...header
+}: SpecJobViewProps) {
+  const [own, setOwn] = useState<string>();
+  const stepId = chosen ?? own;
+  const setStepId = onSelectStep ?? setOwn;
   const items = useMemo(() => specGraph(steps, nowMs), [steps, nowMs]);
   const step = steps.find((s) => s.id === stepId);
   const merged = steps.filter((s) => s.phase === "Merged").length;

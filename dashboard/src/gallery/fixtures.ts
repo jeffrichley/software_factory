@@ -1,4 +1,7 @@
-import { specInitials, type FlowRow, type JobData, type ReplayData, type TimelineEntry, type GraphNodeInput, type NeedsYouCardProps, type StepData, type StepDetailData } from "../ds";
+import {
+  specInitials, type FlowRow, type JobData, type MapData, type ReplayData, type ResearchData, type SpecStepData, type TimelineEntry,
+  type GraphNodeInput, type NeedsYouCardProps, type StepData, type StepDetailData, type ToSpecData, type ToTicketsData, type WayfinderData,
+} from "../ds";
 
 /** Fake data for the gallery only. */
 
@@ -154,5 +157,55 @@ export const REPLAY: ReplayData = {
     rev(600, "pr", "PR: https://github.com/jeff/widgets/pull/48"),
     rev(720, "phase", "#29 Merged", "Merged"),
     rev(720, "end", "Merged"),
+  ],
+};
+
+/** A Spec Job part-way through: Tickets merged, one in Red, one blocked, one not started. */
+export const SPEC_JOB: JobData = {
+  id: "30", sessionId: "9", machine: "wsl-desk", kind: "Spec Job", repo: "jeff/widgets", startedAt: at(90), duplicateOf: null,
+  number: 18, workItem: { name: "#18 The Factory", url: "https://github.com/jeff/widgets/issues/18" }, stage: "In progress",
+  branch: "worktree-spec-18-the-factory", worktree: "/home/jeff/widgets/.claude/worktrees/spec-18-the-factory",
+  pr: { number: 60, url: "https://github.com/jeff/widgets/pull/60", draft: true },
+};
+export const specSteps: SpecStepData[] = [
+  { id: "s24", number: 24, title: "Tracer bullet", phase: "Merged", phaseSince: at(70), blockedBy: [] },
+  { id: "s25", number: 25, title: "Install and status", phase: "Merged", phaseSince: at(50), blockedBy: [24] },
+  { id: "s28", number: 28, title: "Ticket Job: launch to Done", phase: "Red", phaseSince: at(9), blockedBy: [24] },
+  { id: "s30", number: 30, title: "Phases and the flow strip", phase: null, phaseSince: at(2), blockedBy: [25] },
+  { id: "s31", number: 31, title: "Step detail", phase: "Pending", phaseSince: at(90), blockedBy: [28, 30] },
+];
+export const specDetails: Record<string, StepDetailData> = { s28: { ...ticketStep.detail, pr: null, review: null } };
+
+/** A Map with Decision tickets closed, claimed by this session, and open. */
+export const MAP: MapData = {
+  repo: "jeff/widgets", number: 1, title: "Widget export", url: "https://github.com/jeff/widgets/issues/1",
+  destination: "A spec for exporting widgets to CSV and JSON.", fog: ["How exports are scheduled", "Retention of old exports"],
+  tickets: [
+    { number: 2, title: "Pick the export format", url: "#", state: "closed", type: "research", mode: "AFK", assignees: [], gist: "CSV first, JSON later", blockedBy: [] },
+    { number: 3, title: "Choose the columns", url: "#", state: "open", type: "grilling", mode: "HITL", assignees: ["jeffrichley"], gist: null, blockedBy: [2] },
+    { number: 4, title: "Prototype the download", url: "#", state: "open", type: "prototype", mode: "HITL", assignees: [], gist: null, blockedBy: [3] },
+  ],
+};
+export const wayfinderPlan: WayfinderData = {
+  sessionId: "10", map: 1, ticket: 3, questions: ["Column order", "Include archived widgets?"], created: [4], closed: [2],
+};
+
+export const research: ResearchData = {
+  sessionId: "11", question: "Can a hook see a test runner's exit code?",
+  searches: ["claude code hooks PostToolUseFailure exit code", "PostToolUse Bash tool_response fields"],
+  sources: ["https://docs.claude.com/en/docs/claude-code/hooks"],
+  findings: { path: "research/hook-exit-codes.md", url: "https://github.com/jeff/widgets/blob/main/research/hook-exit-codes.md" },
+};
+export const toSpec: ToSpecData = {
+  sessionId: "12", map: 1, spec: null,
+  outline: ["Problem Statement", "Solution", "User Stories", "Implementation Decisions", "Testing Decisions", "Out of Scope", "Further Notes"]
+    .map((section, i) => ({ section, written: i < 3 })),
+};
+export const toTickets: ToTicketsData = {
+  sessionId: "13", spec: 18,
+  tickets: [
+    { number: 24, title: "Tracer bullet", url: "#", state: "open", blockedBy: [] },
+    { number: 25, title: "Install and status", url: "#", state: "open", blockedBy: [24] },
+    { number: 26, title: null, url: "#", state: "open", blockedBy: [24] },
   ],
 };

@@ -25,7 +25,14 @@ import {
   PhaseName,
   PhaseTrack,
   ReplayView,
+  ResearchView,
   SectionHeading,
+  SoundToggle,
+  SpecJobView,
+  StepDetail,
+  ToSpecView,
+  ToTicketsView,
+  WayfinderView,
   SessionHeader,
   SessionTable,
   Split,
@@ -42,7 +49,10 @@ import {
   type SessionState,
   type StateChipProps,
 } from "../ds";
-import { adhocActions, flowRows, freshStep, mapItems, mapFog, needsCards, REPLAY, REPLAY_JOB, specItems, ticketItems, ticketStep } from "./fixtures";
+import {
+  adhocActions, flowRows, freshStep, MAP, mapItems, mapFog, needsCards, REPLAY, REPLAY_JOB, research, SPEC_JOB, specDetails, specItems,
+  specSteps, ticketItems, ticketStep, toSpec, toTickets, wayfinderPlan,
+} from "./fixtures";
 import "./gallery.css";
 
 type Theme = "system" | "light" | "dark";
@@ -133,6 +143,8 @@ export function Gallery() {
   const [mapSel, setMapSel] = useState<string | undefined>();
   const [selectedRow, setSelectedRow] = useState<string | undefined>("2");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+  const [selectedSpecStep, setSelectedSpecStep] = useState<string | undefined>("s28");
   const toggle = (m: string) => setHidden((h) => { const n = new Set(h); if (n.has(m)) n.delete(m); else n.add(m); return n; });
   const glideRows = flowRows.map((r, i) =>
     i === 0 ? { ...r, chips: r.chips.map((c) => (c.id === "glide" ? { ...c, phase: PHASES[glidePhase] as Phase } : c)) } : r,
@@ -143,7 +155,7 @@ export function Gallery() {
       <header className="g-top">
         <div className="g-brand"><span className="g-mark" aria-hidden="true" />Factory <small>design system</small></div>
         <nav className="g-nav" aria-label="Sections">
-          {["tokens", "states", "sessions", "detail", "machines", "history", "replay", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
+          {["tokens", "states", "sessions", "detail", "step", "spec", "planning", "machines", "history", "replay", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
         </nav>
         <div className="g-theme" role="group" aria-label="Theme">
           {(["system", "light", "dark"] as const).map((t) => (
@@ -275,6 +287,53 @@ export function Gallery() {
           ))}
         </Section>
 
+        <Section id="step" title="Step detail" note="StepDetail on its own: a Step's Phase track and time in Phase, test pulse, files, commits, PR with checks, review findings, the agent's checklist and the struggle badge; in a Spec Job, Blocked by and no PR of its own.">
+          <Eyebrow>Ticket Job Step · struggling, every part known</Eyebrow>
+          <StepDetail step={ticketStep.step} detail={ticketStep.detail} nowMs={Date.now()} />
+          <Eyebrow>Spec Job Step · blocked, Phase unknown, no detail yet</Eyebrow>
+          <StepDetail step={{ number: 31, title: "Step detail", phase: null, phaseSince: new Date().toISOString() }} detail={null} nowMs={Date.now()} inSpecJob blockers={["#28 Ticket Job: launch to Done"]} />
+          <Eyebrow>Step just started · silent, no checklist, Ticket title unknown</Eyebrow>
+          <StepDetail step={freshStep.step} detail={freshStep.detail} nowMs={Date.now()} />
+        </Section>
+
+        <Section id="spec" title="Spec Job detail" note="SpecJobView: Spec, stage, integration branch, merged count, PR and whole-branch review; the Ticket DAG; the Step opened from the DAG (or from its flow-strip chip). Click a node to open its Step.">
+          <Eyebrow>Spec Job · a Step open, draft PR</Eyebrow>
+          <SpecJobView
+            machine="wsl-desk" repo="jeff/widgets" kind="Spec Job" state="Working" inStateMs={9 * 60_000} now="running uv run pytest" actions={adhocActions.slice(-3)}
+            job={SPEC_JOB} steps={specSteps} details={specDetails} review={{ standards: 3, spec: 0, source: "summary" }} nowMs={Date.now()} onAbandon={() => {}}
+            stepId={selectedSpecStep} onSelectStep={setSelectedSpecStep}
+          />
+          <Eyebrow>Spec Job · no Step open</Eyebrow>
+          <SpecJobView
+            machine="wsl-desk" repo="jeff/widgets" kind="Spec Job" state="Needs you" inStateMs={60_000} now={null} actions={[]}
+            job={{ ...SPEC_JOB, duplicateOf: "29", pr: null }} steps={specSteps} nowMs={Date.now()}
+          />
+          <Eyebrow>Spec Job · no Tickets read yet, Spec unknown</Eyebrow>
+          <SpecJobView
+            machine="mac-studio" repo="jeff/widgets" kind="Spec Job" state="Working" inStateMs={20_000} now="started `implement-spec`" actions={[]}
+            job={{ ...SPEC_JOB, number: null, workItem: null, branch: null, worktree: null, pr: null }} steps={[]} nowMs={Date.now()}
+          />
+        </Section>
+
+        <Section id="planning" title="Planning views" note="Wayfinder, research, to-spec and to-tickets sessions: the plan taking shape, each in every state, and unknown until the server has seen it start.">
+          <Eyebrow>Wayfinder · grilling a HITL Decision ticket, waiting on the human</Eyebrow>
+          <WayfinderView machine="wsl-desk" repo="jeff/widgets" kind="Wayfinder" state="Needs you" inStateMs={4 * 60_000} now={null} actions={adhocActions.slice(-2)} plan={wayfinderPlan} map={MAP} />
+          <Eyebrow>Wayfinder · Map unknown</Eyebrow>
+          <WayfinderView machine="mac-studio" repo="jeff/widgets" kind="Wayfinder" state="Working" inStateMs={30_000} now="started `wayfinder`" actions={[]} plan={null} map={null} />
+          <Eyebrow>research · findings written</Eyebrow>
+          <ResearchView machine="mac-studio" repo="jeff/widgets" kind="research" state="Done" inStateMs={2 * 60_000} now={null} actions={adhocActions.slice(-2)} research={research} />
+          <Eyebrow>research · just started</Eyebrow>
+          <ResearchView machine="mac-studio" repo="jeff/widgets" kind="research" state="Working" inStateMs={10_000} now={null} actions={[]} research={null} />
+          <Eyebrow>to-spec · outline part-written</Eyebrow>
+          <ToSpecView machine="wsl-desk" repo="jeff/widgets" kind="to-spec" state="Working" inStateMs={3 * 60_000} now="writing the spec" actions={[]} toSpec={toSpec} map={{ name: "#1 Widget export", url: MAP.url }} spec={null} />
+          <Eyebrow>to-spec · just started</Eyebrow>
+          <ToSpecView machine="wsl-desk" repo="jeff/widgets" kind="to-spec" state="Working" inStateMs={10_000} now={null} actions={[]} toSpec={null} map={null} spec={null} />
+          <Eyebrow>to-tickets · Tickets created</Eyebrow>
+          <ToTicketsView machine="wsl-desk" repo="jeff/widgets" kind="to-tickets" state="Done" inStateMs={60_000} now={null} actions={[]} toTickets={toTickets} spec={{ name: "#18 The Factory", url: SPEC_JOB.workItem?.url ?? "#" }} />
+          <Eyebrow>to-tickets · just started</Eyebrow>
+          <ToTicketsView machine="wsl-desk" repo="jeff/widgets" kind="to-tickets" state="Working" inStateMs={10_000} now={null} actions={[]} toTickets={null} spec={null} />
+        </Section>
+
         <Section id="machines" title="Machine pills & header counts" note="Click a pill to toggle it; hidden Machines still count their Needs you.">
           <MachinePills>
             <MachinePill name="mac-studio" sessions={5} hidden={hidden.has("mac-studio")} onToggle={() => toggle("mac-studio")} />
@@ -287,6 +346,8 @@ export function Gallery() {
             <NeedsCount count={0} />
             <HiddenNeedsBadge count={1} onShow={() => setHidden(new Set())} />
             <DoneUnseenCount count={2} />
+            <SoundToggle on={soundOn} onToggle={() => setSoundOn(!soundOn)} />
+            <SoundToggle on={false} onToggle={() => {}} />
           </div>
         </Section>
 

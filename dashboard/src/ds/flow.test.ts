@@ -40,7 +40,7 @@ describe("flowRows", () => {
     );
 
     expect(row.chips).toEqual([{
-      id: "step-11", sessionId: "s1", label: "Add the widget API", name: "#5 Add the widget API",
+      id: "step-11", sessionId: "s1", stepId: "11", label: "Add the widget API", name: "#5 Add the widget API",
       state: "Needs you", seen: false, phase: "Red", machine: "mac", repo: "jeff/widgets",
     }]);
   });
@@ -110,6 +110,14 @@ describe("flowRows for a Spec Job", () => {
     const [row] = flowRows(["jeff/widgets"], [session], [{ id: "1", sessionId: "s1" }], [step("5", "Red"), step("6", "Pending")]);
 
     expect(row.chips.map((c) => [c.id, c.phase])).toEqual([["step-5", "Red"]]);
+  });
+
+  it("names the Step each Step chip opens; a session chip opens no Step", () => {
+    const [row] = flowRows(["jeff/widgets"], [session], [{ id: "1", sessionId: "s1" }], [step("5", "Red")]);
+    const [pending] = flowRows(["jeff/widgets"], [session], [{ id: "1", sessionId: "s1" }], [step("5", "Pending")]);
+
+    expect(row.chips.map((c) => [c.sessionId, c.stepId])).toEqual([["s1", "5"]]);
+    expect(pending.chips[0].stepId).toBeUndefined();
   });
 
   it("shows the session once, Phase unknown, while every Step is Pending", () => {
