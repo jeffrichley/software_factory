@@ -14,6 +14,14 @@ describe("selectedSessionOf", () => {
     expect(selectedSessionOf([adhoc, ticket, spec], [job("1", "p")], "a")?.id).toBe("a");
   });
 
+  it("keeps the opened session once it is hidden, so its Show button stays at hand", () => {
+    expect(selectedSessionOf([ticket, spec], [job("1", "p")], "a", [adhoc])?.id).toBe("a");
+  });
+
+  it("never defaults to a hidden session", () => {
+    expect(selectedSessionOf([ticket], [], undefined, [adhoc])?.id).toBe("t");
+  });
+
   it("defaults to a Spec Job with an active Job", () => {
     expect(selectedSessionOf([adhoc, ticket, spec], [job("1", "p")], undefined)?.id).toBe("p");
   });
@@ -22,9 +30,10 @@ describe("selectedSessionOf", () => {
     expect(selectedSessionOf([adhoc, ticket, wayfinder, spec], [job("1", "p", "Merged")], undefined)?.id).toBe("t");
   });
 
-  it("falls back to the most recently changed session when nothing needs you", () => {
-    const older = s("o", "research", "Working", 90_000);
-    expect(selectedSessionOf([older, adhoc], [], undefined)?.id).toBe("a");
+  it("falls back to the most recently started session (ids grow) when nothing needs you", () => {
+    const started1st = s("1", "research", "Working", 1_000);
+    const started2nd = s("2", "ad hoc", "Done", 90_000);
+    expect(selectedSessionOf([started1st, started2nd], [], undefined)?.id).toBe("2");
   });
 
   it("falls back to the default when the opened session is no longer on show (its Machine hidden, or it ended)", () => {

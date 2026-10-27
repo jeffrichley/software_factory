@@ -59,9 +59,10 @@ export interface FlowChipData {
   seen: boolean;
   phase: Phase | null | "planning";
   planIcon?: IconName;
-  /** A Spec Job's Step chip: the Spec's initials, and the Spec named in full for the tooltip. */
-  group?: string;
-  groupName?: string;
+  /** A Spec Job's Step chip: the Spec's initials (its number until its title is polled). */
+  specInitials?: string;
+  /** A Spec Job's Step chip: the Spec named in full, for the tooltip. */
+  specName?: string;
   machine: string;
   repo: string;
   staleReason?: string;
@@ -78,11 +79,11 @@ export interface FlowJob {
 }
 
 /** A Spec Job's Spec on its Step chips: initials (its number until its title is polled), and its name in full. */
-function specGroup(job: FlowJob): { group: string; groupName: string } | null {
+function specOf(job: FlowJob): { specInitials: string; specName: string } | null {
   if (job.kind !== SPEC_JOB) return null;
   const name = job.workItem?.name;
-  if (name) return { group: specInitials(name), groupName: `${SPEC_JOB} · ${name}` };
-  return job.number ? { group: `#${job.number}`, groupName: `${SPEC_JOB} · #${job.number}` } : null;
+  if (name) return { specInitials: specInitials(name), specName: `${SPEC_JOB} · ${name}` };
+  return job.number ? { specInitials: `#${job.number}`, specName: `${SPEC_JOB} · #${job.number}` } : null;
 }
 
 /** Each planning kind's icon on its chip; any other kind (ad hoc) shows a terminal. */
@@ -115,13 +116,13 @@ export function flowRows(
       continue;
     }
     const mine = steps.filter((st) => st.jobId === job.id);
-    const group = specGroup(job);
+    const spec = specOf(job);
     let shown = 0;
     for (const st of mine) {
       if (st.phase === PENDING) continue;
       const ticket = st.number === null ? "Ticket unknown" : `#${st.number}`;
       row.chips.push({
-        id: `step-${st.id}`, stepId: st.id, label: st.title ?? ticket, name: st.title ? `${ticket} ${st.title}` : ticket, phase: st.phase, ...group, ...look,
+        id: `step-${st.id}`, stepId: st.id, label: st.title ?? ticket, name: st.title ? `${ticket} ${st.title}` : ticket, phase: st.phase, ...spec, ...look,
       });
       shown++;
     }

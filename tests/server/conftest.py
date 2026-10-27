@@ -139,9 +139,13 @@ def tool(client, name: str, tool_input: dict, response: dict | None = None, erro
 REPO_PATH = "/home/jeff/widgets"
 
 
-def hook(client, name: str, session: str = "cc-1", cwd: str = REPO_PATH, **fields) -> dict:
+def hook(client, name: str, session: str = "cc-1", cwd: str = REPO_PATH, head: str | None = None, **fields) -> dict:
+    """One hook event; `head`: the commit the hook read in `cwd` after a `git merge` (it sends it with PostToolUse)."""
     event = {"hook_event_name": name, "session_id": session, "cwd": cwd, **fields}
-    reply = client.post("/api/events", json={"machine": "wsl", "repo": "jeff/widgets", "repo_path": REPO_PATH, "event": event})
+    envelope = {"machine": "wsl", "repo": "jeff/widgets", "repo_path": REPO_PATH, "event": event}
+    if head is not None and name == "PostToolUse":
+        envelope["head"] = head
+    reply = client.post("/api/events", json=envelope)
     assert reply.status_code == 200
     return reply.json()
 

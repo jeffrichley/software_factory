@@ -234,3 +234,19 @@ def test_a_slow_server_and_a_long_queue_cannot_make_the_hook_overrun(env, repo, 
     server.delay = 0
     run_hook(env, event(repo, "Stop"))
     assert server.events() == [*names, "UserPromptSubmit", "Stop"]
+
+
+def test_after_a_git_merge_the_hook_sends_the_commit_head_is_on_where_it_ran(env, repo, server):
+    """git prints no SHA for a real merge, so the hook reads it: HEAD in the event's cwd, just after the merge."""
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    merge = {"tool_name": "Bash", "tool_input": {"command": "git merge --no-ff worktree-agent-a1"}}
+
+    assert run_hook(env, event(repo, "PostToolUse", **merge, tool_response={"stdout": "Merge made by the 'ort' strategy.\n"})).returncode == 0
+    assert run_hook(env, event(repo, "PostToolUse", tool_name="Bash", tool_input={"command": "git status"})).returncode == 0
+    assert run_hook(env, event(repo, "PreToolUse", **merge)).returncode == 0
+
+    after_merge, other, before = (r["body"] for r in server.received[1:])
+    assert after_merge["head"] == git(repo, "rev-parse", "--short", "HEAD")
+    assert "head" not in other
+    assert "head" not in before

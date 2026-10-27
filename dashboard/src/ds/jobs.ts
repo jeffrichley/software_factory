@@ -1,11 +1,10 @@
+import type { IconName } from "./components/Icon";
+import { formatAgo, formatDuration } from "./format";
 import type { PrTrackEntry } from "./specJob";
 import type { CheckData } from "./stepDetail";
 
 /** The Job stages that end a Job and move it to History. */
 export const ENDED_STAGES = ["Merged", "Closed", "Abandoned"] as const;
-
-import type { IconName } from "./components/Icon";
-import { formatAgo, formatDuration } from "./format";
 
 /** A Job as the dashboard shows it. */
 export interface JobData {
@@ -32,9 +31,9 @@ export interface JobData {
   /** The Job's PR; a draft is shown as a link only. */
   pr: { number: number | null; url: string; draft: boolean } | null;
   /** The stages its PR was seen to reach (Draft, Ready, Merged, Closed), with when; empty until the poll sees it. */
-  prTrack?: PrTrackEntry[];
+  prTrack: PrTrackEntry[];
   /** The CI checks on its PR's head; null until read. */
-  prChecks?: CheckData[] | null;
+  prChecks: CheckData[] | null;
 }
 
 /** Merged, Closed or Abandoned: the Job is over and belongs in History. */

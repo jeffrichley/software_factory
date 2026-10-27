@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { formatDuration } from "../format";
 import { Icon, type IconName } from "./Icon";
 import { NowLine } from "./NowLine";
@@ -219,11 +219,17 @@ export interface HiddenSessionsProps {
   onOpen: (id: string) => void;
 }
 
-/** Under the inbox: how many sessions are hidden, listed on demand; nothing when none are. */
+/** Under the inbox: how many sessions are hidden, listed on demand (also from the header's `HiddenSessionsCount`);
+ * nothing when none are. */
 export function HiddenSessions({ sessions, open, onToggle, selectedId, onOpen }: HiddenSessionsProps) {
+  const box = useRef<HTMLDivElement>(null);
+  // Opened from the header's count, the list may sit below the fold: bring it into view.
+  useEffect(() => {
+    if (open) box.current?.scrollIntoView?.({ block: "nearest" });
+  }, [open]);
   if (!sessions.length) return null;
   return (
-    <div className="hidden-sessions">
+    <div className="hidden-sessions" ref={box}>
       <div>
         <button type="button" className={`btn${open ? " btn-on" : ""}`} aria-pressed={open} onClick={onToggle}>
           <Icon name="eye-off" />

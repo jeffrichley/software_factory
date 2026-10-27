@@ -4,6 +4,7 @@ import { isEnded, type JobData } from "../jobs";
 import { AD_HOC, type SessionState } from "../types";
 import { Icon } from "./Icon";
 import { NeedsDetail, WorkItemLink, type NeedsDetailProps } from "./InboxCards";
+import { RepoName } from "./RepoName";
 import { Tag } from "./Tag";
 import { StaleNote, Unknown } from "./Unknown";
 import { NowLine } from "./NowLine";
@@ -80,29 +81,24 @@ export interface SessionHeaderProps {
   title: ReactNode;
   /** Stale on a silent Machine: ms since the Machine was last seen. */
   machineSilentForMs?: number;
-  /** Needs you only: what the centre's Needs you block shows. */
+  /** Needs you only: what the centre's Needs you block shows; a view that puts the block elsewhere leaves it out. */
   needs?: Omit<NeedsDetailProps, "waitingMs" | "machine">;
   /** Buttons for the session itself (Hide / Show), beside the zoom crumbs. */
   controls?: ReactNode;
 }
 
-/** The centre's Needs you block for a waiting session; nothing otherwise. */
-export function SessionNeeds({ state, needs, inStateMs, machine }: Pick<SessionHeaderProps, "state" | "needs" | "inStateMs" | "machine">) {
-  return state === "Needs you" && needs ? <NeedsDetail {...needs} waitingMs={inStateMs} machine={machine} /> : null;
-}
-
 /**
  * The top of every session detail view: where it is, what it is, its state and headline; then, on a Stale session,
- * why it can't be trusted and, on a waiting one (unless `needsElsewhere`), the Needs you block.
+ * why it can't be trusted and, on a waiting one, the Needs you block (`NeedsDetail`).
  */
-export function SessionHeader({ needsElsewhere, ...p }: SessionHeaderProps & { needsElsewhere?: boolean }) {
+export function SessionHeader(p: SessionHeaderProps) {
   return (
     <>
       <div className="sd-top">
         <nav className="crumbs" aria-label="Zoom level">
           <span>Overview</span><span aria-hidden="true">›</span>
           <span className="mono">{p.machine}</span><span aria-hidden="true">›</span>
-          <span>{p.repo}</span><span aria-hidden="true">›</span>
+          <RepoName repo={p.repo} /><span aria-hidden="true">›</span>
           <span className="cur">{p.kind} session</span>
         </nav>
         {p.controls ? <div className="toolbar">{p.controls}</div> : null}
@@ -114,12 +110,12 @@ export function SessionHeader({ needsElsewhere, ...p }: SessionHeaderProps & { n
           <StateBadge state={p.state} seen={p.seen} staleReason={p.staleReason} quietMs={p.quietMs} />
           <span>in state {formatDuration(p.inStateMs)}</span>
           <span className="sd-where"><Icon name="terminal" /><span className="mono">{p.machine}</span></span>
-          <span>repo <span className="mono">{p.repo}</span></span>
+          <span>repo <RepoName className="mono" repo={p.repo} /></span>
         </div>
         <NowLine now={p.now} detail={p.nowDetail} />
       </header>
       {p.state === "Stale" ? <StaleNote reason={p.staleReason ?? "state can't be trusted"} machine={p.machineSilentForMs !== undefined ? p.machine : undefined} silentForMs={p.machineSilentForMs} /> : null}
-      {needsElsewhere ? null : <SessionNeeds {...p} />}
+      {p.needs ? <NeedsDetail {...p.needs} waitingMs={p.inStateMs} machine={p.machine} /> : null}
     </>
   );
 }

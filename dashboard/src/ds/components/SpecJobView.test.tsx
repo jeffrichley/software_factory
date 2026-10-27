@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SpecJobView, type SpecJobViewProps } from "./SpecJobView";
 import type { StepDetailData } from "../stepDetail";
@@ -17,7 +17,7 @@ const props: SpecJobViewProps = {
   job: {
     id: "1", sessionId: "s1", machine: "wsl", kind: "Spec Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null,
     duplicateOf: null, number: 4, workItem: { name: "#4 Widget export", url: "#" }, stage: "In progress", branch: null,
-    worktree: null, pr: null,
+    worktree: null, pr: null, prTrack: [], prChecks: null,
   },
   steps: [
     { id: "10", number: 5, title: "Export schema", phase: "Red", phaseSince: "2026-10-26T12:00:00Z", blockedBy: [] },
@@ -62,6 +62,13 @@ describe("SpecJobView", () => {
       expect(tile("Merged")).toContain("1 / 2 Tickets");
       expect(tile("Final code review")).toContain("Waiting");
       expect(tile("Spec PR")).toContain("#60 · Ready");
+    });
+
+    it("links the Spec PR tile to the PR", () => {
+      render(<SpecJobView {...merged} />);
+
+      const link = within(screen.getByRole("group", { name: "Spec PR" })).getByRole("link", { name: "#60 · Ready" });
+      expect(link.getAttribute("href")).toBe("https://github.com/jeff/widgets/pull/60");
     });
 
     it("keeps the worktree and the PR link reachable", () => {

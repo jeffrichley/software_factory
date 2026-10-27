@@ -8,6 +8,7 @@ import {
   FlowStrip,
   HIDDEN_MACHINES_KEY,
   HiddenNeedsBadge,
+  HiddenSessionsCount,
   HistoryCount,
   HistoryList,
   Icon,
@@ -340,8 +341,9 @@ export function Dashboard() {
     worktree: j.worktree, pr: j.pr, prTrack: j.pr_track, prChecks: j.pr_checks, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
   }));
   const history = historyOf(jobs, hiddenMachines);
-  // The centre's session: the one opened (a hidden one too, opened from the list), else the default like variant E.
-  const selected = view.hiddenSessions.find((s) => s.id === selectedId) ?? selectedSessionOf(view.shown, jobs, selectedId);
+  // The centre's session: the one opened (a hidden one too: opened from the list, or hidden while open), else the
+  // default like variant E.
+  const selected = selectedSessionOf(view.shown, jobs, selectedId, view.hiddenSessions);
   // The session marked as open in the flow strip and inbox; none while History or a Replay has the centre.
   const openId = showHistory ? undefined : selected?.id;
   // A replay of a Job on a Machine hidden since closes with it.
@@ -455,7 +457,15 @@ export function Dashboard() {
         reason: s.reason, session: s.ccSessionId.slice(0, SESSION_ID_CHARS), terminal: s.terminal, resumeCommand: resumeCommand(s.ccSessionId), onCopy: copy,
       } : undefined,
       controls: (
-        <button type="button" className="btn" onClick={() => setHidden(s.id, !s.hidden)}>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            // Hidden, it stays open (with its Show button) until the human opens something else.
+            setSelectedId(s.id);
+            setHidden(s.id, !s.hidden);
+          }}
+        >
           <Icon name={s.hidden ? "eye" : "eye-off"} />
           {s.hidden ? "Show this session" : "Hide this session"}
         </button>
@@ -497,6 +507,7 @@ export function Dashboard() {
           <HiddenNeedsBadge count={view.hiddenNeeds.length} onShow={() => showMachines(view.hiddenNeeds.map((s) => s.machine))} />
           <NeedsCount count={needs.length} />
           <DoneUnseenCount count={doneUnseen.length} />
+          <HiddenSessionsCount count={view.hiddenSessions.length} onOpen={() => setShowHiddenSessions(true)} />
         </div>
         <HistoryCount count={history.length} open={showHistory} onToggle={() => { setShowHistory(!showHistory); setReplayId(undefined); }} />
         <SoundToggle on={soundOn} onToggle={toggleSound} />

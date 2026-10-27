@@ -32,7 +32,8 @@ export function prTrack(pr: NonNullable<JobData["pr"]>, track: PrTrackEntry[]): 
   }));
 }
 
-/** A Spec Job's Step merged into its integration branch: when, and the commit it left the branch on (when git printed it). */
+/** A Spec Job's Step merged into its integration branch: when, and the commit it left the branch on (as git printed it on a
+ * fast-forward, else as the hook read HEAD just after the merge; null when neither says). */
 export interface MergeData {
   sha: string | null;
   at: string;

@@ -235,6 +235,25 @@ def test_a_merge_commit_whose_sha_git_did_not_print_is_kept_without_one(client, 
     assert merge_of_step(client, 5) == {"sha": None, "at": "2026-10-26T12:00:00Z"}
 
 
+def test_a_merge_commits_sha_is_the_head_the_hook_read_just_after_it(client, job):
+    """git prints no SHA for a real merge ("Merge made by the 'ort' strategy."): the hook reads HEAD where it ran."""
+    enter_integration_worktree(client)
+    launch(client, "m1", "Merge ticket #5 into the integration branch")
+    tool(client, "Bash", {"command": "git merge --no-ff worktree-agent-a1"}, **merger("m1"), head="b7e01d4",
+         response={"stdout": "Merge made by the 'ort' strategy.\n src/schema.py | 4 ++++\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) == {"sha": "b7e01d4", "at": "2026-10-26T12:00:00Z"}
+
+
+def test_a_head_read_elsewhere_than_where_the_merge_ran_is_not_its_sha(client, job):
+    enter_integration_worktree(client)
+    launch(client, "m1", "Merge ticket #5 into the integration branch")
+    tool(client, "Bash", {"command": f"git -C {INTEGRATION} merge --no-ff worktree-agent-a1"}, **agent("m1"), head="c0ffee1",
+         response={"stdout": "Merge made by the 'ort' strategy.\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) == {"sha": None, "at": "2026-10-26T12:00:00Z"}
+
+
 def test_an_implementer_merging_the_integration_tip_into_its_own_branch_records_no_merge(client, job):
     enter_integration_worktree(client)
     launch(client, "a1", "Implement ticket #5")

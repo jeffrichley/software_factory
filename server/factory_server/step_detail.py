@@ -25,9 +25,15 @@ SILENCE_S = 10 * 60
 KEEP_RUNS = 12
 
 
+def tool_response(event: dict) -> dict:
+    """What the tool returned, as PostToolUse reports it; empty when the event carries none (or not as an object)."""
+    response = event.get("tool_response")
+    return response if isinstance(response, dict) else {}
+
+
 def test_output(event: dict) -> str:
     """A test run's output: what it printed, or the error text a failed run comes with."""
-    response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+    response = tool_response(event)
     return f"{response.get('stdout', '')}\n{response.get('stderr', '')}\n{event.get('error', '')}"
 
 
@@ -53,7 +59,7 @@ def repo_relative(path: str, *trees: str | None) -> str:
 def lines_changed(event: dict) -> tuple[int, int] | None:
     """(added, deleted) lines of an Edit, MultiEdit or Write, from the structuredPatch Claude Code reports in
     tool_response (a new file's patch may be empty: then its content's lines); None when there is none to read."""
-    response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+    response = tool_response(event)
     patch = response.get("structuredPatch")
     if not isinstance(patch, list):
         return None
@@ -65,7 +71,7 @@ def lines_changed(event: dict) -> tuple[int, int] | None:
 
 def commit_made(event: dict) -> dict | None:
     """The commit a successful `git commit` made, from what it printed; None when it printed nothing to read."""
-    response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+    response = tool_response(event)
     out = str(response.get("stdout") or "")
     head = COMMIT_LINE.search(out)
     if not head:
@@ -77,7 +83,7 @@ def commit_made(event: dict) -> dict | None:
 
 def merge_sha(event: dict) -> str | None:
     """The commit a `git merge` left its branch on, when it printed it (a fast-forward does); else None."""
-    response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+    response = tool_response(event)
     m = FAST_FORWARD.search(str(response.get("stdout") or ""))
     return m[1] if m else None
 
@@ -110,7 +116,7 @@ def checklist_after(items: list[dict] | None, event: dict) -> list[dict] | None:
     name, tool = event.get("hook_event_name"), event.get("tool_name")
     items = list(items or [])
     tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
-    response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+    response = tool_response(event)
     if name == "PostToolUse" and tool == "TodoWrite":
         todos = response.get("newTodos", tool_input.get("todos"))
         if not isinstance(todos, list):

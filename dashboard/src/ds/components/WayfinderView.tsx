@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { decisionName, mapGraph, type DecisionTicketData, type MapData, type WayfinderData } from "../wayfinder";
 import { GraphView } from "./Graph";
-import { WorkItemLink } from "./InboxCards";
+import { NeedsDetail, WorkItemLink } from "./InboxCards";
 import { Eyebrow, Panel } from "./Panel";
-import { Detail, Facts, Hint, SessionHeader, SessionNeeds, Timeline, type SessionHeaderProps, type TimelineEntry } from "./SessionDetail";
+import { Detail, Facts, Hint, SessionHeader, Timeline, type SessionHeaderProps, type TimelineEntry } from "./SessionDetail";
 import { Tag } from "./Tag";
 import { Unknown } from "./Unknown";
 
@@ -29,7 +29,7 @@ function TicketRef({ number, map }: { number: number; map: MapData | null }) {
  * A Wayfinder session: its Map drawn as a graph with its fog, the Destination, the Decision ticket being worked and
  * its current question, and the decisions recorded and tickets created or closed this session.
  */
-export function WayfinderView({ plan, map, actions, ...header }: WayfinderViewProps) {
+export function WayfinderView({ plan, map, actions, needs: waiting, ...header }: WayfinderViewProps) {
   const [selected, setSelected] = useState<string>();
   const [fit, setFit] = useState(false);
   const needs = header.state === "Needs you";
@@ -40,7 +40,7 @@ export function WayfinderView({ plan, map, actions, ...header }: WayfinderViewPr
   const created = plan?.created ?? [];
   return (
     <Detail label="Wayfinder session detail">
-      <SessionHeader {...header} needsElsewhere title={map ? <WorkItemLink item={{ name: decisionName(map), url: map.url }} /> : plan?.map ? `#${plan.map}` : <Unknown />} />
+      <SessionHeader {...header} title={map ? <WorkItemLink item={{ name: decisionName(map), url: map.url }} /> : plan?.map ? `#${plan.map}` : <Unknown />} />
       <div className="mapgrid">
         <div className="map-main">
           <div className="map-h">
@@ -68,7 +68,7 @@ export function WayfinderView({ plan, map, actions, ...header }: WayfinderViewPr
           <Panel title="Destination">
             {map?.destination ? <p className="prose">{map.destination}</p> : <Unknown />}
           </Panel>
-          <SessionNeeds {...header} />
+          {waiting ? <NeedsDetail {...waiting} waitingMs={header.inStateMs} machine={header.machine} /> : null}
           <Panel title="Decision ticket">
             <Facts
               items={[

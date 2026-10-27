@@ -47,7 +47,7 @@ export function SpecJobView({
   const spec = job?.workItem ? <WorkItemLink item={job.workItem} /> : job?.number ? `#${job.number}` : <Unknown />;
   const branch = job?.branch ?? null;
   const merges = mergesOf(steps, Object.fromEntries(steps.map((s) => [s.id, details[s.id]?.merge])));
-  const track = job?.pr ? prTrack(job.pr, job.prTrack ?? []) : [];
+  const track = job?.pr ? prTrack(job.pr, job.prTrack) : [];
   const prStage = track.find((s) => s.status === "current")?.stage;
   const allMerged = steps.length > 0 && merged === steps.length;
   const findings = review ? review.standards + review.spec : null;
@@ -60,7 +60,9 @@ export function SpecJobView({
         <Stat label="Final code review">
           {findings !== null ? `${findings} ${findings === 1 ? "finding" : "findings"}` : allMerged ? "Not reviewed yet" : "Waiting"}
         </Stat>
-        <Stat label="Spec PR">{job?.pr ? `${job.pr.number ? `#${job.pr.number}` : "PR"} · ${prStage}` : "No PR yet"}</Stat>
+        <Stat label="Spec PR">
+          {job?.pr ? <a className="wi" href={job.pr.url}>{`${job.pr.number ? `#${job.pr.number}` : "PR"} · ${prStage}`}</a> : "No PR yet"}
+        </Stat>
       </StatTiles>
       <div className="job-line">
         {job ? <Tag>{job.stage}</Tag> : null}
@@ -96,7 +98,7 @@ export function SpecJobView({
                 {branch ? <span className="muted">{branch}</span> : null}
               </div>
               <PrTrack stages={track} />
-              <Checks checks={job.prChecks ?? null} />
+              <Checks checks={job.prChecks} />
             </>
           ) : <Hint>No PR yet: implement-spec opens a draft once Tickets are merged, and marks it ready for review at the end.</Hint>}
         </Panel>

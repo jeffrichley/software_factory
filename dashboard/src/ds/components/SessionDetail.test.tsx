@@ -15,6 +15,15 @@ describe("a session's detail header", () => {
     expect(screen.getByText(/Machine silent — mac-mini last seen 31m ago/)).toBeTruthy();
   });
 
+  it("names the repo by its bare name in the crumbs and meta, owner/name on hover", () => {
+    render(<AdHocView {...base} />);
+
+    const names = screen.getAllByText("worlds");
+    expect(names).toHaveLength(2);
+    names.forEach((n) => expect(n.getAttribute("title")).toBe("jeff/worlds"));
+    expect(screen.queryByText("jeff/worlds")).toBeNull();
+  });
+
   it("shows no stale note on a session that isn't Stale", () => {
     render(<AdHocView {...base} />);
 

@@ -137,14 +137,14 @@ describe("flowRows for a Spec Job", () => {
     const [row] = flowRows(["jeff/widgets"], [session], [spec], [step("5", "Red")]);
     const [untitled] = flowRows(["jeff/widgets"], [session], [{ ...spec, workItem: null }], [step("5", "Red")]);
 
-    expect(row.chips.map((c) => [c.group, c.groupName])).toEqual([["OE", "Spec Job · Order export pipeline"]]);
-    expect(untitled.chips.map((c) => [c.group, c.groupName])).toEqual([["#4", "Spec Job · #4"]]);
+    expect(row.chips.map((c) => [c.specInitials, c.specName])).toEqual([["OE", "Spec Job · Order export pipeline"]]);
+    expect(untitled.chips.map((c) => [c.specInitials, c.specName])).toEqual([["#4", "Spec Job · #4"]]);
   });
 
   it("gives a Ticket Job's chip no Spec initials", () => {
     const ticket = { id: "1", sessionId: "s1", kind: "Ticket Job", number: 5, workItem: { name: "Add the widget API", url: "u" } };
     const [row] = flowRows(["jeff/widgets"], [{ ...session, kind: "Ticket Job" }], [ticket], [step("5", "Red")]);
 
-    expect(row.chips[0].group).toBeUndefined();
+    expect(row.chips[0].specInitials).toBeUndefined();
   });
 });

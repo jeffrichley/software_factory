@@ -9,7 +9,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from .jobs import ENDED, SPEC_JOB, stage_of
+from .jobs import ENDED, SPEC_JOB, pr_stage, stage_of
 from .step_detail import CHURN_EDITS, KEEP_RUNS, struggle_of
 from .skills import AD_HOC
 from .wayfinder import mode_of
@@ -293,11 +293,6 @@ def reason_text(reason: dict | None) -> str:
         case {"kind": "no-pr"}:
             return "ended without a PR"
     return "unknown"
-
-
-def pr_stage(pr: dict) -> str:
-    """Where a PR is on its track: Draft, Ready (for review), Merged, or Closed without merging."""
-    return {"merged": "Merged", "closed": "Closed"}.get(pr["state"], "Draft" if pr["draft"] else "Ready")
 
 
 def iso(t: datetime) -> str:

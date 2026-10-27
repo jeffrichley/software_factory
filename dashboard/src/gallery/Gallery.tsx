@@ -6,6 +6,8 @@ import {
   DoneCard,
   DoneUnseenCount,
   HiddenNeedsBadge,
+  HiddenSessionsCount,
+  RepoName,
   HistoryCount,
   HistoryList,
   NeedsCount,
@@ -243,6 +245,7 @@ export function Gallery() {
             <div className="counts">
               <NeedsCount count={2} />
               <DoneUnseenCount count={1} />
+              <HiddenSessionsCount count={2} onOpen={() => {}} />
             </div>
             <HistoryCount count={3} open={false} onToggle={() => {}} />
             <SoundToggle on onToggle={() => {}} />
@@ -269,34 +272,34 @@ export function Gallery() {
           <TicketJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Done" inStateMs={2 * 60_000} now="ran `factory report pr`" actions={adhocActions.slice(-2)}
             onAbandon={() => {}}
-            job={{ id: "12", sessionId: "3", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "PR open", branch: "worktree-ticket-28-ticket-job-launch-to-done", worktree: "/home/jeff/widgets/.claude/worktrees/ticket-28-ticket-job-launch-to-done", pr: { number: 46, url: "https://github.com/jeff/widgets/pull/46", draft: false } }}
+            job={{ id: "12", sessionId: "3", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "PR open", branch: "worktree-ticket-28-ticket-job-launch-to-done", worktree: "/home/jeff/widgets/.claude/worktrees/ticket-28-ticket-job-launch-to-done", pr: { number: 46, url: "https://github.com/jeff/widgets/pull/46", draft: false }, prTrack: [], prChecks: null }}
           />
           <Eyebrow>Ticket Job · Step detail: struggling, PR with CI checks</Eyebrow>
           <TicketJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={23 * 60_000} now="running uv run pytest" actions={adhocActions.slice(-2)}
             step={ticketStep}
-            job={{ id: "16", sessionId: "7", machine: "wsl-desk", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 31, workItem: { name: "Ticket Job Step detail", url: "https://github.com/jeff/widgets/issues/31" }, stage: "PR open", branch: "ticket-31-step-detail", worktree: null, pr: { number: 52, url: "https://github.com/jeff/widgets/pull/52", draft: false } }}
+            job={{ id: "16", sessionId: "7", machine: "wsl-desk", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 31, workItem: { name: "Ticket Job Step detail", url: "https://github.com/jeff/widgets/issues/31" }, stage: "PR open", branch: "ticket-31-step-detail", worktree: null, pr: { number: 52, url: "https://github.com/jeff/widgets/pull/52", draft: false }, prTrack: [], prChecks: null }}
           />
           <Eyebrow>Ticket Job · Step just started, silent, no checklist</Eyebrow>
           <TicketJobView
             machine="mac-studio" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={12 * 60_000} now={null} actions={[]}
             step={freshStep}
-            job={{ id: "17", sessionId: "8", machine: "mac-studio", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 33, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null }}
+            job={{ id: "17", sessionId: "8", machine: "mac-studio", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 33, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null, prTrack: [], prChecks: null }}
           />
           <Eyebrow>Ticket Job · Work item unknown, ended without a PR</Eyebrow>
           <TicketJobView
             machine="mac-studio" repo="jeff/widgets" kind="Ticket Job" state="Needs you" inStateMs={60_000} now={null} actions={[]}
-            job={{ id: "13", sessionId: "4", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: null, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null }}
+            job={{ id: "13", sessionId: "4", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: null, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null, prTrack: [], prChecks: null }}
           />
           <Eyebrow>Ticket Job · draft PR</Eyebrow>
           <TicketJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={30_000} now="pushing" actions={[]}
-            job={{ id: "14", sessionId: "5", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 31, workItem: null, stage: "In progress", branch: null, worktree: "/home/jeff/widgets-31", pr: { number: 47, url: "https://github.com/jeff/widgets/pull/47", draft: true } }}
+            job={{ id: "14", sessionId: "5", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: null, number: 31, workItem: null, stage: "In progress", branch: null, worktree: "/home/jeff/widgets-31", pr: { number: 47, url: "https://github.com/jeff/widgets/pull/47", draft: true }, prTrack: [], prChecks: null }}
           />
           <Eyebrow>Ticket Job · duplicate, can be marked abandoned</Eyebrow>
           <TicketJobView
             machine="mac-studio" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={90_000} now="reading src/api.ts" actions={[]} onAbandon={() => {}}
-            job={{ id: "15", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: "12", number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "In progress", branch: null, worktree: null, pr: null }}
+            job={{ id: "15", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: "12", number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "In progress", branch: null, worktree: null, pr: null, prTrack: [], prChecks: null }}
           />
           <Eyebrow>Session header · every state</Eyebrow>
           {headerStates.map(([state, seen]) => (
@@ -330,7 +333,7 @@ export function Gallery() {
           <SpecJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Spec Job" state="Done" seen={false} inStateMs={60_000} now={null} actions={[]}
             job={{ ...SPEC_JOB, pr: { ...SPEC_JOB.pr!, draft: false }, stage: "PR open",
-              prTrack: [...SPEC_JOB.prTrack!, { stage: "Ready", at: new Date(Date.now() - 5 * 60_000).toISOString() }],
+              prTrack: [...SPEC_JOB.prTrack, { stage: "Ready", at: new Date(Date.now() - 5 * 60_000).toISOString() }],
               prChecks: SPEC_JOB.prChecks!.map((c) => ({ ...c, status: "pass" as const })) }}
             steps={specSteps.map((s) => ({ ...s, phase: "Merged" as const }))} details={specDetails}
             review={{ standards: 1, spec: 0, source: "report" }} nowMs={Date.now()}
@@ -362,7 +365,7 @@ export function Gallery() {
           <ToTicketsView machine="wsl-desk" repo="jeff/widgets" kind="to-tickets" state="Working" inStateMs={10_000} now={null} actions={[]} toTickets={null} spec={null} />
         </Section>
 
-        <Section id="machines" title="Machine pills & header counts" note="Click a pill to toggle it; hidden Machines still count their Needs you.">
+        <Section id="machines" title="Machine pills & header counts" note="Click a pill to toggle it; hidden Machines still count their Needs you. “N hidden” counts the sessions the human hid and opens their list under the inbox (nothing when none are).">
           <MachinePills>
             <MachinePill name="mac-studio" sessions={5} hidden={hidden.has("mac-studio")} onToggle={() => toggle("mac-studio")} />
             <MachinePill name="wsl-desk" sessions={3} hidden={hidden.has("wsl-desk")} onToggle={() => toggle("wsl-desk")} />
@@ -374,6 +377,8 @@ export function Gallery() {
             <NeedsCount count={0} />
             <HiddenNeedsBadge count={1} onShow={() => setHidden(new Set())} />
             <DoneUnseenCount count={2} />
+            <HiddenSessionsCount count={2} onOpen={() => setHiddenListOpen(true)} />
+            <HiddenSessionsCount count={0} onOpen={() => {}} />
             <SoundToggle on={soundOn} onToggle={() => setSoundOn(!soundOn)} />
             <SoundToggle on={false} onToggle={() => {}} />
           </div>
@@ -389,9 +394,9 @@ export function Gallery() {
             nowMs={GALLERY_NOW}
             onReplay={() => {}}
             jobs={[
-              { id: "21", sessionId: "7", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T15:30:00Z", endedAt: "2026-10-26T16:42:00Z", duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" }, stage: "Merged", branch: null, worktree: "/home/jeff/widgets/.claude/worktrees/ticket-29-job-edges", pr: { number: 48, url: "https://github.com/jeff/widgets/pull/48", draft: false } },
-              { id: "17", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/gadgets", startedAt: "2026-10-25T13:05:00Z", endedAt: "2026-10-25T13:59:00Z", duplicateOf: null, number: 7, workItem: null, stage: "Closed", branch: null, worktree: null, pr: { number: 9, url: "https://github.com/jeff/gadgets/pull/9", draft: false } },
-              { id: "15", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: "12", number: null, workItem: null, stage: "Abandoned", branch: null, worktree: null, pr: null },
+              { id: "21", sessionId: "7", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T15:30:00Z", endedAt: "2026-10-26T16:42:00Z", duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" }, stage: "Merged", branch: null, worktree: "/home/jeff/widgets/.claude/worktrees/ticket-29-job-edges", pr: { number: 48, url: "https://github.com/jeff/widgets/pull/48", draft: false }, prTrack: [], prChecks: null },
+              { id: "17", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/gadgets", startedAt: "2026-10-25T13:05:00Z", endedAt: "2026-10-25T13:59:00Z", duplicateOf: null, number: 7, workItem: null, stage: "Closed", branch: null, worktree: null, pr: { number: 9, url: "https://github.com/jeff/gadgets/pull/9", draft: false }, prTrack: [], prChecks: null },
+              { id: "15", sessionId: "6", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T12:00:00Z", endedAt: null, duplicateOf: "12", number: null, workItem: null, stage: "Abandoned", branch: null, worktree: null, pr: null, prTrack: [], prChecks: null },
             ]}
           />
           <HistoryList jobs={[]} nowMs={GALLERY_NOW} />
@@ -412,9 +417,9 @@ export function Gallery() {
             <Specimen label="Stale"><StateChip {...chip({ id: "c6", state: "Stale", staleReason: "Machine silent", phase: "Refactor" })} /></Specimen>
             <Specimen label="Working · quiet (dimmed)"><StateChip {...chip({ id: "c6q", quietMs: 23 * 60_000, phase: "Green" })} /></Specimen>
             <Specimen label="Phase unknown"><StateChip {...chip({ id: "c7", phase: null, label: "Worktree cleanup" })} /></Specimen>
-            <Specimen label="Spec Step (group initials)"><StateChip {...chip({ id: "c8", group: "TF", groupName: "Spec Job · The Factory", blocked: true, phase: "Exploring" })} /></Specimen>
-            <Specimen label="Planning (Wayfinder)"><StateChip {...chip({ id: "c9", phase: "planning", label: "Wayfinder", planIcon: "flag", groupName: "Wayfinder" })} /></Specimen>
-            <Specimen label="Research"><StateChip {...chip({ id: "c10", phase: "planning", label: "research", planIcon: "search", groupName: "research", state: "Done" })} /></Specimen>
+            <Specimen label="Spec Step (Spec initials)"><StateChip {...chip({ id: "c8", specInitials: "TF", specName: "Spec Job · The Factory", blocked: true, phase: "Exploring" })} /></Specimen>
+            <Specimen label="Planning (Wayfinder)"><StateChip {...chip({ id: "c9", phase: "planning", label: "Wayfinder", planIcon: "flag" })} /></Specimen>
+            <Specimen label="Research"><StateChip {...chip({ id: "c10", phase: "planning", label: "research", planIcon: "search", state: "Done" })} /></Specimen>
             <Specimen label="Selected"><StateChip {...chip({ id: "c11", selected: true })} /></Specimen>
             <Specimen label="Selected · Needs you"><StateChip {...chip({ id: "c12", selected: true, state: "Needs you" })} /></Specimen>
             <Specimen label="Long name in a narrow cell">
@@ -494,6 +499,11 @@ export function Gallery() {
           <NowLine now={'creating issue "Prove the dashboard\'s shaky fields can be sourced"'} detail={'gh issue create --title "Prove the dashboard\'s shaky fields can be sourced" --label wayfinder:research --body "## Q …"'} />
           <NowLine now="run the server tests" detail="cd /home/jeff/widgets && uv run pytest -q tests/server/test_sessions.py tests/server/test_skills.py --maxfail=1" />
           <NowLine now={null} />
+          <div className="g-row">
+            <Specimen label="RepoName (hover: owner/name)"><RepoName repo="jeffrichley/software_factory" /></Specimen>
+            <Specimen label="RepoName, mono"><RepoName className="mono" repo="jeff/widgets" /></Specimen>
+            <Specimen label="RepoName, no owner"><RepoName repo="gateway" /></Specimen>
+          </div>
         </Section>
 
         <Section id="spec-progress" title="Spec Job progress" note="Stat tiles; the PR track Draft → Ready → Merged in every state (times as the poll saw each stage; Closed in Merged's place); the merges list with SHAs (unknown when git didn't print one).">
@@ -505,10 +515,10 @@ export function Gallery() {
           </StatTiles>
           <div className="g-stack">
             <PrTrack stages={prTrack({ ...SPEC_JOB.pr!, draft: true }, [])} />
-            <PrTrack stages={prTrack(SPEC_JOB.pr!, SPEC_JOB.prTrack!)} />
-            <PrTrack stages={prTrack(SPEC_JOB.pr!, [...SPEC_JOB.prTrack!, { stage: "Ready", at: new Date().toISOString() }])} />
-            <PrTrack stages={prTrack(SPEC_JOB.pr!, [...SPEC_JOB.prTrack!, { stage: "Ready", at: new Date().toISOString() }, { stage: "Merged", at: new Date().toISOString() }])} />
-            <PrTrack stages={prTrack(SPEC_JOB.pr!, [...SPEC_JOB.prTrack!, { stage: "Closed", at: new Date().toISOString() }])} />
+            <PrTrack stages={prTrack(SPEC_JOB.pr!, SPEC_JOB.prTrack)} />
+            <PrTrack stages={prTrack(SPEC_JOB.pr!, [...SPEC_JOB.prTrack, { stage: "Ready", at: new Date().toISOString() }])} />
+            <PrTrack stages={prTrack(SPEC_JOB.pr!, [...SPEC_JOB.prTrack, { stage: "Ready", at: new Date().toISOString() }, { stage: "Merged", at: new Date().toISOString() }])} />
+            <PrTrack stages={prTrack(SPEC_JOB.pr!, [...SPEC_JOB.prTrack, { stage: "Closed", at: new Date().toISOString() }])} />
           </div>
           <Merges branch={SPEC_JOB.branch} merges={mergesOf(specSteps, { s24: specDetails.s24.merge, s25: specDetails.s25.merge })} total={specSteps.length} />
           <Merges branch={null} merges={[]} total={0} />
