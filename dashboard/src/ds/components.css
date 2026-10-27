@@ -79,6 +79,8 @@ a { color: inherit; }
 .count-hidden { border-color: var(--needs); color: var(--needs-fg); cursor: pointer; }
 .count-sound { margin-left: auto; cursor: pointer; color: var(--text); }
 .count-sound.off { color: var(--text-2); border-style: dashed; }
+.count-history { cursor: pointer; }
+.count-history.on { border-color: var(--text); background: var(--surface-3); }
 
 /* ---------- State chip (flow strip) ---------- */
 .fchip { position: relative; overflow: hidden; display: flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; max-width: 100%; height: var(--chip-h); padding: 0 8px;
@@ -302,6 +304,12 @@ a { color: inherit; }
 .facts div { display: grid; gap: 2px; min-width: 0; }
 .facts dt { font: 600 var(--fs-2xs)/1.2 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
 .facts dd { margin: 0; font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
+
+/* ---------- History (ended Jobs) ---------- */
+.hist { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.hist li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); font-size: var(--fs-sm); min-width: 0; }
+.hist-item { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.hist-meta { color: var(--text-2); }
 
 /* ---------- Timeline (last actions) ---------- */
 .tl { list-style: none; margin: 0; padding: 0; display: grid; }
