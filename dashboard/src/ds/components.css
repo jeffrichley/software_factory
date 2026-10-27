@@ -425,3 +425,8 @@ a { color: inherit; }
 .checks li .mono { color: var(--text); }
 .events li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: var(--s3); color: var(--text-2); }
 .events time { font-family: var(--font-mono); color: var(--text-3); }
+
+/* research, to-spec and to-tickets detail (the Spec outline uses .checklist) */
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: var(--s5); }
+.plan-list { padding-left: 0; list-style: none; }
+.plan-list li { display: flex; gap: var(--s2); align-items: baseline; min-width: 0; }

@@ -18,6 +18,7 @@ from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub, read_blocked_by, read_checks, read_issues
 from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, spec_job_start, spec_step_start, ticket_job_start,
                    tickets_named, worktree_of)
+from . import planning
 from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
@@ -144,7 +145,28 @@ def create_app(
             "sounds": store.sounds(),
             "wayfinder": store.wayfinder_sessions(WAYFINDER),
             "maps": store.maps(),
+            "research": [shown_plan(p) for p in store.plan_sessions(planning.RESEARCH)],
+            "to_spec": [shown_plan(p) for p in store.plan_sessions(planning.TO_SPEC)],
+            "to_tickets": [shown_plan(p) for p in store.plan_sessions(planning.TO_TICKETS)],
         }
+
+    def shown_plan(p: dict) -> dict:
+        """A planning session's facts for the dashboard: created Tickets as GitHub last had them, when polled."""
+        p.pop("files", None)
+        repo = p.pop("repo")
+        if "written" in p:
+            written = p.pop("written")
+            p["outline"] = [{"section": s, "written": s in written} for s in planning.SPEC_OUTLINE]
+        if "tickets" in p:
+            p["tickets"] = [ticket_as_polled(repo, t) for t in p["tickets"]]
+        return p
+
+    def ticket_as_polled(repo: str, t: dict) -> dict:
+        item = store.issue(repo, t["number"])
+        if item is None:
+            return {**t, "url": f"https://github.com/{repo}/issues/{t['number']}", "state": "open"}
+        return {**t, "title": item["title"], "url": item["url"], "state": item["state"],
+                "blocked_by": sorted(set(t["blocked_by"]) | set(item["blocked_by"]))}
 
     def mismatches() -> list[dict]:
         """Skill starts in live sessions against the wrong kind of Work item."""
@@ -295,6 +317,7 @@ def create_app(
                     map_subagent(job_id, event, envelope.repo, now)
                 step_id = step_of(job_id, event)
                 plan(session_id, event, envelope.repo)
+                take_notes(session_id, event, envelope)
                 if spec_job and name == "SubagentStart" and step_id is None:
                     inject = spec_step_start(str(job_id))
                 if job_id is not None:
@@ -366,6 +389,74 @@ def create_app(
                     store.set_wayfinder(session_id, questions=found)
             case "UserPromptSubmit":
                 store.set_wayfinder(session_id, questions=[])  # the human answered the round
+
+    def take_notes(session_id: int, event: dict, envelope: Envelope) -> None:
+        """What a research, to-spec or to-tickets session has done so far (rules in planning.py)."""
+        repo = envelope.repo
+        if (invocation := skill_invocation(event)) and "agent_id" not in event:
+            name = bare_name(invocation[0])
+            role = skills.role(name, store.session(session_id)["mattpocock_skills_version"]) if name else None
+            if role and role.kind in planning.KINDS:
+                start_plan(session_id, role.kind, (invocation[1] or "").strip(), repo)
+            return
+        kind = store.session(session_id)["kind"]
+        if kind not in planning.KINDS:
+            return
+        facts = store.plan(session_id, kind) or planning.empty(kind)
+        tool_name = event.get("tool_name")
+        tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+        response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+        command = str(tool_input.get("command") or "") if tool_name == "Bash" else ""
+        match event.get("hook_event_name"), kind:
+            case "PreToolUse", planning.RESEARCH if tool_name == "WebSearch" and tool_input.get("query"):
+                facts["searches"].append(str(tool_input["query"]))
+            case "PreToolUse", planning.RESEARCH if tool_name == "WebFetch" and tool_input.get("url"):
+                if tool_input["url"] not in facts["sources"]:
+                    facts["sources"].append(str(tool_input["url"]))
+            case "PostToolUse", planning.RESEARCH if tool_name in planning.EDIT_TOOLS:
+                path, _ = planning.written_text(event)
+                if path and path.lower().endswith(".md"):
+                    facts["findings"] = planning.findings(path, repo, envelope.repo_path)
+            case "PostToolUse", _ if tool_name in planning.EDIT_TOOLS:
+                path, text = planning.written_text(event)
+                if kind == planning.TO_SPEC:
+                    facts["written"] = written(facts["written"], planning.outline_sections(text))
+                if path and tool_name == "Write":
+                    files = {k: v for k, v in facts.get("files", {}).items() if k != path}
+                    facts["files"] = dict(list({**files, path: text}.items())[-planning.KEEP_FILES:])
+            case "PostToolUse", planning.TO_SPEC if command:
+                for number in planning.viewed(command, repo):
+                    if facts["map"] is None and (item := store.issue(repo, number)) and item["kind"] == "Map":
+                        facts["map"] = number
+                if created := planning.created_issue(command, facts.get("files", {})):
+                    facts["written"] = written(facts["written"], planning.outline_sections(created[1]))
+                    facts["spec"] = next(iter(created_numbers(response.get("stdout"), repo)), facts["spec"])
+            case "PostToolUse", planning.TO_TICKETS if command:
+                if created := planning.created_issue(command, facts.get("files", {})):
+                    title, body = created
+                    known = {t["number"] for t in facts["tickets"]}
+                    facts["tickets"] += [{"number": n, "title": title, "blocked_by": planning.blocked_by(body, repo)}
+                                         for n in created_numbers(response.get("stdout"), repo) if n not in known]
+            case _:
+                return
+        store.set_plan(session_id, kind, facts)
+
+    def written(have: list[str], more: list[str]) -> list[str]:
+        """The Spec template's sections written so far, in the template's order."""
+        return [s for s in planning.SPEC_OUTLINE if s in have or s in more]
+
+    def start_plan(session_id: int, kind: str, args: str, repo: str) -> None:
+        """A research question, a to-spec's Map, a to-tickets' Spec: from the skill's args, when they name one."""
+        facts = store.plan(session_id, kind) or planning.empty(kind)
+        number = work_item_named(args, repo)
+        if kind == planning.RESEARCH and args:
+            facts["question"] = args
+        elif kind == planning.TO_SPEC:
+            # to-spec often runs in the Wayfinder session that charted the Map.
+            facts["map"] = number or facts["map"] or store.wayfinder(session_id)["map"]
+        elif kind == planning.TO_TICKETS:
+            facts["spec"] = number or facts["spec"]
+        store.set_plan(session_id, kind, facts)
 
     def hitl_wait(session_id: int, event: dict, repo: str) -> dict | None:
         """On a Wayfinder session's Stop: why it now waits on the human, if it does. It does on a HITL Decision
