@@ -13,12 +13,19 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import states
+from . import sounds, states
 from .activity import running_skill, started_skill, tool_headline
-from .github import GitHub, read_issues
+from .github import GitHub, read_blocked_by, read_checks, read_issues
+from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, is_agent_worktree, merge_of, spec_job_start,
+                   spec_step_start, ticket_job_start, tickets_named, worktree_of)
+from . import planning
+from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
+from .step_detail import (CODE_REVIEW, REVIEW_AXES, checklist_after, commit_made, repo_relative, review_counts, review_report_ask,
+                          test_counts, test_output)
 from .store import Store
+from .wayfinder import (WAITS_ON_HUMAN, WAYFINDER, claims, closes, created_numbers, creates, mode_of, questions)
 from .work_items import pull_requests, work_items
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -26,8 +33,26 @@ SERVER_VERSION: str = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
 DASHBOARD_DIR = PLUGIN_ROOT / "dashboard" / "dist"
 POLL_EVERY = timedelta(minutes=1)
 POLL_CHECK_SECONDS = 5
+# Sent by 'factory hide' / 'factory show' for the session that runs them: is it hidden now.
+HIDE_EVENTS = dict(session_hidden=True, session_shown=False)
+
+# Phase signals that are events of their own on a Job's replay: kind and label.
+REPLAY_SIGNALS = {
+    "test_pass": ("test_pass", "Tests pass"),
+    "test_fail": ("test_fail", "Tests fail"),
+    "commit": ("commit", "Commit"),
+    "skill:code-review": ("review", "Review"),
+}
 
 log = logging.getLogger(__name__)
+
+
+def signal_subject(event: dict) -> str:
+    """What a replay event is about: the command run, or the skill started."""
+    if invocation := skill_invocation(event):
+        return bare_name(invocation[0]) or invocation[0]
+    tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+    return str(tool_input.get("command") or "")
 
 
 class Envelope(BaseModel):
@@ -87,26 +112,61 @@ def create_app(
     github: GitHub,
     clock: Callable[[], datetime],
     skill_table: Path = DEFAULT_SKILL_TABLE,
-    refresh_s: float = 5,
+    phase_rules_path: Path = DEFAULT_PHASE_RULES,
+    # Often enough that a sound whose grace runs out reaches the dashboard about on time.
+    refresh_s: float = 1,
 ) -> FastAPI:
     store = Store(db_path)
     skills = SkillTable(skill_table)
+    phase_rules = PhaseRules(phase_rules_path)
     hub = Broadcaster()
     polled_at: dict[str, datetime] = {}
 
     def state() -> dict:
         now = clock()
+        store.release_sounds(now)
         machines = [{**m, "silent": is_silent(m["last_seen"], now)} for m in store.machines()]
         silent_since = {m["machine"]: m["last_seen"] for m in machines if m["silent"]}
+        sessions = [as_shown(s, silent_since.get(s["machine"])) for s in store.live_sessions()]
+        # A silent Step's Machine is often silent too: Stale is still Working, as far as it is known.
+        working = {s["id"] for s in sessions if s["state"] in ("Working", "Stale")}
         return {
             "server_version": SERVER_VERSION,
             "machines": machines,
             "repos": store.tracked_repos(),
-            "sessions": [as_shown(s, silent_since.get(s["machine"])) for s in store.live_sessions()],
+            "sessions": sessions,
             "work_items": store.work_items(),
             "pull_requests": store.pull_requests(),
+            "jobs": store.jobs(),
+            "steps": store.steps(),
+            "step_details": store.step_details(now, working),
+            "job_reviews": store.job_reviews(),
             "mismatches": mismatches(),
+            "sounds": store.sounds(),
+            "wayfinder": store.wayfinder_sessions(WAYFINDER),
+            "maps": store.maps(),
+            "research": [shown_plan(p) for p in store.plan_sessions(planning.RESEARCH)],
+            "to_spec": [shown_plan(p) for p in store.plan_sessions(planning.TO_SPEC)],
+            "to_tickets": [shown_plan(p) for p in store.plan_sessions(planning.TO_TICKETS)],
         }
+
+    def shown_plan(p: dict) -> dict:
+        """A planning session's facts for the dashboard: created Tickets as GitHub last had them, when polled."""
+        p.pop("files", None)
+        repo = p.pop("repo")
+        if "written" in p:
+            written = p.pop("written")
+            p["outline"] = [{"section": s, "written": s in written} for s in planning.SPEC_OUTLINE]
+        if "tickets" in p:
+            p["tickets"] = [ticket_as_polled(repo, t) for t in p["tickets"]]
+        return p
+
+    def ticket_as_polled(repo: str, t: dict) -> dict:
+        item = store.issue(repo, t["number"])
+        if item is None:
+            return {**t, "url": f"https://github.com/{repo}/issues/{t['number']}", "state": "open"}
+        return {**t, "title": item["title"], "url": item["url"], "state": item["state"],
+                "blocked_by": sorted(set(t["blocked_by"]) | set(item["blocked_by"]))}
 
     def mismatches() -> list[dict]:
         """Skill starts in live sessions against the wrong kind of Work item."""
@@ -135,11 +195,58 @@ def create_app(
         """Read every due repo from GitHub (blocking). A repo whose read or save fails keeps its last poll."""
         for repo in due():
             try:
-                issues = read_issues(github, repo)
-                store.save_poll(repo, work_items(repo, issues), pull_requests(issues))
+                read_repo(repo)
+                for job_id in store.repo_jobs(repo):
+                    store.chronicle_job(job_id, clock())
+                prs_arrived(repo)
+                prs_merged(repo)
                 hub.publish(state())
             except Exception:
                 log.exception("GitHub poll of %s failed", repo)
+                continue
+            try:
+                read_ci_checks(repo)
+                hub.publish(state())
+            except Exception:
+                log.exception("GitHub read of %s's CI checks failed", repo)
+
+    def read_ci_checks(repo: str) -> None:
+        """The CI checks on each open PR of the repo's Jobs still going (blocking), saved."""
+        for number in store.prs_to_check(repo):
+            store.save_checks(repo, number, read_checks(github, repo, number))
+
+    def read_repo(repo: str) -> None:
+        """The repo's issues, PRs and blocking from GitHub (blocking), saved; each Spec Job takes up new Tickets."""
+        issues = read_issues(github, repo)
+        blocked_by = read_blocked_by(github, repo, issues)
+        store.save_poll(repo, work_items(repo, issues, blocked_by), pull_requests(issues))
+        for job_id in store.jobs_of_kind(repo, SPEC_JOB):
+            add_spec_steps(job_id, repo)
+
+    def add_spec_steps(job_id: int, repo: str) -> None:
+        """A Step, Pending, for each of the Spec's Tickets the Job has none for yet."""
+        spec = store.job_number(job_id)
+        for number in store.spec_tickets(repo, spec) if spec else []:
+            if store.job_step_numbered(job_id, number) is None:
+                store.add_step(job_id, number, clock(), PENDING)
+
+    def prs_arrived(repo: str) -> None:
+        """A poll may bring the non-draft PR of a Job that already stopped without one, or end that Job."""
+        for s in store.live_sessions():
+            job_id = store.current_job(int(s["id"]))
+            if s["repo"] == repo and job_id is not None and store.job_stage(job_id) != IN_PROGRESS:
+                pr_arrived(int(s["id"]), clock())
+
+    def prs_merged(repo: str) -> None:
+        """A Job's PR merged is a signal to each of its Steps."""
+        for job_id in store.merged_jobs(repo):
+            session_id = store.job_session(job_id)
+            for step_id in store.job_steps(job_id):
+                infer_phase(step_id, job_id, "pr_merged", session_id, clock())
+
+    def pr_arrived(session_id: int, now: datetime) -> None:
+        if states.pr_no_longer_awaited(store, session_id, now):
+            sounds.schedule(store, session_id, {}, now)  # a stopped Job turning Done sounds like any Done
 
     async def poll_forever() -> None:
         while True:
@@ -182,36 +289,446 @@ def create_app(
         # The Machine reports now, but a queued event counts from when it happened (never later than now).
         store.machine_seen(envelope.machine, clock())
         now = min(envelope.queued_at, clock()) if envelope.queued_at else clock()
-        session_id = None
+        session_id = job_id = step_id = inject = None
         match event.get("hook_event_name"):
             case "repo_installed":
                 store.track_repo(envelope.repo, envelope.machine, envelope.repo_path, now)
             case "repo_uninstalled":
                 store.untrack_repo(envelope.repo, envelope.machine, now)
                 polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
+            case "report_pr" | "job_issue" | "report_phase" | "report_step" | "report_review" | "escalate" as name:
+                session_id, job_id, step_id = self_report(name, event, now)
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
+                if name in HIDE_EVENTS:
+                    store.set_hidden(session_id, HIDE_EVENTS[name])
                 if invocation := skill_invocation(event):
                     skill, number = bare_name(invocation[0]), work_item_named(invocation[1], envelope.repo)
+                    typed = name == "UserPromptExpansion"
                     if skill and number:
-                        typed = name == "UserPromptExpansion"
                         store.record_skill_start(session_id, skill, envelope.repo, number, typed=typed)
+                    if typed and skill:
+                        inject = await start_job(session_id, skill, number, envelope, now)
+                job_id = store.current_job(session_id)
+                if job_id is not None and "agent_id" not in event:
+                    follow_worktree(job_id, event, envelope.repo_path)
+                spec_job = job_id is not None and store.job_kind(job_id) == SPEC_JOB
+                if spec_job:
+                    map_subagent(job_id, event, envelope.repo, now)
+                step_id = step_of(job_id, event)
+                plan(session_id, event, envelope.repo)
+                take_notes(session_id, event, envelope)
+                if (spec_job and name == "SubagentStart" and step_id is None
+                        and not launch_names_ticket(job_id, session_id, event, envelope.repo)):
+                    inject = spec_step_start(str(job_id))
+                if job_id is not None:
+                    inject = observe_review(job_id, step_id, event) or inject
                 if name == "SessionEnd":
                     store.end_session(session_id, now)
                 else:
                     # A resumed session, or one still running when its repo was uninstalled and reinstalled.
                     store.resume_session(session_id, now)
-                    states.apply(store, session_id, event, now)
+                    without_pr = job_id is not None and store.job_stage(job_id) == IN_PROGRESS
+                    # A Spec Job's subagent asking for the human asks about its Step's Ticket.
+                    states.apply(store, session_id, event, now, job_without_pr=without_pr,
+                                 ticket=store.spec_step_ticket(step_id), hitl=hitl_wait(session_id, event, envelope.repo))
+                    sounds.schedule(store, session_id, event, now)
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
                 observe(session_id, event, now)
+                signal = phase_rules.load().signal(event, envelope.repo) if job_id is not None else None
+                if signal == "merge" and spec_job and not into_integration(job_id, event, envelope.repo_path):
+                    signal = "explore"  # e.g. an implementer merging the integration tip into its own branch
+                if signal in REPLAY_SIGNALS:
+                    kind, label = REPLAY_SIGNALS[signal]
+                    store.record_job_event(job_id, now, kind, f"{label}: {signal_subject(event)}")
+                if step_id is not None:
+                    store.step_active(step_id, now)
+                    infer_phase(step_id, job_id, signal, session_id, now)
+                    record_detail(step_id, event, signal, envelope.repo_path, now)
         hub.publish(state())
-        return Reply(session_id=None if session_id is None else str(session_id))
+        return Reply(
+            session_id=None if session_id is None else str(session_id),
+            job_id=None if job_id is None else str(job_id),
+            step_id=None if step_id is None else str(step_id),
+            inject=inject,
+        )
+
+    def plan(session_id: int, event: dict, repo: str) -> None:
+        """A Wayfinder session's Map, the Decision ticket it works, the tickets it creates and closes, and its
+        latest grilling round's question titles."""
+        main = "agent_id" not in event
+        if (invocation := skill_invocation(event)) and bare_name(invocation[0]) == "wayfinder" and main:
+            if (number := work_item_named(invocation[1], repo)) is not None:
+                store.set_wayfinder(session_id, map=number)
+            else:
+                store.set_wayfinder(session_id)
+            return
+        if store.session(session_id)["kind"] != WAYFINDER:
+            return
+        tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+        command = str(tool_input.get("command") or "") if event.get("tool_name") == "Bash" else ""
+        match event.get("hook_event_name"):
+            case "PreToolUse" if command:
+                for number in claims(command, repo):
+                    if main:  # a subagent's claim is not the ticket this session works
+                        store.set_wayfinder(session_id, ticket=number)
+                for number in closes(command, repo):
+                    store.record_decision_ticket(session_id, number, "closed")
+                    if main and store.wayfinder(session_id)["ticket"] is None:
+                        store.set_wayfinder(session_id, ticket=number)
+            case "PostToolUse" if command:
+                response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+                for is_map in creates(command, repo):
+                    for number in created_numbers(response.get("stdout"), repo):
+                        if is_map:
+                            store.set_wayfinder(session_id, map=number)
+                        else:
+                            store.record_decision_ticket(session_id, number, "created")
+            case "MessageDisplay" | "Stop" as name:
+                text = event.get("last_assistant_message") if name == "Stop" else event.get("delta") or event.get("message")
+                if found := questions(text):
+                    store.set_wayfinder(session_id, questions=found)
+            case "UserPromptSubmit":
+                store.set_wayfinder(session_id, questions=[])  # the human answered the round
+
+    def take_notes(session_id: int, event: dict, envelope: Envelope) -> None:
+        """What a research, to-spec or to-tickets session has done so far (rules in planning.py)."""
+        repo = envelope.repo
+        if (invocation := skill_invocation(event)) and "agent_id" not in event:
+            name = bare_name(invocation[0])
+            role = skills.role(name, store.session(session_id)["mattpocock_skills_version"]) if name else None
+            if role and role.kind in planning.KINDS:
+                start_plan(session_id, role.kind, (invocation[1] or "").strip(), repo)
+            return
+        kind = store.session(session_id)["kind"]
+        if kind not in planning.KINDS:
+            return
+        facts = store.plan(session_id, kind) or planning.empty(kind)
+        tool_name = event.get("tool_name")
+        tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+        response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+        command = str(tool_input.get("command") or "") if tool_name == "Bash" else ""
+        match event.get("hook_event_name"), kind:
+            case "PreToolUse", planning.RESEARCH if tool_name == "WebSearch" and tool_input.get("query"):
+                facts["searches"].append(str(tool_input["query"]))
+            case "PreToolUse", planning.RESEARCH if tool_name == "WebFetch" and tool_input.get("url"):
+                if tool_input["url"] not in facts["sources"]:
+                    facts["sources"].append(str(tool_input["url"]))
+            case "PostToolUse", planning.RESEARCH if tool_name in planning.EDIT_TOOLS:
+                path, _ = planning.written_text(event)
+                if path and path.lower().endswith(".md"):
+                    facts["findings"] = planning.findings(path, repo, envelope.repo_path)
+            case "PostToolUse", _ if tool_name in planning.EDIT_TOOLS:
+                path, text = planning.written_text(event)
+                if kind == planning.TO_SPEC:
+                    facts["written"] = written(facts["written"], planning.outline_sections(text))
+                if path and tool_name == "Write":
+                    files = {k: v for k, v in facts.get("files", {}).items() if k != path}
+                    facts["files"] = dict(list({**files, path: text}.items())[-planning.KEEP_FILES:])
+            case "PostToolUse", planning.TO_SPEC if command:
+                for number in planning.viewed(command, repo):
+                    if facts["map"] is None and (item := store.issue(repo, number)) and item["kind"] == "Map":
+                        facts["map"] = number
+                if created := planning.created_issue(command, facts.get("files", {})):
+                    facts["written"] = written(facts["written"], planning.outline_sections(created[1]))
+                    facts["spec"] = next(iter(created_numbers(response.get("stdout"), repo)), facts["spec"])
+            case "PostToolUse", planning.TO_TICKETS if command:
+                if created := planning.created_issue(command, facts.get("files", {})):
+                    title, body = created
+                    known = {t["number"] for t in facts["tickets"]}
+                    facts["tickets"] += [{"number": n, "title": title, "blocked_by": planning.blocked_by(body, repo)}
+                                         for n in created_numbers(response.get("stdout"), repo) if n not in known]
+            case _:
+                return
+        store.set_plan(session_id, kind, facts)
+
+    def written(have: list[str], more: list[str]) -> list[str]:
+        """The Spec template's sections written so far, in the template's order."""
+        return [s for s in planning.SPEC_OUTLINE if s in have or s in more]
+
+    def start_plan(session_id: int, kind: str, args: str, repo: str) -> None:
+        """A research question, a to-spec's Map, a to-tickets' Spec: from the skill's args, when they name one."""
+        facts = store.plan(session_id, kind) or planning.empty(kind)
+        number = work_item_named(args, repo)
+        if kind == planning.RESEARCH and args:
+            facts["question"] = args
+        elif kind == planning.TO_SPEC:
+            # to-spec often runs in the Wayfinder session that charted the Map.
+            facts["map"] = number or facts["map"] or store.wayfinder(session_id)["map"]
+        elif kind == planning.TO_TICKETS:
+            facts["spec"] = number or facts["spec"]
+        store.set_plan(session_id, kind, facts)
+
+    def hitl_wait(session_id: int, event: dict, repo: str) -> dict | None:
+        """On a Wayfinder session's Stop: why it now waits on the human, if it does. It does on a HITL Decision
+        ticket it has not closed, never on an AFK one; on a ticket of unknown type, only when it stopped on a
+        grilling round."""
+        if event.get("hook_event_name") != "Stop" or store.session(session_id)["kind"] != WAYFINDER:
+            return None
+        w = store.wayfinder(session_id)
+        number = w["ticket"]
+        item = store.issue(repo, number) if number is not None else None
+        mode = mode_of(item and item["type"])
+        asked = questions(event.get("last_assistant_message")) or w["questions"]
+        if number is not None and number in store.decision_tickets(session_id, "closed"):
+            return None
+        if mode == "AFK" or (mode not in WAITS_ON_HUMAN and not questions(event.get("last_assistant_message"))):
+            return None
+        name = (f"#{number} {item['title']}" if item else f"#{number}") if number is not None else "Decision ticket unknown"
+        return {"kind": "hitl", "ticket": name, "questions": asked}
+
+    def step_of(job_id: int | None, event: dict | None = None) -> int | None:
+        """The Step an event of the Job belongs to: a Ticket Job's one Step; in a Spec Job, the Step of the
+        subagent it comes from (none for the main session, or a subagent tied to no Ticket)."""
+        if job_id is None:
+            return None
+        if store.job_kind(job_id) == SPEC_JOB:
+            agent_id = (event or {}).get("agent_id")
+            return store.agent_step(job_id, agent_id) if agent_id else None
+        if store.job_kind(job_id) != TICKET_JOB:
+            return None
+        return next(iter(store.job_steps(job_id)), None)
+
+    def map_subagent(job_id: int, event: dict, repo: str, now: datetime) -> None:
+        """Tie a Spec Job's subagent to the Step of the Ticket it works: from its launch (the main session's
+        PostToolUse(Agent) names its agentId, and its description or prompt the Ticket), or from the subagent
+        running `factory step --ticket N`."""
+        tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+        response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+        agent_id, named = None, []
+        if event.get("hook_event_name") == "PostToolUse" and event.get("tool_name") == "Agent" and "agent_id" not in event:
+            agent_id = response.get("agentId")
+            named = launch_tickets(tool_input, repo)
+        elif event.get("hook_event_name") == "PreToolUse" and event.get("tool_name") == "Bash" and event.get("agent_id"):
+            agent_id = event["agent_id"]
+            named = [int(m[1]) for m in [STEP_REPORT.search(str(tool_input.get("command") or ""))] if m]
+        if not agent_id:
+            return
+        step_id = next((s for n in named if (s := store.job_step_numbered(job_id, n)) is not None), None)
+        if step_id is None:
+            return
+        store.map_agent(job_id, str(agent_id), step_id)
+        if store.step_phase(step_id) == PENDING:
+            store.set_phase(step_id, None, now)  # started: Phase unknown until a signal says more
+
+    def launch_tickets(tool_input: dict, repo: str) -> list[int]:
+        """The issues an Agent launch's description or prompt names."""
+        return tickets_named(f"{tool_input.get('description') or ''}\n{tool_input.get('prompt') or ''}", repo)
+
+    def launch_names_ticket(job_id: int, session_id: int, event: dict, repo: str) -> bool:
+        """Whether a subagent starting before its launch's PostToolUse(Agent) will be tied to its Step by it: each
+        launch still open that could be this subagent (same agent type) names one of the Job's Tickets.
+        SubagentStart carries no prompt or description, and comes before or after PostToolUse(Agent)."""
+        kind = event.get("agent_type")
+        candidates = [i for i in store.open_calls(session_id, "Agent")
+                      if not kind or (i.get("subagent_type") or "general-purpose") == kind]
+        return bool(candidates) and all(
+            any(store.job_step_numbered(job_id, n) is not None for n in launch_tickets(i, repo)) for i in candidates)
+
+    def into_integration(job_id: int, event: dict, main_tree: str) -> bool:
+        """Whether a `git merge` merges into the Job's integration branch: run in the Job's worktree when that is
+        known, never in an isolated subagent's own worktree, and never merging the integration branch itself."""
+        tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+        merge = merge_of(str(tool_input.get("command") or ""), event.get("cwd"))
+        if merge is None:
+            return False
+        where, refs = merge
+        worktree, branch = store.job_tree(job_id)
+        if branch and branch in refs:
+            return False
+        ran_in = worktree_of(where, main_tree)
+        if worktree:
+            return ran_in is not None and ran_in.rstrip("/") == worktree.replace("\\", "/").rstrip("/")
+        return not is_agent_worktree(ran_in)
+
+    def observe_review(job_id: int, step_id: int | None, event: dict) -> str | None:
+        """code-review in a Job: ask its agent for the findings count, and read its summary line meanwhile."""
+        name = event.get("hook_event_name")
+        if (invocation := skill_invocation(event)) and bare_name(invocation[0]) == CODE_REVIEW:
+            store.start_review(job_id)
+        elif name == "PostToolUse" and event.get("tool_name") == "Skill":
+            tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+            if bare_name(str(tool_input.get("skill") or "")) == CODE_REVIEW:
+                return review_report_ask(str(job_id), store.spec_step_ticket(step_id))
+        elif name in ("MessageDisplay", "Stop") and store.review_started(job_id):
+            text = str(event.get("delta") or event.get("last_assistant_message") or "")
+            if counts := review_counts(text):
+                store.record_review(job_id, step_id, *counts, "summary")
+        return None
+
+    def record_detail(step_id: int, event: dict, signal: str | None, main_tree: str, now: datetime) -> None:
+        """What the event adds to the Step's detail."""
+        if (checklist := checklist_after(store.checklist(step_id), event)) is not None:
+            store.set_checklist(step_id, checklist)
+        if signal in ("test_edit", "source_edit"):
+            tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+            path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
+            store.record_edit(step_id, repo_relative(path, worktree_of(event.get("cwd"), main_tree), main_tree))
+        elif signal == "commit" and (commit := commit_made(event)):
+            store.record_commit(step_id, commit, now)
+        elif signal in ("test_pass", "test_fail"):
+            passed, failed = test_counts(test_output(event))
+            store.record_test_run(step_id, "pass" if signal == "test_pass" else "fail", passed, failed, now)
+
+    def infer_phase(step_id: int, job_id: int, signal: str | None, session_id: int, now: datetime) -> None:
+        """The Step's Phase after a signal, by the Phase rules."""
+        if signal is None:
+            return
+        version = store.session(session_id)["mattpocock_skills_version"]
+        to = phase_rules.load().next_phase(store.step_phase(step_id), signal, store.job_kind(job_id), version)
+        if to is not None:
+            store.set_phase(step_id, to, now)
+
+    async def start_job(session_id: int, skill: str, number: int | None, envelope: Envelope, now: datetime) -> str | None:
+        """A typed Job skill starts a new Job (older ones carry on); returns what to tell the agent."""
+        role = skills.role(skill, store.session(session_id)["mattpocock_skills_version"])
+        if role is None or role.role not in (TICKET_JOB, SPEC_JOB):
+            return None
+        job_id = store.start_job(session_id, role.role, envelope.repo, number, now)
+        if role.role == TICKET_JOB:
+            store.add_step(job_id, number, now)  # a Ticket Job's one Step works its Ticket
+        elif number:
+            # A Spec Job's Steps are its Spec's Tickets as GitHub has them now; with GitHub unreachable, as last polled.
+            polled_at[envelope.repo] = clock()
+            try:
+                await asyncio.to_thread(read_repo, envelope.repo)
+            except Exception:
+                log.exception("GitHub read of %s at the start of Spec Job %s failed", envelope.repo, job_id)
+            add_spec_steps(job_id, envelope.repo)
+        item = store.work_item(envelope.repo, number) if number else None
+        worktree = worktree_of(envelope.event.get("cwd"), envelope.repo_path)
+        duplicate_of = store.duplicate_of(job_id)
+        starting = ticket_job_start if role.role == TICKET_JOB else spec_job_start
+        return starting(str(job_id), number, item and item["title"], worktree,
+                        duplicate_of=None if duplicate_of is None else str(duplicate_of))
+
+    def follow_worktree(job_id: int, event: dict, main_tree: str) -> None:
+        """Where the Job works: the worktree EnterWorktree made, else the session's own cwd when in one."""
+        response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+        if event.get("hook_event_name") == "PostToolUse" and event.get("tool_name") == "EnterWorktree" and response.get("worktreePath"):
+            store.set_job_worktree(job_id, response["worktreePath"], response.get("worktreeBranch"))
+        elif worktree := worktree_of(event.get("cwd"), main_tree):
+            store.set_job_worktree(job_id, worktree)
+
+    def self_report(name: str, event: dict, now: datetime) -> tuple[int, int, int | None]:
+        """A `factory` self-report about a Job; every one names its Job."""
+        try:
+            job_id = int(event.get("job_id"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="a self-report needs --job <id>") from None
+        session_id = store.job_session(job_id)
+        if session_id is None:
+            raise HTTPException(status_code=404, detail=f"no Job {job_id}")
+        step_id = step_of(job_id)
+        match name:
+            case "report_pr":
+                store.set_job_pr(job_id, str(event.get("url") or ""))
+                store.chronicle_job(job_id, now)
+            case "job_issue":
+                if not str(event.get("issue", "")).isdigit():
+                    raise HTTPException(status_code=422, detail="`factory job` needs --issue <number>")
+                store.set_job_number(job_id, int(event["issue"]))
+            case "report_phase":
+                step_id = report_phase(job_id, event, now)
+            case "report_step":
+                step_id = report_step(job_id, event)
+            case "report_review":
+                step_id = report_review(job_id, event)
+            case "escalate":
+                states.escalate(store, session_id, str(event.get("reason") or ""), now)
+                sounds.schedule(store, session_id, event, now)
+        if store.current_job(session_id) == job_id and store.job_stage(job_id) != IN_PROGRESS:
+            pr_arrived(session_id, now)
+        return session_id, job_id, step_id
+
+    def report_step(job_id: int, event: dict) -> int:
+        """`factory step --ticket N`: a subagent names the Ticket it works (its own Bash call ties it to the Step)."""
+        ticket = event.get("ticket")
+        if not str(ticket).isdigit():
+            raise HTTPException(status_code=422, detail="`factory step` needs --ticket <number>")
+        step_id = store.job_step_numbered(job_id, int(ticket))
+        if step_id is None:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} has no Step for #{ticket}")
+        return step_id
+
+    def report_review(job_id: int, event: dict) -> int | None:
+        """`factory review --standards N --spec M`: code-review's findings per axis, for the Step (or whole Job)."""
+        counts = [event.get(axis) for axis in REVIEW_AXES]
+        if not all(str(c).isdigit() for c in counts):
+            raise HTTPException(status_code=422, detail="`factory review` needs --standards <n> and --spec <m>")
+        step_id = reported_step(job_id, event)
+        store.record_review(job_id, step_id, *(int(c) for c in counts), "report")
+        return step_id
+
+    def reported_step(job_id: int, event: dict) -> int | None:
+        """The Step a self-report is about: its --ticket's, else the Job's one Step (none for a Spec Job)."""
+        ticket = event.get("ticket")
+        if ticket is None:
+            return step_of(job_id)
+        if not str(ticket).isdigit():
+            raise HTTPException(status_code=422, detail="--ticket needs an issue number")
+        step_id = store.job_step_numbered(job_id, int(ticket))
+        if step_id is None:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} has no Step for #{ticket}")
+        return step_id
+
+    def report_phase(job_id: int, event: dict, now: datetime) -> int:
+        """`factory phase <name>`: the Step's Phase as its agent says, for when the rules can't tell."""
+        phase = phase_named(str(event.get("phase") or ""))
+        if phase is None:
+            raise HTTPException(status_code=422, detail=f"`factory phase` needs one of {', '.join(PHASES)}")
+        ticket = event.get("ticket")
+        if ticket is None:
+            step_id = step_of(job_id)
+        elif str(ticket).isdigit():
+            step_id = store.job_step_numbered(job_id, int(ticket))
+        else:
+            raise HTTPException(status_code=422, detail="--ticket needs an issue number")
+        if step_id is None:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} has no Step" + (f" for #{ticket}" if ticket else ""))
+        store.set_phase(step_id, phase, now)
+        return step_id
+
+    @app.post("/api/jobs/{job_id}/abandon")
+    async def abandon(job_id: int) -> dict:
+        """The human abandoned the Job on the dashboard: it moves to History, and its session waits for no PR."""
+        if not store.abandon_job(job_id, clock()):
+            raise HTTPException(status_code=404, detail="no such Job")
+        store.chronicle_job(job_id, clock())
+        session_id = store.job_session(job_id)
+        if store.current_job(session_id) == job_id:
+            states.pr_no_longer_awaited(store, session_id, clock(), seen=True)
+        hub.publish(state())
+        return {"ok": True}
+
+    @app.get("/api/jobs/{job_id}/replay")
+    async def replay(job_id: int) -> dict:
+        """The Job's timeline, for its replay in History: Phase changes and events over time."""
+        found = store.job_replay(job_id)
+        if found is None:
+            raise HTTPException(status_code=404, detail="no such Job")
+        return found
 
     @app.post("/api/sessions/{session_id}/seen")
     async def seen(session_id: int) -> dict:
         """The human opened the session's detail: its Done is seen."""
         if not store.mark_seen(session_id):
+            raise HTTPException(status_code=404, detail="no such session")
+        hub.publish(state())
+        return {"ok": True}
+
+    @app.post("/api/sessions/{session_id}/hide")
+    async def hide(session_id: int) -> dict:
+        """The human hid the session from the dashboard: out of its views, and silent."""
+        return set_hidden(session_id, True)
+
+    @app.post("/api/sessions/{session_id}/show")
+    async def show(session_id: int) -> dict:
+        return set_hidden(session_id, False)
+
+    def set_hidden(session_id: int, hidden: bool) -> dict:
+        if not store.set_hidden(session_id, hidden):
             raise HTTPException(status_code=404, detail="no such session")
         hub.publish(state())
         return {"ok": True}

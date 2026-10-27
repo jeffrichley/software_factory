@@ -13,6 +13,8 @@ const PATHS = {
   shield: <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3z" />,
   flag: <><path d="M5 21V4" /><path d="M5 4h11l-2 4 2 4H5" /></>,
   arrow: <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
+  play: <path d="M7 4.5v15l12-7.5-12-7.5z" fill="currentColor" />,
+  pause: <><path d="M8 5v14" /><path d="M16 5v14" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
 } as const;
 

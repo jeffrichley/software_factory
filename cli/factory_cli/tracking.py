@@ -75,13 +75,24 @@ def session_cache_path(main: Path, machine: str, cc_session_id: str) -> Path:
     return machine_dir(main, machine) / "sessions" / f"{cc_session_id}.json"
 
 
+def latest_session(main: Path, machine: str) -> tuple[str, dict] | None:
+    """This Machine's most recently active session in the repo: its Claude Code session id and cached ids.
+
+    Run from a slash command, that is the session running it: its Bash tool's hook fired last.
+    """
+    caches = sorted((machine_dir(main, machine) / "sessions").glob("*.json"), key=lambda p: p.stat().st_mtime)
+    if not caches:
+        return None
+    try:
+        return caches[-1].stem, json.loads(caches[-1].read_text())
+    except (OSError, ValueError):
+        return caches[-1].stem, {}
+
+
 def latest_session_ids(main: Path, machine: str) -> dict:
     """The ids cached for this Machine's most recently active session in the repo, or {}."""
-    caches = sorted((machine_dir(main, machine) / "sessions").glob("*.json"), key=lambda p: p.stat().st_mtime)
-    try:
-        return json.loads(caches[-1].read_text()) if caches else {}
-    except (OSError, ValueError):
-        return {}
+    latest = latest_session(main, machine)
+    return latest[1] if latest else {}
 
 
 def queue_path(main: Path, machine: str) -> Path:

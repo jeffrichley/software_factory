@@ -1,0 +1,130 @@
+# The Phase rules: how the Factory works out each Step's Phase from what its agent does.
+#
+# Edit them freely; the Factory server reads them again on every event, so no restart is needed.
+# To keep edits across plugin updates, copy this file to server/phases.toml in the Factory's data directory
+# (~/.claude/plugins/data/factory-software-factory/), which `factory server` prefers, or pass --phase-rules.
+#
+# Each event in a Step gives at most one signal:
+#   explore      a successful explore tool (below), or a Bash command that is not a test run, commit or merge
+#   test_edit    a test file (below) edited by an edit tool
+#   source_edit  any other file edited by an edit tool
+#   test_pass    a test command (below) that exited 0 and whose output has no failed summary (below)
+#   test_fail    a test command that exited non-zero ("Exit code N"), or exited 0 with a failed summary,
+#                as a piped run (`pytest | tail`) exits with the last command's status
+#   commit       a commit command (below) that exited 0
+#   merge        a merge command (below) that exited 0: a Spec Job's Ticket merged into its integration branch
+#   pr_merged    the poll found the Job's PR merged
+#   skill:<name> a skill started in the Step, such as skill:tdd or skill:code-review (Phase signals)
+# A test run in the background, or interrupted, gives no signal: its outcome isn't known.
+#
+# Each [[rule]]: on a signal, a Step whose Phase is in `from` ("unknown" = Phase unknown, "*" = any) moves
+# to `to`. The first rule that matches wins; a signal no rule takes leaves the Phase as it is.
+# Optional: job_kinds ("Ticket Job", "Spec Job") limits a rule to those Jobs; mattpocock_skills, a version
+# range such as ">=1.4, <2", limits it to those mattpocock-skills versions.
+# The Phases: Exploring, Red, Green, Refactor, Reviewing, Committed, Merged.
+#
+# Patterns are Python regular expressions, searched anywhere in the path (with / separators) or command.
+#
+# A repo with test runners or a layout of its own adds patterns for its events only, in a section named
+# after it at the end of this file (they add to the lists in [signals], never replace them):
+#   [repos."owner/repo"]
+#   test_commands = ['\bmake\s+check\b']
+#   test_files = ['(^|/)checks/']
+#   failed_summary = ['\bERRORS?\b']
+#
+# Agents can also report a Phase with `factory phase <name> --job <id>`; the rules carry on from it.
+#
+# `version` is the table's format; this server reads version 1. A table that fails to parse or validate
+# is logged by the server, which keeps using the last good table (or infers no Phase).
+
+version = 1
+
+[signals]
+explore_tools = ["Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch"]
+edit_tools = ["Edit", "Write", "MultiEdit", "NotebookEdit"]
+test_files = [
+  '(^|/)tests?/',
+  '(^|/)__tests__/',
+  '(^|/)test_[^/]*\.py$',
+  '_test\.[^/.]+$',
+  '\.(test|spec)\.[^/.]+$',
+]
+test_commands = [
+  '\bpytest\b',
+  '\bvitest\b',
+  '\bjest\b',
+  '\b(npm|pnpm|yarn|bun)\s+(run\s+)?test\b',
+  '\bgo\s+test\b',
+  '\bcargo\s+(test|nextest)\b',
+  '\bpython3?\s+-m\s+unittest\b',
+  '\brspec\b',
+  '\bmix\s+test\b',
+  '\bdotnet\s+test\b',
+  '\bplaywright\s+test\b',
+]
+failed_summary = [
+  '\b[1-9]\d*\s+(failed|failing)\b',
+  '\bFAIL(ED)?\b',
+]
+commit_commands = ['\bgit\s+(-C\s+\S+\s+)?commit\b']
+merge_commands = ['\bgit\s+(-C\s+\S+\s+)?merge(?![-\w])']
+
+# Exploring: the Step has started reading, searching or planning, before any test.
+[[rule]]
+on = "explore"
+from = ["unknown"]
+to = "Exploring"
+
+[[rule]]
+on = "skill:tdd"
+from = ["unknown"]
+to = "Exploring"
+
+# Red: a test written, or a test run failing.
+[[rule]]
+on = "test_edit"
+from = ["unknown", "Exploring", "Green", "Refactor", "Committed"]
+to = "Red"
+
+[[rule]]
+on = "test_fail"
+from = ["unknown", "Exploring", "Green", "Refactor", "Committed"]
+to = "Red"
+
+# Green: the tests pass after Red.
+[[rule]]
+on = "test_pass"
+from = ["Red"]
+to = "Green"
+
+# Refactor: source changed while the tests are green.
+[[rule]]
+on = "source_edit"
+from = ["Green"]
+to = "Refactor"
+
+# Reviewing: code-review run on the Step. implement-spec reviews the whole integration branch, not each
+# Step, so a Spec Job's Steps never reach Reviewing.
+[[rule]]
+on = "skill:code-review"
+from = ["unknown", "Exploring", "Red", "Green", "Refactor", "Committed"]
+to = "Reviewing"
+job_kinds = ["Ticket Job"]
+
+# Committed: the work committed.
+[[rule]]
+on = "commit"
+from = ["unknown", "Exploring", "Red", "Green", "Refactor", "Reviewing"]
+to = "Committed"
+
+# Merged: a Spec Job's Ticket merged into the integration branch, or the Job's PR merged.
+[[rule]]
+on = "merge"
+from = ["*"]
+to = "Merged"
+job_kinds = ["Spec Job"]
+
+[[rule]]
+on = "pr_merged"
+from = ["*"]
+to = "Merged"

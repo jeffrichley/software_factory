@@ -14,7 +14,7 @@ from typing import Annotated
 import typer
 
 from .tracking import (
-    Refused, data_dir, factory_dir, flush_queue, github_repo, latest_session_ids, load_setup, log_refused, machine_dir,
+    Refused, data_dir, factory_dir, flush_queue, github_repo, latest_session, latest_session_ids, load_setup, log_refused, machine_dir,
     main_worktree, marker_path, post_event, queued, save_setup, send,
 )
 
@@ -228,6 +228,37 @@ def status() -> None:
     print_status(require_setup(), main_worktree(Path.cwd()))
 
 
+def report_on_session(name: str, done: str) -> None:
+    """Send 'name' for the session running this command, queueing it when the server can't be reached."""
+    setup = require_setup()
+    main = require_repo()
+    machine, url = setup["machine"], setup["server_url"]
+    marker = marker_path(main, machine)
+    if not marker.exists():
+        fail(f"Not tracked on '{machine}': {main}. Run `factory install` (or /factory:install) to track it.")
+    latest = latest_session(main, machine)
+    if not latest:
+        fail("No session has reported from this repo on this Machine yet: run this from inside a Claude Code session.")
+    cc_session_id, ids = latest
+    body = {**tracking_event(name, main, machine, json.loads(marker.read_text())["repo"]), "ids": ids}
+    body["event"] = {"hook_event_name": name, "session_id": cc_session_id}
+    if send(main, machine, url, body) is None:
+        typer.echo(f"Server unreachable at {url}; queued for when it's back. {START_SERVER}")
+    typer.echo(f"Session {cc_session_id} {done}.")
+
+
+@app.command()
+def hide() -> None:
+    """Hide the current session: off the dashboard's views, and silent."""
+    report_on_session("session_hidden", "hidden")
+
+
+@app.command()
+def show() -> None:
+    """Show the current session again."""
+    report_on_session("session_shown", "shown")
+
+
 @app.command()
 def dashboard() -> None:
     """Open the dashboard in a browser."""
@@ -238,6 +269,180 @@ def dashboard() -> None:
     webbrowser.open(f"{url}/")
 
 
+# The Job stages that end a Job; only these Jobs' worktrees and branches may be cleaned up.
+ENDED = ("Merged", "Closed", "Abandoned")
+
+
+def server_state(server_url: str) -> dict:
+    try:
+        with urllib.request.urlopen(f"{server_url}/api/state", timeout=5) as resp:
+            return json.loads(resp.read())
+    except (OSError, ValueError):
+        fail(f"Server unreachable at {server_url}: cleanup needs it to know which Jobs have ended. {START_SERVER}")
+
+
+def git_out(main: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(main), *args], capture_output=True, text=True)
+
+
+def local_worktrees(main: Path) -> dict[Path, str | None]:
+    """This Machine's linked worktrees of the repo, with the branch each has checked out."""
+    found: dict[Path, str | None] = {}
+    path = None
+    for line in git_out(main, "worktree", "list", "--porcelain").stdout.splitlines():
+        if line.startswith("worktree "):
+            path = Path(line.removeprefix("worktree ")).resolve()
+            found[path] = None
+        elif line.startswith("branch refs/heads/") and path:
+            found[path] = line.removeprefix("branch refs/heads/")
+    found.pop(main.resolve(), None)
+    return found
+
+
+def has_branch(main: Path, branch: str) -> bool:
+    return git_out(main, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}").returncode == 0
+
+
+@app.command()
+def cleanup(
+    yes: Annotated[bool, typer.Option("--yes", help="Remove without asking.")] = False,
+) -> None:
+    """List Merged, Closed and Abandoned Jobs that still have a worktree or branch on this Machine, and remove them when asked."""
+    setup = require_setup()
+    main = require_repo()
+    machine = setup["machine"]
+    marker = marker_path(main, machine)
+    if not marker.exists():
+        fail(f"Not tracked on '{machine}': {main}. Run `factory install` (or /factory:install) to track it.")
+    repo = json.loads(marker.read_text())["repo"]
+    jobs = [j for j in server_state(setup["server_url"]).get("jobs", []) if j["repo"] == repo and j.get("machine") == machine]
+    worktrees = local_worktrees(main)
+
+    def where(j: dict) -> tuple[Path | None, str | None]:
+        """The Job's worktree and branch that are still on this Machine."""
+        wt = j["worktree"] and Path(j["worktree"]).resolve()
+        wt = wt if wt in worktrees else None
+        branch = j["branch"] or (worktrees[wt] if wt else None)
+        return wt, branch if branch and has_branch(main, branch) else None
+
+    # A worktree or branch an active Job still works in (a reused worktree, a rework) is never touched.
+    active = {x for j in jobs if j["stage"] not in ENDED for x in where(j) if x}
+    finished = []  # (job, worktree or None, branch or None)
+    for j in jobs:
+        if j["stage"] in ENDED:
+            wt, branch = (None if x in active else x for x in where(j))
+            if wt or branch:
+                finished.append((j, wt, branch))
+    if not finished:
+        typer.echo("No ended Job has a worktree or branch left on this Machine.")
+        return
+
+    typer.echo("Ended Jobs with a worktree or branch on this Machine:")
+    for j, wt, branch in finished:
+        item = f"#{j['number']}" if j["number"] is not None else f"Job {j['id']}"
+        typer.echo(f"  {item} ({j['stage']}): worktree {wt or '—'}, branch {branch or '—'}")
+    if not yes and not typer.confirm("Remove these worktrees and branches?", default=False):
+        typer.echo("Nothing removed.")
+        return
+    refused = []
+    for j, wt, branch in finished:
+        if wt and git_out(wt, "status", "--porcelain").stdout.strip():
+            refused.append(f"{wt} has uncommitted changes: left it and its branch alone.")
+            continue
+        if wt and (done := git_out(main, "worktree", "remove", str(wt))).returncode != 0:
+            refused.append(f"Couldn't remove {wt}: {done.stderr.strip()}")
+            continue
+        if branch and (done := git_out(main, "branch", "-D", branch)).returncode != 0:
+            refused.append(f"Couldn't delete branch {branch}: {done.stderr.strip()}")
+            continue
+        typer.echo(f"Removed {', '.join(str(x) for x in (wt, branch and f'branch {branch}') if x)}.")
+    for problem in refused:
+        typer.echo(problem, err=True)
+    if refused:
+        raise typer.Exit(1)
+
+
+report_app = typer.Typer(no_args_is_help=True, help="Report what hooks can't see about a Job.")
+app.add_typer(report_app, name="report")
+JobOption = Annotated[str, typer.Option("--job", help="The Job's id, as the Factory gave it at Job start.")]
+
+
+def self_report(name: str, job: str, **fields) -> None:
+    """Send a self-report about a Job through the hook's event path: queued while the server is down."""
+    setup = require_setup()
+    main = require_repo()
+    machine = setup["machine"]
+    marker = marker_path(main, machine)
+    if not marker.exists():
+        fail(f"Not tracked on '{machine}': {main}. Run `factory install` (or /factory:install) to track it.")
+    body = {
+        "machine": machine, "repo": json.loads(marker.read_text())["repo"], "repo_path": str(main), "ids": {},
+        "event": {"hook_event_name": name, "job_id": job, **fields},
+    }
+    if send(main, machine, setup["server_url"], body) is None:
+        typer.echo(f"Server unreachable at {setup['server_url']}; the report is queued and goes with the next event.")
+    else:
+        typer.echo("Reported.")
+
+
+@report_app.command("pr")
+def report_pr(url: Annotated[str, typer.Argument(help="The PR's URL.")], job: JobOption) -> None:
+    """The Job opened its non-draft PR."""
+    self_report("report_pr", job, url=url)
+
+
+@app.command("job")
+def job_(issue: Annotated[int, typer.Option("--issue", help="The Work item's issue number.")], job: JobOption) -> None:
+    """The Work item a Job started without one is working."""
+    self_report("job_issue", job, issue=issue)
+
+
+@app.command("step")
+def step_(ticket: Annotated[int, typer.Option("--ticket", help="The Ticket's issue number.")], job: JobOption) -> None:
+    """The Ticket a Spec Job's subagent works, for when the Factory couldn't tell from its launch."""
+    self_report("report_step", job, ticket=ticket)
+
+
+# The Phases a Step moves through; the server's Phase rules use the same names.
+PHASES = ("Exploring", "Red", "Green", "Refactor", "Reviewing", "Committed", "Merged")
+
+
+@app.command("phase")
+def phase_(
+    name: Annotated[str, typer.Argument(help=f"The Phase: one of {', '.join(PHASES)} (any case).")],
+    job: JobOption,
+    ticket: Annotated[int | None, typer.Option("--ticket", help="The Step's Ticket, in a Spec Job.")] = None,
+) -> None:
+    """The Phase a Step is in, for when the Factory can't tell from what the agent does."""
+    phase = next((p for p in PHASES if p.lower() == name.strip().lower()), None)
+    if phase is None:
+        fail(f"'{name}' is not a Phase: use one of {', '.join(PHASES)}.")
+    self_report("report_phase", job, phase=phase, **({} if ticket is None else {"ticket": ticket}))
+
+
+@app.command()
+def review(
+    standards: Annotated[int, typer.Option("--standards", min=0, help="Findings on the Standards axis.")],
+    spec: Annotated[int, typer.Option("--spec", min=0, help="Findings on the Spec axis.")],
+    job: JobOption,
+    ticket: Annotated[int | None, typer.Option("--ticket", help="The Step's Ticket, in a Spec Job.")] = None,
+) -> None:
+    """code-review's findings count per axis, once its summary is written."""
+    self_report("report_review", job, standards=standards, spec=spec, **({} if ticket is None else {"ticket": ticket}))
+
+
+def server_table(given: Path | None, file_name: str, shipped: Path) -> Path:
+    """An edited copy in the data dir survives plugin updates; the shipped table is the fallback."""
+    edited = data_dir() / "server" / file_name
+    return given or (edited if edited.is_file() else shipped)
+
+
+@app.command()
+def escalate(reason: Annotated[str, typer.Argument(help="Why the Job needs the human.")], job: JobOption) -> None:
+    """The Job is stopping to ask the human for approval or help: it shows as Needs you with this reason."""
+    self_report("escalate", job, reason=reason)
+
+
 @app.command()
 def server(
     port: Annotated[int, typer.Option(help="Port to listen on.")] = DEFAULT_PORT,
@@ -246,18 +451,21 @@ def server(
     skill_table: Annotated[
         Path | None, typer.Option(help="Skill table (TOML). Default: server/skills.toml in the data dir if present, else the shipped one.")
     ] = None,
+    phase_rules: Annotated[
+        Path | None, typer.Option(help="Phase rules (TOML). Default: server/phases.toml in the data dir if present, else the shipped one.")
+    ] = None,
 ) -> None:
     """Run the Factory server in the foreground."""
     import uvicorn
 
     sys.path.insert(0, str(PLUGIN_ROOT / "server"))
-    from factory_server import DEFAULT_SKILL_TABLE, GhCli, create_app
+    from factory_server import DEFAULT_PHASE_RULES, DEFAULT_SKILL_TABLE, GhCli, create_app
 
     db = db or data_dir() / "server" / "factory.db"
     db.parent.mkdir(parents=True, exist_ok=True)
-    # An edited copy in the data dir survives plugin updates; the shipped table is the fallback.
-    edited = data_dir() / "server" / "skills.toml"
-    skill_table = skill_table or (edited if edited.is_file() else DEFAULT_SKILL_TABLE)
-    typer.echo(f"Factory server on http://{host}:{port} (state in {db}, skill table {skill_table})")
-    app_ = create_app(db_path=db, github=GhCli(), clock=lambda: datetime.now(UTC), skill_table=skill_table)
+    skill_table = server_table(skill_table, "skills.toml", DEFAULT_SKILL_TABLE)
+    phase_rules = server_table(phase_rules, "phases.toml", DEFAULT_PHASE_RULES)
+    typer.echo(f"Factory server on http://{host}:{port} (state in {db}, skill table {skill_table}, Phase rules {phase_rules})")
+    app_ = create_app(db_path=db, github=GhCli(), clock=lambda: datetime.now(UTC), skill_table=skill_table,
+                      phase_rules_path=phase_rules)
     uvicorn.run(app_, host=host, port=port)

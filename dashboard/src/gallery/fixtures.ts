@@ -1,4 +1,7 @@
-import { specInitials, type FlowRow, type TimelineEntry, type GraphNodeInput, type NeedsYouCardProps } from "../ds";
+import {
+  specInitials, type FlowRow, type JobData, type MapData, type ReplayData, type ResearchData, type SpecStepData, type TimelineEntry,
+  type GraphNodeInput, type NeedsYouCardProps, type StepData, type StepDetailData, type ToSpecData, type ToTicketsData, type WayfinderData,
+} from "../ds";
 
 /** Fake data for the gallery only. */
 
@@ -79,3 +82,130 @@ export const adhocActions: TimelineEntry[] = [
   { at: at(1), text: "reading a/very/long/path/that/wraps/in/the/timeline/rather/than/overflowing/its/panel/at/narrow/widths.rs" },
   { at: at(0), text: "reading src/render/chunk.ts" },
 ];
+
+/** A Ticket Job's Step, struggling in Red, with every part of its detail known. */
+export const ticketStep: { step: StepData; detail: StepDetailData } = {
+  step: { number: 31, title: "Ticket Job Step detail", phase: "Red", phaseSince: at(23) },
+  detail: {
+    phaseEvents: [
+      { at: at(40), from: null, to: "Exploring" },
+      { at: at(30), from: "Exploring", to: "Red" },
+      { at: at(26), from: "Red", to: "Green" },
+      { at: at(23), from: "Green", to: "Red" },
+    ],
+    tests: {
+      last: "fail", passed: 31, failed: 2,
+      runs: ["pass", "fail", "fail", "fail", "fail"].map((result, i) => ({ at: at(20 - i), result: result as "pass" | "fail", passed: 31, failed: result === "fail" ? 2 : 0 })),
+    },
+    files: [
+      { path: "server/factory_server/step_detail.py", edits: 7 },
+      { path: "tests/server/test_step_detail.py", edits: 3 },
+    ],
+    commits: [
+      { sha: "77d3a90", message: "Step detail: Phase track and test pulse", files: 4, added: 158, deleted: 12 },
+      { sha: "1a7c0f2", message: "Fix review findings", files: 2, added: 14, deleted: 9 },
+    ],
+    pr: {
+      number: 52, url: "https://github.com/jeff/widgets/pull/52", draft: false,
+      checks: [{ name: "lint", status: "pass" }, { name: "pytest (ubuntu)", status: "fail" }, { name: "pytest (macos)", status: "pending" }, { name: "docs", status: "skipped" }],
+    },
+    review: { standards: 2, spec: 1, source: "report" },
+    checklist: [
+      { text: "Failing test: phase track", status: "completed" },
+      { text: "Make the tests pulse", status: "in_progress" },
+      { text: "Commits with diffstat", status: "pending" },
+    ],
+    struggle: { failures: 4, churn: ["server/factory_server/step_detail.py"], silentForS: null },
+  },
+};
+
+/** A Step just started: nothing known yet, and no todo tools. */
+export const freshStep: { step: StepData; detail: StepDetailData } = {
+  step: { number: 33, title: null, phase: null, phaseSince: at(1) },
+  detail: { phaseEvents: [], tests: null, files: [], commits: [], pr: null, review: null, checklist: null, struggle: { failures: null, churn: [], silentForS: 720 } },
+};
+
+/** A merged Ticket Job and its timeline, for the replay. */
+export const REPLAY_JOB: JobData = {
+  id: "21", sessionId: "7", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T15:30:00Z",
+  duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" },
+  stage: "Merged", branch: "ticket-29-job-edges", worktree: null, pr: { number: 48, url: "https://github.com/jeff/widgets/pull/48", draft: false },
+};
+
+const rev = (t: number, kind: string, text: string, phase: string | null = null) => ({
+  t, at: "", kind, text, step_id: phase ? "9" : null, phase,
+});
+
+export const REPLAY: ReplayData = {
+  job_id: "21",
+  started_at: "2026-10-26T15:30:00Z",
+  ended_at: "2026-10-26T15:42:00Z",
+  steps: [{ id: "9", number: 29, title: "Job edges, abandonment and the History list", phase: null }],
+  events: [
+    rev(0, "start", "Job started: #29"),
+    rev(12, "action", "reading server/factory_server/store.py"),
+    rev(40, "phase", "#29 Exploring", "Exploring"),
+    rev(95, "phase", "#29 Red", "Red"),
+    rev(130, "test_fail", "Tests fail: uv run pytest tests/server -q"),
+    rev(170, "needs", "Needs you: permission for Bash: rm -rf .venv"),
+    rev(230, "test_pass", "Tests pass: uv run pytest tests/server -q"),
+    rev(231, "phase", "#29 Green", "Green"),
+    rev(400, "review", "Review: code-review"),
+    rev(401, "phase", "#29 Reviewing", "Reviewing"),
+    rev(520, "commit", 'Commit: git commit -am "Job edges"'),
+    rev(521, "phase", "#29 Committed", "Committed"),
+    rev(600, "pr", "PR: https://github.com/jeff/widgets/pull/48"),
+    rev(720, "phase", "#29 Merged", "Merged"),
+    rev(720, "end", "Merged"),
+  ],
+};
+
+/** A Spec Job part-way through: Tickets merged, one in Red, one blocked, one not started. */
+export const SPEC_JOB: JobData = {
+  id: "30", sessionId: "9", machine: "wsl-desk", kind: "Spec Job", repo: "jeff/widgets", startedAt: at(90), duplicateOf: null,
+  number: 18, workItem: { name: "#18 The Factory", url: "https://github.com/jeff/widgets/issues/18" }, stage: "In progress",
+  branch: "worktree-spec-18-the-factory", worktree: "/home/jeff/widgets/.claude/worktrees/spec-18-the-factory",
+  pr: { number: 60, url: "https://github.com/jeff/widgets/pull/60", draft: true },
+};
+export const specSteps: SpecStepData[] = [
+  { id: "s24", number: 24, title: "Tracer bullet", phase: "Merged", phaseSince: at(70), blockedBy: [] },
+  { id: "s25", number: 25, title: "Install and status", phase: "Merged", phaseSince: at(50), blockedBy: [24] },
+  { id: "s28", number: 28, title: "Ticket Job: launch to Done", phase: "Red", phaseSince: at(9), blockedBy: [24] },
+  { id: "s30", number: 30, title: "Phases and the flow strip", phase: null, phaseSince: at(2), blockedBy: [25] },
+  { id: "s31", number: 31, title: "Step detail", phase: "Pending", phaseSince: at(90), blockedBy: [28, 30] },
+];
+export const specDetails: Record<string, StepDetailData> = { s28: { ...ticketStep.detail, pr: null, review: null } };
+
+/** A Map with Decision tickets closed, claimed by this session, and open. */
+export const MAP: MapData = {
+  repo: "jeff/widgets", number: 1, title: "Widget export", url: "https://github.com/jeff/widgets/issues/1",
+  destination: "A spec for exporting widgets to CSV and JSON.", fog: ["How exports are scheduled", "Retention of old exports"],
+  tickets: [
+    { number: 2, title: "Pick the export format", url: "#", state: "closed", type: "research", mode: "AFK", assignees: [], gist: "CSV first, JSON later", blockedBy: [] },
+    { number: 3, title: "Choose the columns", url: "#", state: "open", type: "grilling", mode: "HITL", assignees: ["jeffrichley"], gist: null, blockedBy: [2] },
+    { number: 4, title: "Prototype the download", url: "#", state: "open", type: "prototype", mode: "HITL", assignees: [], gist: null, blockedBy: [3] },
+  ],
+};
+export const wayfinderPlan: WayfinderData = {
+  sessionId: "10", map: 1, ticket: 3, questions: ["Column order", "Include archived widgets?"], created: [4], closed: [2],
+};
+
+export const research: ResearchData = {
+  sessionId: "11", question: "Can a hook see a test runner's exit code?",
+  searches: ["claude code hooks PostToolUseFailure exit code", "PostToolUse Bash tool_response fields"],
+  sources: ["https://docs.claude.com/en/docs/claude-code/hooks"],
+  findings: { path: "research/hook-exit-codes.md", url: "https://github.com/jeff/widgets/blob/main/research/hook-exit-codes.md" },
+};
+export const toSpec: ToSpecData = {
+  sessionId: "12", map: 1, spec: null,
+  outline: ["Problem Statement", "Solution", "User Stories", "Implementation Decisions", "Testing Decisions", "Out of Scope", "Further Notes"]
+    .map((section, i) => ({ section, written: i < 3 })),
+};
+export const toTickets: ToTicketsData = {
+  sessionId: "13", spec: 18,
+  tickets: [
+    { number: 24, title: "Tracer bullet", url: "#", state: "open", blockedBy: [] },
+    { number: 25, title: "Install and status", url: "#", state: "open", blockedBy: [24] },
+    { number: 26, title: null, url: "#", state: "open", blockedBy: [24] },
+  ],
+};
