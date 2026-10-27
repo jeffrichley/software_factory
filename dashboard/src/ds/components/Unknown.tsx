@@ -1,3 +1,4 @@
+import { formatDuration } from "../format";
 import { Icon } from "./Icon";
 import { Tag } from "./Tag";
 
@@ -23,12 +24,15 @@ export function UnknownPhaseTag() {
   return <Tag tone="unknown">Phase unknown</Tag>;
 }
 
-/** Why a Stale session's state can't be trusted. */
-export function StaleNote({ reason }: { reason: string }) {
+/** Why a Stale session's state can't be trusted; on a silent Machine, when it was last seen. */
+export function StaleNote({ reason, machine, silentForMs }: { reason: string; machine?: string; silentForMs?: number }) {
   return (
     <p className="stale-note">
       <Icon name="clock" />
-      <b>Stale</b> · {reason}
+      <span>
+        <b>Stale</b> · {reason}
+        {machine && silentForMs !== undefined ? ` — ${machine} last seen ${formatDuration(silentForMs)} ago` : null}
+      </span>
     </p>
   );
 }

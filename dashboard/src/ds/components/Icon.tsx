@@ -16,6 +16,8 @@ const PATHS = {
   play: <path d="M7 4.5v15l12-7.5-12-7.5z" fill="currentColor" />,
   pause: <><path d="M8 5v14" /><path d="M16 5v14" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+  "eye-off": <><path d="M3 3l18 18" /><path d="M10.6 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9" /><path d="M6.6 6.6A17 17 0 0 0 2 12s4 7 10 7a9.700 9.700 0 0 0 5.400-1.600" /><path d="M9.900 9.900a3 3 0 0 0 4.200 4.200" /></>,
+  eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>,
 } as const;
 
 export type IconName = keyof typeof PATHS;

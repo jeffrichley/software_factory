@@ -10,9 +10,9 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
-import { useMemo } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { formatDuration, phaseClass } from "../format";
-import { classifyGraph, layoutGraph, type EdgeKind, type GraphItem } from "../graph";
+import { classifyGraph, fitZoom, layoutGraph, type EdgeKind, type GraphItem } from "../graph";
 import { PENDING, type StepPhase } from "../types";
 import { PhaseTrack } from "./PhaseTrack";
 import { Tag } from "./Tag";
@@ -150,10 +150,28 @@ export interface GraphViewProps {
   label: string;
   /** Show the edge legend under the graph. */
   legend?: boolean;
+  /** Shrink a graph wider than its box to fit it; otherwise it is drawn 1:1 and scrolls sideways. */
+  fit?: boolean;
+}
+
+/** The width of an element's content box, kept current. */
+function useBoxWidth<E extends HTMLElement>(): [RefObject<E | null>, number] {
+  const ref = useRef<E>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
 }
 
 /** The one graph style: left→right; solid = resolved, dashed grey = waiting, dashed red = blocking, dashed blue + FRONTIER = takeable now. */
-export function GraphView({ items, fog = [], selectedId, onSelect, label, legend = true }: GraphViewProps) {
+export function GraphView({ items, fog = [], selectedId, onSelect, label, legend = true, fit = false }: GraphViewProps) {
+  const [box, boxWidth] = useBoxWidth<HTMLDivElement>();
   const { nodes, edges, width, height } = useMemo(() => {
     const { edges: ge, frontier } = classifyGraph(items);
     const size = items.reduce((s, n) => ({ width: Math.max(s.width, SIZE[n.body.kind].width), height: Math.max(s.height, SIZE[n.body.kind].height) }), { width: 0, height: 0 });
@@ -183,18 +201,20 @@ export function GraphView({ items, fog = [], selectedId, onSelect, label, legend
     const width = (fog.length ? maxX + FOG.gap + FOG.width : maxX) + 2 * PAD;
     return { nodes, edges, width, height: Math.max(maxY, fogH) + 2 * PAD };
   }, [items, fog, selectedId]);
+  const zoom = fit ? fitZoom(width, boxWidth) : 1;
 
   return (
     <div className="fgraph" role="group" aria-label={label}>
-      {/* Drawn 1:1 like variant E; a wide graph scrolls sideways instead of shrinking. */}
-      <div className="fgraph-scroll">
-        <div className="fgraph-canvas" style={{ width, height }}>
+      {/* Drawn 1:1 like variant E; a wide graph scrolls sideways inside its box unless fitted to it. */}
+      <div className="fgraph-scroll" ref={box}>
+        <div className="fgraph-canvas" style={{ width: width * zoom, height: height * zoom }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            defaultViewport={{ x: PAD, y: PAD, zoom: 1 }}
+            viewport={{ x: PAD * zoom, y: PAD * zoom, zoom }}
+            minZoom={0.05}
             panOnDrag={false}
             zoomOnPinch={false}
             zoomOnDoubleClick={false}

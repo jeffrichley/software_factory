@@ -3,15 +3,41 @@ import { formatClock, formatDuration } from "../format";
 import { isEnded, type JobData } from "../jobs";
 import { AD_HOC, type SessionState } from "../types";
 import { Icon } from "./Icon";
-import { WorkItemLink } from "./InboxCards";
+import { NeedsDetail, WorkItemLink, type NeedsDetailProps } from "./InboxCards";
 import { Tag } from "./Tag";
-import { Unknown } from "./Unknown";
+import { StaleNote, Unknown } from "./Unknown";
 import { NowLine } from "./NowLine";
 import { Eyebrow, Panel } from "./Panel";
-import { SkillNote } from "./SessionTable";
 import { StateBadge } from "./StateBadge";
 import { StepDetail, type StepData } from "./StepDetail";
 import type { StepDetailData } from "../stepDetail";
+
+/** A Tracked session as every view reads it. */
+export interface SessionData {
+  id: string;
+  machine: string;
+  repo: string;
+  state: SessionState;
+  /** Why a Stale session can't be trusted, e.g. "Machine silent". */
+  staleReason?: string;
+  /** ms a Working session has had no events of its own; none unless it is quiet ("Working · quiet 23m"). */
+  quietMs?: number;
+  /** Ticket Job, Spec Job, a planning kind (Wayfinder, to-spec, to-tickets, research) or ad hoc. */
+  kind: string;
+  /** The latest skill the skill table doesn't know, if any; an ad hoc session names it. */
+  unknownSkill: string | null;
+  /** The "now: …" headline; null until the session does something. */
+  now: string | null;
+  /** Done has been seen by the human. */
+  seen?: boolean;
+  /** ms the session has been in its state. */
+  inStateMs: number;
+}
+
+/** "running skill `<name>`": how an ad hoc session names a skill the Factory doesn't know. */
+export function SkillNote({ skill }: { skill: string }) {
+  return <span className="tsub">running skill <code className="mono">{skill}</code></span>;
+}
 
 export interface TimelineEntry {
   /** ISO time of the action. */
@@ -49,18 +75,35 @@ export interface SessionHeaderProps {
   now: string | null;
   /** The detail's title: the Work item, or what kind of session it is. */
   title: ReactNode;
+  /** Stale on a silent Machine: ms since the Machine was last seen. */
+  machineSilentForMs?: number;
+  /** Needs you only: what the centre's Needs you block shows. */
+  needs?: Omit<NeedsDetailProps, "waitingMs" | "machine">;
+  /** Buttons for the session itself (Hide / Show), beside the zoom crumbs. */
+  controls?: ReactNode;
 }
 
-/** The top of every session detail view: where it is, what it is, its state and headline. */
-export function SessionHeader(p: SessionHeaderProps) {
+/** The centre's Needs you block for a waiting session; nothing otherwise. */
+export function SessionNeeds({ state, needs, inStateMs, machine }: Pick<SessionHeaderProps, "state" | "needs" | "inStateMs" | "machine">) {
+  return state === "Needs you" && needs ? <NeedsDetail {...needs} waitingMs={inStateMs} machine={machine} /> : null;
+}
+
+/**
+ * The top of every session detail view: where it is, what it is, its state and headline; then, on a Stale session,
+ * why it can't be trusted and, on a waiting one (unless `needsElsewhere`), the Needs you block.
+ */
+export function SessionHeader({ needsElsewhere, ...p }: SessionHeaderProps & { needsElsewhere?: boolean }) {
   return (
     <>
-      <nav className="crumbs" aria-label="Zoom level">
-        <span>Overview</span><span aria-hidden="true">›</span>
-        <span className="mono">{p.machine}</span><span aria-hidden="true">›</span>
-        <span>{p.repo}</span><span aria-hidden="true">›</span>
-        <span className="cur">{p.kind} session</span>
-      </nav>
+      <div className="sd-top">
+        <nav className="crumbs" aria-label="Zoom level">
+          <span>Overview</span><span aria-hidden="true">›</span>
+          <span className="mono">{p.machine}</span><span aria-hidden="true">›</span>
+          <span>{p.repo}</span><span aria-hidden="true">›</span>
+          <span className="cur">{p.kind} session</span>
+        </nav>
+        {p.controls ? <div className="toolbar">{p.controls}</div> : null}
+      </div>
       <header className="sd-h">
         <Eyebrow>{p.kind}</Eyebrow>
         <h2>{p.title}</h2>
@@ -72,6 +115,8 @@ export function SessionHeader(p: SessionHeaderProps) {
         </div>
         <NowLine now={p.now} />
       </header>
+      {p.state === "Stale" ? <StaleNote reason={p.staleReason ?? "state can't be trusted"} machine={p.machineSilentForMs !== undefined ? p.machine : undefined} silentForMs={p.machineSilentForMs} /> : null}
+      {needsElsewhere ? null : <SessionNeeds {...p} />}
     </>
   );
 }
