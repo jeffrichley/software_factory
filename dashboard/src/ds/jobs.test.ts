@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentJob } from "./jobs";
+import { currentJob, historyOf, isEnded } from "./jobs";
 
 describe("currentJob", () => {
   it("is the session's latest started Job, by numeric id", () => {
@@ -13,5 +13,24 @@ describe("currentJob", () => {
 
   it("is null for a session with no Job", () => {
     expect(currentJob([{ id: "1", sessionId: "2" }], "1")).toBeNull();
+  });
+});
+
+describe("historyOf", () => {
+  it("is the Merged, Closed and Abandoned Jobs, latest started first", () => {
+    const jobs = [
+      { id: "1", stage: "Merged" },
+      { id: "2", stage: "PR open" },
+      { id: "3", stage: "Abandoned" },
+      { id: "10", stage: "Closed" },
+      { id: "11", stage: "In progress" },
+    ];
+    expect(historyOf(jobs).map((j) => j.id)).toEqual(["10", "3", "1"]);
+  });
+});
+
+describe("isEnded", () => {
+  it("is true only for the stages that move a Job to History", () => {
+    expect(["In progress", "PR open", "Merged", "Closed", "Abandoned"].map(isEnded)).toEqual([false, false, true, true, true]);
   });
 });

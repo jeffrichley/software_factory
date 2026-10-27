@@ -7,6 +7,8 @@ import {
   FlowStrip,
   HIDDEN_MACHINES_KEY,
   HiddenNeedsBadge,
+  HistoryCount,
+  HistoryList,
   Icon,
   Inbox,
   InboxHeader,
@@ -24,6 +26,7 @@ import {
   filterUrl,
   hiddenMachinesOf,
   currentJob,
+  historyOf,
   inboxOf,
   type JobData,
   newSounds,
@@ -82,6 +85,8 @@ interface FactoryState {
     stage: string;
     pr: { number: number | null; url: string; draft: boolean } | null;
     started_at: string;
+    /** The active Job already on its Work item when it started; flagged, not blocked. */
+    duplicate_of: string | null;
   }[];
   /** The latest sounds the server has played, one per transition; ids only grow. */
   sounds: { id: number; session_id: string; machine: string; sound: SoundName; at: string }[];
@@ -186,6 +191,7 @@ export function Dashboard() {
   const now = useNow(1000);
   const [selectedId, setSelectedId] = useState<string>();
   const [showHiddenSessions, setShowHiddenSessions] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const names = state?.machines.map((m) => m.machine) ?? [];
   const [hiddenMachines, setHiddenMachines] = useMachineFilter(names);
   const [soundOn, toggleSound] = useSoundOn();
@@ -206,9 +212,16 @@ export function Dashboard() {
   const setHidden = (id: string, hidden: boolean) =>
     void fetch(`/api/sessions/${id}/${hidden ? "hide" : "show"}`, { method: "POST" }).catch(() => {});
   const jobs: JobData[] = (state?.jobs ?? []).map((j) => ({
-    id: j.id, sessionId: j.session_id, kind: j.kind, number: j.number, stage: j.stage, branch: j.branch,
+    id: j.id, sessionId: j.session_id, kind: j.kind, repo: j.repo, startedAt: j.started_at, duplicateOf: j.duplicate_of,
+    number: j.number, stage: j.stage, branch: j.branch,
     worktree: j.worktree, pr: j.pr, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
   }));
+  const history = historyOf(jobs);
+  const abandon = (jobId: string) => {
+    if (window.confirm(`Mark Job ${jobId} abandoned? It moves to History.`)) {
+      void fetch(`/api/jobs/${jobId}/abandon`, { method: "POST" }).catch(() => {});
+    }
+  };
   const jobOf = (sessionId: string) => currentJob(jobs, sessionId);
   const workItemOf = (sessionId: string) => jobOf(sessionId)?.workItem ?? null;
 
@@ -238,6 +251,7 @@ export function Dashboard() {
           <HiddenNeedsBadge count={view.hiddenNeeds.length} onShow={() => showMachines(view.hiddenNeeds.map((s) => s.machine))} />
           <NeedsCount count={needs.length} />
           <DoneUnseenCount count={doneUnseen.length} />
+          <HistoryCount count={history.length} open={showHistory} onToggle={() => setShowHistory(!showHistory)} />
           <SoundToggle on={soundOn} onToggle={toggleSound} />
         </div>
       </TopBar>
@@ -286,6 +300,7 @@ export function Dashboard() {
           </Inbox>
         }
       >
+        {showHistory ? <HistoryList jobs={history} /> : null}
         {repos ? <FlowStrip rows={repos.map((r) => ({ repo: r.repo, chips: [] }))} /> : null}
         {state ? (
           <SessionTable
@@ -310,7 +325,9 @@ export function Dashboard() {
         ) : null}
         {/* Kinds without their own detail view yet show the ad hoc view, titled by their kind. */}
         {selected ? (
-          selected.kind === TICKET_JOB ? <TicketJobView {...selected} job={jobOf(selected.id)} /> : <AdHocView {...selected} />
+          selected.kind === TICKET_JOB ? (
+            <TicketJobView {...selected} job={jobOf(selected.id)} onAbandon={() => { const j = jobOf(selected.id); if (j) abandon(j.id); }} />
+          ) : <AdHocView {...selected} />
         ) : null}
       </Split>
     </>
