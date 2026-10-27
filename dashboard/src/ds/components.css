@@ -77,10 +77,6 @@ a { color: inherit; }
 .count-needs.hot { background: var(--needs); border-color: var(--needs); color: var(--needs-ink); }
 .count-needs.hot b { color: var(--needs-ink); }
 .count-hidden { border-color: var(--needs); color: var(--needs-fg); cursor: pointer; }
-.count-sound { margin-left: auto; cursor: pointer; color: var(--text); }
-.count-sound.off { color: var(--text-2); border-style: dashed; }
-.count-history { cursor: pointer; }
-.count-history.on { border-color: var(--text); background: var(--surface-3); }
 
 /* ---------- State chip (flow strip) ---------- */
 .fchip { position: relative; overflow: hidden; display: flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; max-width: 100%; height: var(--chip-h); padding: 0 8px;
@@ -279,6 +275,11 @@ a { color: inherit; }
 .brand-mark { position: relative; width: 22px; height: 22px; border: 2px solid var(--text); border-radius: var(--r-badge); }
 .brand-mark::after { content: ""; position: absolute; inset: 4px; background: var(--needs); }
 .counts { display: flex; align-items: center; gap: var(--s2); margin-left: auto; flex-shrink: 0; }
+.top > .btn { flex-shrink: 0; white-space: nowrap; }
+.btn-count { font: 700 var(--fs-sm)/1 var(--font-mono); color: var(--text-2); }
+.btn-sound.off { color: var(--text-2); border-style: dashed; }
+.clock { font: 500 var(--fs-md)/1 var(--font-mono); color: var(--text-2); min-width: 76px; text-align: right; flex-shrink: 0; }
+@media (max-width: 1440px) { .top .clock { display: none; } }
 /* Phone width: the header wraps (brand and counts, then the Machine pills scrolling sideways) instead of overflowing. */
 @media (max-width: 900px) {
   .top { position: static; flex-wrap: wrap; height: auto; gap: var(--s2) var(--s4); padding: var(--s2) var(--s4); }

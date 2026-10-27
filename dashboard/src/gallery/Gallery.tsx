@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   AdHocView,
+  Clock,
   AD_HOC,
   DoneCard,
   DoneUnseenCount,
@@ -226,13 +227,20 @@ export function Gallery() {
           </div>
         </Section>
 
-        <Section id="topbar" title="Top bar" note="Machine pills and the header's counts. There is no session table (as in variant E): sessions are reached through the flow strip, the inbox and the default selection.">
+        <Section id="topbar" title="Top bar" note="Machine pills, the header's counts, the History button (with how many Jobs ended), the sound on/off toggle and the clock (hidden below 1440px, as in variant E). There is no session table (as in variant E): sessions are reached through the flow strip, the inbox and the default selection.">
           <TopBar>
             <MachinePills>
               <MachinePill name="mac-studio" sessions={5} />
               <MachinePill name="wsl-desk" sessions={3} />
               <MachinePill name="mbp-travel" sessions={2} silentForMs={14 * 60_000} />
             </MachinePills>
+            <div className="counts">
+              <NeedsCount count={2} />
+              <DoneUnseenCount count={1} />
+            </div>
+            <HistoryCount count={3} open={false} onToggle={() => {}} />
+            <SoundToggle on onToggle={() => {}} />
+            <Clock now={new Date(2026, 9, 26, 14, 32, 7).getTime()} />
           </TopBar>
         </Section>
 
@@ -360,6 +368,7 @@ export function Gallery() {
           <div className="g-row">
             <HistoryCount count={3} open={historyOpen} onToggle={() => setHistoryOpen(!historyOpen)} />
             <HistoryCount count={0} open={false} onToggle={() => {}} />
+            <Clock now={new Date(2026, 9, 26, 9, 5, 7).getTime()} />
           </div>
           <HistoryList
             nowMs={GALLERY_NOW}
