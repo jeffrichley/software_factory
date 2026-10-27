@@ -119,6 +119,18 @@ CREATE TABLE IF NOT EXISTS steps (
   phase_since TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS steps_by_job ON steps (job_id, id);
+-- A Job's timeline for its History replay, kept for good: kind is start, phase (step_id, phase), action,
+-- test_pass, test_fail, commit, review, needs, pr or end.
+CREATE TABLE IF NOT EXISTS job_events (
+  id INTEGER PRIMARY KEY,
+  job_id INTEGER NOT NULL REFERENCES jobs (id),
+  at TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL,
+  step_id INTEGER,
+  phase TEXT
+);
+CREATE INDEX IF NOT EXISTS job_events_by_job ON job_events (job_id, id);
 -- The Step each subagent of a Spec Job works, by the subagent's agent_id.
 CREATE TABLE IF NOT EXISTS step_agents (
   job_id INTEGER NOT NULL REFERENCES jobs (id),
@@ -177,6 +189,10 @@ WORK_ITEM_COLUMNS = {
 JOB_COLUMNS = {
     "abandoned_at": "TEXT",  # when the human abandoned the Job on the dashboard
     "duplicate_of": "INTEGER",  # the active Job already on its Work item when it started (or learnt it): flagged, not blocked
+    "ended_at": "TEXT",  # when the Job was first seen Merged, Closed or Abandoned: its replay ends there
+}
+STEP_COLUMNS = {
+    "first_phase": "TEXT",  # the Phase it was added in (Pending, or NULL = unknown): where its replay starts
 }
 PULL_REQUEST_COLUMNS = {
     "closes": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues its body closes
@@ -188,6 +204,24 @@ KEEP_SOUNDS = 20
 
 # The `subagent` value for the main session itself.
 MAIN = ""
+
+
+def reason_text(reason: dict | None) -> str:
+    """Why a session Needs you, in a few words for a replay."""
+    match reason or {}:
+        case {"kind": "permission", "tool": tool, "command": command}:
+            return f"permission for {tool}: {command}"
+        case {"kind": "question", "text": text}:
+            return f"question: {text}"
+        case {"kind": "hitl", "ticket": ticket}:
+            return f"HITL ticket {ticket}"
+        case {"kind": "escalation", "reason": why}:
+            return f"escalation: {why}"
+        case {"kind": "error", "type": kind}:
+            return f"stopped on error: {kind}"
+        case {"kind": "no-pr"}:
+            return "ended without a PR"
+    return "unknown"
 
 
 def iso(t: datetime) -> str:
@@ -213,7 +247,7 @@ class Store:
         self.db.executescript(SCHEMA)
         with self.db:
             for table, columns in (("sessions", SESSION_COLUMNS), ("work_items", WORK_ITEM_COLUMNS),
-                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS)):
+                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS), ("steps", STEP_COLUMNS)):
                 have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
                 for column, decl in columns.items():
                     if column not in have:
@@ -278,8 +312,12 @@ class Store:
 
     @locked
     def record_action(self, session_id: int, text: str, now: datetime) -> None:
-        """The session's headline is now `text`; it joins the timeline, which keeps the last few."""
+        """The session's headline is now `text`; it joins the timeline, which keeps the last few, and the
+        replay of the session's current Job, which keeps them all."""
         with self.db:
+            job = self.db.execute("SELECT id FROM jobs WHERE session_id = ? ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+            if job:
+                self._job_event(job["id"], now, "action", text)
             self.db.execute("UPDATE sessions SET headline = ? WHERE id = ?", (text, session_id))
             self.db.execute("INSERT INTO actions (session_id, at, text) VALUES (?, ?, ?)", (session_id, iso(now), text))
             self.db.execute(
@@ -413,6 +451,7 @@ class Store:
         prompt = self.db.execute(
             "SELECT reason FROM prompts WHERE session_id = ? ORDER BY id LIMIT 1", (session_id,)
         ).fetchone()
+        was = self.db.execute("SELECT state FROM sessions WHERE id = ?", (session_id,)).fetchone()["state"]
         with self.db:
             if prompt:
                 self.db.execute(
@@ -428,6 +467,10 @@ class Store:
                     " state = base, reason = base_reason WHERE id = ?",
                     (iso(now), session_id),
                 )
+            row = self.db.execute("SELECT state, reason FROM sessions WHERE id = ?", (session_id,)).fetchone()
+            job = self.db.execute("SELECT id FROM jobs WHERE session_id = ? ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+            if job and was != "Needs you" and row["state"] == "Needs you":
+                self._job_event(job["id"], now, "needs", f"Needs you: {reason_text(json.loads(row['reason'] or 'null'))}")
 
     # ---------- Sounds (rules in sounds.py) ----------
 
@@ -609,7 +652,15 @@ class Store:
                 (session_id, kind, repo, number, iso(now)),
             ).lastrowid
             self._flag_duplicate(job_id)
+            self._job_event(job_id, now, "start", "Job started" + (f": #{number}" if number is not None else ""))
             return job_id
+
+    def _job_event(self, job_id: int, now: datetime, kind: str, text: str, step_id: int | None = None,
+                   phase: str | None = None) -> None:
+        self.db.execute(
+            "INSERT INTO job_events (job_id, at, kind, text, step_id, phase) VALUES (?, ?, ?, ?, ?, ?)",
+            (job_id, iso(now), kind, text, step_id, phase),
+        )
 
     def _flag_duplicate(self, job_id: int) -> None:
         """Flag the Job a duplicate of the earliest other active Job (any session, any Machine) on its Work item."""
@@ -658,8 +709,8 @@ class Store:
         """A Step of the Job, its Phase unknown unless given."""
         with self.db:
             return self.db.execute(
-                "INSERT INTO steps (job_id, number, phase, phase_since) VALUES (?, ?, ?, ?)",
-                (job_id, number, phase, iso(now)),
+                "INSERT INTO steps (job_id, number, phase, first_phase, phase_since) VALUES (?, ?, ?, ?, ?)",
+                (job_id, number, phase, phase, iso(now)),
             ).lastrowid
 
     @locked
@@ -712,7 +763,13 @@ class Store:
 
     @locked
     def set_phase(self, step_id: int, phase: str, now: datetime) -> None:
+        """The Step's Phase; a change joins its Job's replay."""
         with self.db:
+            step = self.db.execute("SELECT job_id, number, phase FROM steps WHERE id = ?", (step_id,)).fetchone()
+            if step and step["phase"] != phase:
+                ticket = f"#{step['number']} " if step["number"] is not None else ""
+                text = phase if phase is not None else "started: Phase unknown"
+                self._job_event(step["job_id"], now, "phase", f"{ticket}{text}", step_id, phase)
             self.db.execute(
                 "UPDATE steps SET phase_since = CASE WHEN phase IS ? THEN phase_since ELSE ? END, phase = ? WHERE id = ?",
                 (phase, iso(now), phase, step_id),
@@ -808,16 +865,16 @@ class Store:
 
     @locked
     def jobs(self) -> list[dict]:
-        """Jobs in repos some Machine tracks, oldest first, with their Work item, PR and stage."""
+        """Jobs in repos some Machine tracks, oldest first, with their Machine, Work item, PR and stage."""
         rows = self.db.execute(
-            "SELECT j.*, w.title, w.url FROM jobs j LEFT JOIN work_items w ON w.repo = j.repo AND w.number = j.number"
-            " WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY j.id"
+            "SELECT j.*, w.title, w.url, s.machine FROM jobs j JOIN sessions s ON s.id = j.session_id"
+            " LEFT JOIN work_items w ON w.repo = j.repo AND w.number = j.number WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY j.id"
         ).fetchall()
         out = []
         for j in rows:
             pr = self._job_pr(j)
             out.append({
-                "id": str(j["id"]), "session_id": str(j["session_id"]), "kind": j["kind"], "repo": j["repo"],
+                "id": str(j["id"]), "session_id": str(j["session_id"]), "machine": j["machine"], "kind": j["kind"], "repo": j["repo"],
                 "number": j["number"],
                 "work_item": {"title": j["title"], "url": j["url"]} if j["title"] is not None else None,
                 "worktree": j["worktree"], "branch": j["branch"],
@@ -897,3 +954,57 @@ class Store:
             out.append({"repo": m["repo"], "number": m["number"], "title": m["title"], "url": m["url"], "state": m["state"],
                         "destination": body.get("destination"), "fog": body.get("fog", []), "tickets": tickets})
         return out
+
+    @locked
+    def chronicle_job(self, job_id: int, now: datetime) -> None:
+        """Its non-draft PR, the first time it is known, and its end, the first time it is seen, join the Job's replay."""
+        with self.db:
+            job = self.db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            pr = self._job_pr(job)
+            if pr and not pr["draft"] and not self.db.execute(
+                "SELECT 1 FROM job_events WHERE job_id = ? AND kind = 'pr' AND text = ?", (job_id, f"PR: {pr['url']}")
+            ).fetchone():
+                self._job_event(job_id, now, "pr", f"PR: {pr['url']}")
+            stage = self._stage(job, pr)
+            if stage in ENDED and job["ended_at"] is None:
+                self.db.execute("UPDATE jobs SET ended_at = ? WHERE id = ?", (iso(now), job_id))
+                self._job_event(job_id, now, "end", stage)
+
+    @locked
+    def repo_jobs(self, repo: str) -> list[int]:
+        return [r["id"] for r in self.db.execute("SELECT id FROM jobs WHERE repo = ? ORDER BY id", (repo,))]
+
+    @locked
+    def record_job_event(self, job_id: int, now: datetime, kind: str, text: str) -> None:
+        with self.db:
+            self._job_event(job_id, now, kind, text)
+
+    @locked
+    def job_replay(self, job_id: int) -> dict | None:
+        """The Job's timeline for its History replay: its Steps and every event, oldest first; None if no such Job."""
+        job = self.db.execute("SELECT started_at, ended_at FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if job is None:
+            return None
+        start = datetime.fromisoformat(job["started_at"])
+        steps = self.db.execute(
+            "SELECT s.id, s.number, w.title, s.first_phase FROM steps s JOIN jobs j ON j.id = s.job_id"
+            " LEFT JOIN work_items w ON w.repo = j.repo AND w.number = s.number WHERE s.job_id = ? ORDER BY s.id",
+            (job_id,),
+        ).fetchall()
+        rows = self.db.execute("SELECT * FROM job_events WHERE job_id = ? ORDER BY id", (job_id,)).fetchall()
+        return {
+            "job_id": str(job_id),
+            "started_at": job["started_at"],
+            "ended_at": job["ended_at"],
+            "steps": [
+                {"id": str(s["id"]), "number": s["number"], "title": s["title"], "phase": s["first_phase"]} for s in steps
+            ],
+            "events": [
+                {
+                    "t": round((datetime.fromisoformat(e["at"]) - start).total_seconds()), "at": e["at"],
+                    "kind": e["kind"], "text": e["text"],
+                    "step_id": None if e["step_id"] is None else str(e["step_id"]), "phase": e["phase"],
+                }
+                for e in rows
+            ],
+        }

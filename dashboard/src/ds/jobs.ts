@@ -5,6 +5,8 @@ export const ENDED_STAGES = ["Merged", "Closed", "Abandoned"] as const;
 export interface JobData {
   id: string;
   sessionId: string;
+  /** The Machine its session runs on. */
+  machine: string;
   kind: string;
   repo: string;
   /** ISO time the Job started. */
@@ -28,9 +30,11 @@ export function isEnded(stage: string): boolean {
   return (ENDED_STAGES as readonly string[]).includes(stage);
 }
 
-/** History: the Jobs that have ended, latest started first (ids grow). */
-export function historyOf<J extends { id: string; stage: string }>(jobs: J[]): J[] {
-  return jobs.filter((j) => isEnded(j.stage)).sort((a, b) => Number(b.id) - Number(a.id));
+/** History: the Jobs that have ended, latest started first (ids grow), leaving out those on hidden Machines. */
+export function historyOf<J extends { id: string; stage: string; machine?: string }>(jobs: J[], hiddenMachines: string[] = []): J[] {
+  return jobs
+    .filter((j) => isEnded(j.stage) && !(j.machine !== undefined && hiddenMachines.includes(j.machine)))
+    .sort((a, b) => Number(b.id) - Number(a.id));
 }
 
 /** A session's current Job: the one started last (ids grow), or null when it has none. */
