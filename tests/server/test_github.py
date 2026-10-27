@@ -1,101 +1,14 @@
 """Seam 1: the GitHub poller and Work item kinds, with GitHub (`gh api`) and the clock faked."""
 
 import json
-import re
 import sys
 import time
-from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import SPEC_BODY, install, issue, poll, uninstall
 from factory_server import GhCli, create_app
-
-
-class FakeClock:
-    def __init__(self) -> None:
-        self.now = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
-
-    def __call__(self) -> datetime:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += timedelta(seconds=seconds)
-
-
-class FakeGitHub:
-    """Serves each repo's issues (and PRs, which GitHub lists as issues) a page at a time, each PR's head and its
-    CI check runs, and records every read."""
-
-    def __init__(self) -> None:
-        self.issues: dict[str, list[dict]] = {}
-        # Each PR's head commit is `head-<n>`; its check runs, by (repo, head sha), as the checks API lists them.
-        self.check_runs: dict[tuple[str, str], list[dict]] = {}
-        self.reads: list[str] = []
-        self.down = False
-
-    def api(self, path: str):
-        self.reads.append(path)
-        if self.down:
-            raise RuntimeError("gh: could not reach api.github.com")
-        if m := re.fullmatch(r"repos/([^/]+/[^/]+)/pulls/(\d+)", path):
-            return {"number": int(m[2]), "head": {"sha": f"head-{m[2]}"}}
-        if m := re.fullmatch(r"repos/([^/]+/[^/]+)/commits/([^/]+)/check-runs\?per_page=100", path):
-            runs = self.check_runs.get((m[1], m[2]), [])
-            return {"total_count": len(runs), "check_runs": runs}
-        m = re.fullmatch(r"repos/([^/]+/[^/?]+)/issues\?state=all&per_page=(\d+)&page=(\d+)", path)
-        if not m:
-            raise AssertionError(f"unexpected GitHub read: {path}")
-        repo, per_page, page = m[1], int(m[2]), int(m[3])
-        return self.issues.get(repo, [])[(page - 1) * per_page : page * per_page]
-
-
-def issue(number: int, title: str = "", labels: tuple[str, ...] = (), parent: int | None = None, body: str = "",
-          state: str = "open", sub_issues: int = 0, repo: str = "jeff/widgets") -> dict:
-    """An issue as GitHub's issue list returns it (only the fields the Factory reads)."""
-    return {
-        "number": number,
-        "title": title or f"Issue {number}",
-        "state": state,
-        "html_url": f"https://github.com/{repo}/issues/{number}",
-        "labels": [{"name": name} for name in labels],
-        "body": body,
-        "parent_issue_url": None if parent is None else f"https://api.github.com/repos/{repo}/issues/{parent}",
-        "sub_issues_summary": {"total": sub_issues, "completed": 0, "percent_completed": 0},
-    }
-
-
-@pytest.fixture
-def clock() -> FakeClock:
-    return FakeClock()
-
-
-@pytest.fixture
-def github() -> FakeGitHub:
-    return FakeGitHub()
-
-
-@pytest.fixture
-def client(tmp_path, clock, github) -> TestClient:
-    return TestClient(create_app(db_path=tmp_path / "factory.db", github=github, clock=clock))
-
-
-def poll(client: TestClient) -> None:
-    """What the server's background loop does every few seconds: poll each Tracked repo that is due."""
-    client.app.state.poll_once()
-
-
-def tracking(client, name: str, machine: str = "wsl", repo: str = "jeff/widgets") -> None:
-    event = {"hook_event_name": name}
-    client.post("/api/events", json={"machine": machine, "repo": repo, "repo_path": "/r", "event": event})
-
-
-def install(client, machine: str = "wsl", repo: str = "jeff/widgets") -> None:
-    tracking(client, "repo_installed", machine, repo)
-
-
-def uninstall(client, machine: str = "wsl", repo: str = "jeff/widgets") -> None:
-    tracking(client, "repo_uninstalled", machine, repo)
 
 
 def test_a_tracked_repos_issues_appear_after_a_poll(client, github):
@@ -204,9 +117,6 @@ def sse_states(lines):
 
 def kinds(client) -> dict[int, str | None]:
     return {w["number"]: w["kind"] for w in client.get("/api/state").json()["work_items"]}
-
-
-SPEC_BODY = "## Problem Statement\n\nIt hurts.\n\n## Solution\n\nFix it.\n\n## User Stories\n\n1. As the human...\n"
 
 
 def test_work_item_kinds_come_from_github_structure(client, github):

@@ -2,59 +2,7 @@
 
 import pytest
 
-from test_github import SPEC_BODY, client, clock, github, install, issue, poll  # noqa: F401 - shared fixtures
-
-REPO_PATH = "/home/jeff/widgets"
-
-
-def hook(client, name: str, session: str = "cc-1", cwd: str = REPO_PATH, **fields) -> dict:
-    event = {"hook_event_name": name, "session_id": session, "cwd": cwd, **fields}
-    reply = client.post("/api/events", json={"machine": "wsl", "repo": "jeff/widgets", "repo_path": REPO_PATH, "event": event})
-    assert reply.status_code == 200
-    return reply.json()
-
-
-def implement(client, args: str, **over) -> dict:
-    """The human typed `/implement <args>`."""
-    return hook(client, "UserPromptExpansion", expansion_type="slash_command", command_name="implement",
-                command_args=args, command_source="plugin", prompt=f"/implement {args}".strip(), **over)
-
-
-def report(client, name: str, job_id: str, **fields):
-    """A `factory` self-report, sent through the same event path as hook events."""
-    event = {"hook_event_name": name, "job_id": job_id, **fields}
-    return client.post("/api/events", json={"machine": "wsl", "repo": "jeff/widgets", "repo_path": REPO_PATH, "event": event})
-
-
-def report_pr(client, job_id: str, number: int = 50):
-    return report(client, "report_pr", job_id, url=f"https://github.com/jeff/widgets/pull/{number}")
-
-
-def pr(number: int, closes: int, draft: bool = False, state: str = "open") -> dict:
-    """A PR as GitHub's issue list returns it."""
-    return {
-        **issue(number, body=f"Adds the thing.\n\nCloses #{closes}\n", state=state),
-        "html_url": f"https://github.com/jeff/widgets/pull/{number}",
-        "draft": draft,
-        "pull_request": {"merged_at": None},
-    }
-
-
-def jobs(client) -> list[dict]:
-    return client.get("/api/state").json()["jobs"]
-
-
-def session(client) -> dict:
-    [row] = client.get("/api/state").json()["sessions"]
-    return row
-
-
-@pytest.fixture
-def ticket(client, github):
-    """Ticket #5 of Spec #4, polled."""
-    github.issues["jeff/widgets"] = [issue(4, "Widgets", body=SPEC_BODY), issue(5, "Add the widget API!", parent=4)]
-    install(client)
-    poll(client)
+from conftest import REPO_PATH, hook, implement, jobs, poll, pr, report, report_pr, session
 
 
 def test_implement_with_a_ticket_starts_a_ticket_job_and_injects_how_to_work_it(client, ticket):

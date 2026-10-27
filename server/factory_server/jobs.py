@@ -27,6 +27,26 @@ def tickets_named(text: str, repo: str) -> list[int]:
     return [int(m[1] or m[2]) for m in ref.finditer(text)]
 
 
+# `git [-C <dir>] merge [options] <refs>`: where it ran, and what it merged.
+GIT_MERGE = re.compile(r"\bgit\s+(?:-C\s+(\S+)\s+)?merge(?![-\w])([^;&|]*)")
+
+
+def merge_of(command: str, cwd: str | None) -> tuple[str | None, list[str]] | None:
+    """A `git merge` command's working directory (its -C, else the cwd) and the refs it merges; None if it isn't one."""
+    m = GIT_MERGE.search(command)
+    if not m:
+        return None
+    where = m[1].strip("'\"") if m[1] else cwd
+    if where and cwd and not where.startswith(("/", "\\")) and not re.match(r"[A-Za-z]:", where):
+        where = f"{cwd.rstrip('/')}/{where}"
+    return where, [t for t in m[2].split() if not t.startswith("-")]
+
+
+def is_agent_worktree(worktree: str | None) -> bool:
+    """An isolated subagent's own worktree (`.claude/worktrees/agent-<agentId>`), on a branch of its own."""
+    return bool(worktree and re.search(r"/\.claude/worktrees/agent-[^/]+$", worktree))
+
+
 def spec_step_start(job_id: str) -> str:
     """The context injected into a Spec Job's subagent the Factory couldn't tie to a Ticket from its launch."""
     return (f"The Factory tracks Spec Job {job_id}. If you are implementing or merging one of its Tickets, first run "

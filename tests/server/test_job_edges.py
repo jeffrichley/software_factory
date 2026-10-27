@@ -1,7 +1,6 @@
 """Seam 1: how Jobs end, and their edges (escalation, duplicates, rework), through the Factory server's HTTP API."""
 
-from test_github import SPEC_BODY, client, clock, github, install, issue, poll  # noqa: F401 - shared fixtures
-from test_ticket_job import hook, implement, jobs, pr, report, report_pr, session, ticket  # noqa: F401
+from conftest import SPEC_BODY, hook, implement, issue, jobs, poll, pr, report, report_pr, session
 
 
 def escalate(client, job_id: str, reason: str):
@@ -164,6 +163,30 @@ def test_a_second_job_on_a_ticket_with_an_active_job_is_flagged_duplicate_not_bl
     assert "duplicate" in second["inject"] and f"Job {first['job_id']}" in second["inject"]
     assert "duplicate" not in first["inject"]
     assert "EnterWorktree" in second["inject"]  # still told how to work it
+
+
+def test_a_polled_pr_closing_the_ticket_is_the_original_jobs_not_its_duplicates(client, ticket, github, clock):
+    first = implement(client, "#5")["job_id"]
+    implement_on(client, "mac", "cc-9", "#5")
+
+    github.issues["jeff/widgets"].append(pr(51, closes=5))
+    clock.advance(60)
+    poll(client)
+
+    assert [(j["id"] == first, j["stage"], j["pr"] and j["pr"]["number"]) for j in jobs(client)] == [
+        (True, "PR open", 51), (False, "In progress", None)]
+
+
+def test_a_pr_one_job_reported_is_never_borrowed_by_another_job_on_the_ticket(client, ticket, github, clock):
+    implement(client, "#5")
+    second = implement_on(client, "mac", "cc-9", "#5")["job_id"]
+    report_pr(client, second, 51)
+
+    github.issues["jeff/widgets"].append(pr(51, closes=5))
+    clock.advance(60)
+    poll(client)
+
+    assert [(j["stage"], j["pr"] and j["pr"]["number"]) for j in jobs(client)] == [("In progress", None), ("PR open", 51)]
 
 
 def test_a_job_on_a_ticket_whose_earlier_job_ended_is_not_a_duplicate(client, ticket):

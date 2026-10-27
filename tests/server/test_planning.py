@@ -2,10 +2,7 @@
 
 import pytest
 
-from test_github import client, clock, install, issue, poll  # noqa: F401 - shared fixtures
-from test_spec_job import DependencyGitHub, tool
-from test_ticket_job import REPO_PATH, hook
-from test_wayfinder import gh
+from conftest import REPO_PATH, DependencyGitHub, gh, hook, install, issue, poll, tool
 
 QUESTION = "Can a hook see a test runner's exit code?"
 

@@ -9,7 +9,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from .jobs import ENDED, stage_of
+from .jobs import ENDED, SPEC_JOB, stage_of
 from .step_detail import CHURN_EDITS, KEEP_RUNS, struggle_of
 from .skills import AD_HOC
 from .wayfinder import mode_of
@@ -196,8 +196,8 @@ CREATE TABLE IF NOT EXISTS wayfinder (
   ticket INTEGER,
   questions TEXT NOT NULL DEFAULT '[]'
 );
--- The tickets a Wayfinder session created or closed, in order.
-CREATE TABLE IF NOT EXISTS wayfinder_tickets (
+-- The Decision tickets a Wayfinder session created or closed, in order.
+CREATE TABLE IF NOT EXISTS decision_tickets (
   id INTEGER PRIMARY KEY,
   session_id INTEGER NOT NULL REFERENCES sessions (id),
   number INTEGER NOT NULL,
@@ -302,6 +302,9 @@ class Store:
         self.lock = threading.RLock()
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        tables = {r["name"] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "wayfinder_tickets" in tables and "decision_tickets" not in tables:  # its name before the glossary's
+            self.db.execute("ALTER TABLE wayfinder_tickets RENAME TO decision_tickets")
         self.db.executescript(SCHEMA)
         with self.db:
             for table, columns in (("sessions", SESSION_COLUMNS), ("work_items", WORK_ITEM_COLUMNS),
@@ -444,6 +447,15 @@ class Store:
     def close_tool_use(self, session_id: int, tool_use_id: str) -> None:
         with self.db:
             self.db.execute("DELETE FROM tool_uses WHERE session_id = ? AND tool_use_id = ?", (session_id, tool_use_id))
+
+    @locked
+    def open_calls(self, session_id: int, tool_name: str) -> list[dict]:
+        """The inputs of the main session's calls to that tool still awaiting their PostToolUse."""
+        rows = self.db.execute(
+            "SELECT tool_input FROM tool_uses WHERE session_id = ? AND subagent = ? AND tool_name = ? ORDER BY rowid",
+            (session_id, MAIN, tool_name),
+        )
+        return [json.loads(r["tool_input"]) for r in rows]
 
     @locked
     def find_tool_use(self, session_id: int, subagent: str, tool_name: str, tool_input: dict) -> str | None:
@@ -650,7 +662,7 @@ class Store:
                 [{**pull, "repo": repo, "closes": json.dumps(pull.get("closes", []))} for pull in pulls],
             )
             # A PR the poll found for a Job stays the Job's, so its closing or merging ends the Job.
-            for job in self.db.execute("SELECT * FROM jobs WHERE repo = ? AND pr_url IS NULL", (repo,)).fetchall():
+            for job in self.db.execute("SELECT * FROM jobs WHERE repo = ? AND pr_url IS NULL ORDER BY id", (repo,)).fetchall():
                 if pr := self._job_pr(job):
                     self.db.execute("UPDATE jobs SET pr_url = ? WHERE id = ?", (pr["url"], job["id"]))
 
@@ -810,8 +822,13 @@ class Store:
         return row["step_id"] if row else None
 
     @locked
-    def step_number(self, step_id: int) -> int | None:
-        row = self.db.execute("SELECT number FROM steps WHERE id = ?", (step_id,)).fetchone()
+    def spec_step_ticket(self, step_id: int | None) -> int | None:
+        """The Ticket a Spec Job's Step works, which what its subagent raises names; None for a Ticket Job's Step."""
+        if step_id is None:
+            return None
+        row = self.db.execute(
+            "SELECT s.number FROM steps s JOIN jobs j ON j.id = s.job_id WHERE s.id = ? AND j.kind = ?", (step_id, SPEC_JOB)
+        ).fetchone()
         return row["number"] if row else None
 
     @locked
@@ -872,6 +889,12 @@ class Store:
             )
 
     @locked
+    def job_tree(self, job_id: int) -> tuple[str | None, str | None]:
+        """Where the Job works: its worktree and branch, each None while unknown."""
+        row = self.db.execute("SELECT worktree, branch FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return (row["worktree"], row["branch"]) if row else (None, None)
+
+    @locked
     def set_job_pr(self, job_id: int, url: str) -> None:
         with self.db:
             self.db.execute("UPDATE jobs SET pr_url = ? WHERE id = ?", (url, job_id))
@@ -883,23 +906,34 @@ class Store:
 
     def _job_pr(self, job: sqlite3.Row) -> dict | None:
         """The Job's PR: the one it reported (as the poll knows it, if it does), else an open or merged PR
-        closing its Work item or one of its Steps' Tickets (a Spec Job's PR may close only the Tickets). A reported
+        closing its Work item or one of its Steps' Tickets (a Spec Job's PR may close only the Tickets) that no
+        other Job has, unless the Job is a duplicate of one still going. A reported
         PR the poll hasn't seen yet counts as non-draft, as the Job was told."""
         pulls = self.db.execute(
             "SELECT number, url, draft, state, closes FROM pull_requests WHERE repo = ? ORDER BY number DESC", (job["repo"],)
         ).fetchall()
         found = next((p for p in pulls if p["url"] == job["pr_url"]), None)
-        if found is None and job["pr_url"] is None and job["number"] is not None:
+        if found is None and job["pr_url"] is None and job["number"] is not None and not self._original_active(job):
             items = {job["number"]} | {
                 r["number"] for r in self.db.execute("SELECT number FROM steps WHERE job_id = ? AND number IS NOT NULL", (job["id"],))
             }
-            found = next((p for p in pulls if p["state"] != "closed" and items & set(json.loads(p["closes"]))), None)
+            claimed = {r["pr_url"] for r in self.db.execute(
+                "SELECT pr_url FROM jobs WHERE repo = ? AND id != ? AND pr_url IS NOT NULL", (job["repo"], job["id"]))}
+            found = next((p for p in pulls if p["state"] != "closed" and p["url"] not in claimed
+                          and items & set(json.loads(p["closes"]))), None)
         if found is not None:
             return {"number": found["number"], "url": found["url"], "draft": bool(found["draft"]), "state": found["state"]}
         if job["pr_url"]:
             m = re.search(r"/pull/(\d+)", job["pr_url"])
             return {"number": int(m[1]) if m else None, "url": job["pr_url"], "draft": False, "state": "open"}
         return None
+
+    def _original_active(self, job: sqlite3.Row) -> bool:
+        """Whether the Job is a duplicate whose original is still going: a PR closing their Work item is the original's."""
+        if job["duplicate_of"] is None:
+            return False
+        original = self.db.execute("SELECT * FROM jobs WHERE id = ?", (job["duplicate_of"],)).fetchone()
+        return original is not None and self._stage(original, self._job_pr(original)) not in ENDED
 
     @locked
     def abandon_job(self, job_id: int, now: datetime) -> bool:
@@ -962,16 +996,16 @@ class Store:
         return {"map": row["map"], "ticket": row["ticket"], "questions": json.loads(row["questions"])}
 
     @locked
-    def record_wayfinder_ticket(self, session_id: int, number: int, action: str) -> None:
+    def record_decision_ticket(self, session_id: int, number: int, action: str) -> None:
         """The session `created` or `closed` the ticket."""
         with self.db:
-            self.db.execute("INSERT INTO wayfinder_tickets (session_id, number, action) VALUES (?, ?, ?)"
+            self.db.execute("INSERT INTO decision_tickets (session_id, number, action) VALUES (?, ?, ?)"
                             " ON CONFLICT DO NOTHING", (session_id, number, action))
 
     @locked
-    def wayfinder_tickets(self, session_id: int, action: str) -> list[int]:
+    def decision_tickets(self, session_id: int, action: str) -> list[int]:
         return [r["number"] for r in self.db.execute(
-            "SELECT number FROM wayfinder_tickets WHERE session_id = ? AND action = ? ORDER BY id", (session_id, action))]
+            "SELECT number FROM decision_tickets WHERE session_id = ? AND action = ? ORDER BY id", (session_id, action))]
 
     @locked
     def wayfinder_sessions(self, kind: str) -> list[dict]:
@@ -979,7 +1013,7 @@ class Store:
         and closed."""
         rows = self.db.execute("SELECT id FROM sessions WHERE ended_at IS NULL AND kind = ? ORDER BY id", (kind,))
         return [{"session_id": str(r["id"]), **self.wayfinder(r["id"]),
-                 "created": self.wayfinder_tickets(r["id"], "created"), "closed": self.wayfinder_tickets(r["id"], "closed")}
+                 "created": self.decision_tickets(r["id"], "created"), "closed": self.decision_tickets(r["id"], "closed")}
                 for r in rows.fetchall()]
 
     # ---------- research, to-spec and to-tickets sessions (rules in planning.py) ----------

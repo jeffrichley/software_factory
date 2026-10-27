@@ -1,8 +1,6 @@
 """Seam 1: History replay — each Job's timeline (Phase changes and events over time) through the Factory server's HTTP API."""
 
-from test_github import SPEC_BODY, client, clock, github, install, issue, poll  # noqa: F401 - shared fixtures
-from test_phases import bash, edit, read, skill, ticket  # noqa: F401
-from test_ticket_job import hook, implement, jobs, pr, report_pr
+from conftest import bash, edit, hook, implement, issue, jobs, poll, pr, read, report_pr, skill
 
 
 def replay(client, job_id: str) -> dict:

@@ -2,16 +2,7 @@
 
 import pytest
 
-from test_github import SPEC_BODY, client, clock, github, install, issue, poll  # noqa: F401 - shared fixtures
-from test_ticket_job import hook, implement, pr, report
-
-
-@pytest.fixture
-def ticket(client, github):
-    """Ticket #5 of Spec #4, polled."""
-    github.issues["jeff/widgets"] = [issue(4, "Widgets", body=SPEC_BODY), issue(5, "Add the widget API!", parent=4)]
-    install(client)
-    poll(client)
+from conftest import SPEC_BODY, bash, edit, hook, implement, install, issue, poll, pr, read, report, skill, tool
 
 
 def steps(client) -> list[dict]:
@@ -40,24 +31,6 @@ def test_a_ticket_job_has_one_step_whose_phase_is_unknown_at_first(client, ticke
     }]
 
 
-CALLS = iter(range(1, 10_000))
-
-
-def tool(client, name: str, tool_input: dict, error: str | None = None, response: dict | None = None, **over) -> dict:
-    """One tool call, Pre then Post (or PostToolUseFailure with `error`); returns the last reply."""
-    tid = f"toolu_{next(CALLS)}"
-    hook(client, "PreToolUse", tool_name=name, tool_use_id=tid, tool_input=tool_input, **over)
-    if error is not None:
-        return hook(client, "PostToolUseFailure", tool_name=name, tool_use_id=tid, tool_input=tool_input, error=error,
-                    **{"is_interrupt": False, **over})
-    return hook(client, "PostToolUse", tool_name=name, tool_use_id=tid, tool_input=tool_input,
-                tool_response=response or {}, **over)
-
-
-def read(client, path: str = "src/widgets/api.py", **over) -> dict:
-    return tool(client, "Read", {"file_path": f"/w/{path}"}, **over)
-
-
 def test_reading_the_code_is_exploring(client, ticket, clock):
     implement(client, "#5")
     clock.advance(30)
@@ -66,20 +39,6 @@ def test_reading_the_code_is_exploring(client, ticket, clock):
 
     [step] = steps(client)
     assert (step["phase"], step["phase_since"]) == ("Exploring", "2026-10-26T12:00:30Z")
-
-
-def edit(client, path: str, **over) -> dict:
-    return tool(client, "Edit", {"file_path": f"/w/{path}", "old_string": "a", "new_string": "b"}, **over)
-
-
-def bash(client, command: str, exit_code: int = 0, stdout: str = "", **over) -> dict:
-    if exit_code:
-        return tool(client, "Bash", {"command": command}, error=f"Exit code {exit_code}\n{stdout}", **over)
-    return tool(client, "Bash", {"command": command}, response={"stdout": stdout, "stderr": "", "interrupted": False}, **over)
-
-
-def skill(client, name: str, **over) -> dict:
-    return hook(client, "PreToolUse", tool_name="Skill", tool_use_id=f"toolu_{next(CALLS)}", tool_input={"skill": name}, **over)
 
 
 def test_a_tdd_cycle_moves_the_step_through_red_green_refactor_review_and_commit(client, ticket):
@@ -301,16 +260,26 @@ def test_a_broken_phase_table_keeps_the_last_good_one(ruled, rules, caplog):
     assert "Phase rules" in caplog.text and "Testing" in caplog.text
 
 
-def test_the_shipped_phase_rules_are_valid():
-    from factory_server.phases import DEFAULT_PHASE_RULES, parse_rules
+def test_the_shipped_phase_rules_are_valid(client, ticket, caplog):
+    implement(client, "#5")  # the server's default Phase rules
 
-    assert parse_rules(DEFAULT_PHASE_RULES.read_text()).rules
+    read(client)
+
+    assert phase(client) == "Exploring"
+    assert "Phase rules" not in caplog.text
 
 
-def test_a_repo_section_may_only_add_test_patterns():
-    from factory_server.phases import DEFAULT_PHASE_RULES, parse_rules
+@pytest.mark.parametrize("section, error", [
+    ('commit_commands = ["x"]', "may only list"),
+    ('test_commands = ["("]', "bad pattern"),
+])
+def test_a_repo_section_may_only_add_test_patterns(ruled, rules, caplog, section, error):
+    from factory_server.phases import DEFAULT_PHASE_RULES
 
-    with pytest.raises(ValueError, match="may only list"):
-        parse_rules(DEFAULT_PHASE_RULES.read_text() + '\n[repos."jeff/widgets"]\ncommit_commands = ["x"]\n')
-    with pytest.raises(ValueError, match="bad pattern"):
-        parse_rules(DEFAULT_PHASE_RULES.read_text() + '\n[repos."jeff/widgets"]\ntest_commands = ["("]\n')
+    rules.write_text(DEFAULT_PHASE_RULES.read_text() + f'\n[repos."jeff/widgets"]\n{section}\n')
+    implement(ruled, "#5")
+
+    read(ruled)
+
+    assert phase(ruled) is None  # rejected, with no good table before it: no signal moves a Phase
+    assert "Phase rules" in caplog.text and error in caplog.text

@@ -3,17 +3,7 @@ the Factory server's HTTP API."""
 
 import pytest
 
-from test_github import SPEC_BODY, client, clock, github, install, issue, poll  # noqa: F401 - shared fixtures
-from test_phases import bash, edit, read, skill, tool
-from test_ticket_job import hook, implement, pr, report
-
-
-@pytest.fixture
-def ticket(client, github):
-    """Ticket #5 of Spec #4, polled."""
-    github.issues["jeff/widgets"] = [issue(4, "Widgets", body=SPEC_BODY), issue(5, "Add the widget API!", parent=4)]
-    install(client)
-    poll(client)
+from conftest import SPEC_BODY, bash, edit, hook, implement, install, issue, poll, pr, read, report, tool
 
 
 def detail(client, step_id: str) -> dict:

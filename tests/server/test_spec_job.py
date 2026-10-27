@@ -2,36 +2,9 @@
 
 import pytest
 
-import re
-
-from test_github import SPEC_BODY, FakeGitHub, client, clock, install, issue, poll  # noqa: F401 - shared fixtures
-from test_ticket_job import REPO_PATH, hook, report
+from conftest import REPO_PATH, SPEC_BODY, DependencyGitHub, hook, install, issue, jobs, poll, report, tool
 
 SPEC = 4
-
-
-class DependencyGitHub(FakeGitHub):
-    """Also serves each issue's blocked-by list, as GitHub's issue dependencies API does."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.blocked_by: dict[tuple[str, int], list[int]] = {}
-
-    def api(self, path: str):
-        m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues/(\d+)/dependencies/blocked_by", path)
-        if not m:
-            return super().api(path)
-        self.reads.append(path)
-        repo = m[1]
-        return [issue(n, repo=repo) for n in self.blocked_by.get((repo, int(m[2])), [])]
-
-    def block(self, repo: str, number: int, *by: int) -> None:
-        """Issue `number` is blocked by `by`: its summary counts them, and the API lists them."""
-        self.blocked_by[(repo, number)] = list(by)
-        for i in self.issues[repo]:
-            if i["number"] == number:
-                i["issue_dependencies_summary"] = {"blocked_by": len(by), "total_blocked_by": len(by),
-                                                   "blocking": 0, "total_blocking": 0}
 
 
 @pytest.fixture
@@ -43,10 +16,6 @@ def implement_spec(client, args: str = f"#{SPEC}", **over) -> dict:
     """The human typed `/implement-spec <args>`."""
     return hook(client, "UserPromptExpansion", expansion_type="slash_command", command_name="implement-spec",
                 command_args=args, command_source="plugin", prompt=f"/implement-spec {args}".strip(), **over)
-
-
-def jobs(client) -> list[dict]:
-    return client.get("/api/state").json()["jobs"]
 
 
 def steps(client) -> list[dict]:
@@ -116,23 +85,9 @@ def test_with_github_down_at_job_start_the_steps_come_from_the_last_poll(client,
     assert [s["number"] for s in steps(client)] == [5, 6]
 
 
-CALLS = iter(range(1, 10_000))
-
-
 def agent(agent_id: str) -> dict:
     """What every event of a worktree subagent carries."""
     return {"agent_id": agent_id, "agent_type": "general-purpose", "cwd": f"{REPO_PATH}/.claude/worktrees/agent-{agent_id}"}
-
-
-def tool(client, name: str, tool_input: dict, response: dict | None = None, error: str | None = None, **over) -> dict:
-    """One tool call, Pre then Post (or PostToolUseFailure with `error`); returns the last reply."""
-    tid = f"toolu_{next(CALLS)}"
-    hook(client, "PreToolUse", tool_name=name, tool_use_id=tid, tool_input=tool_input, **over)
-    if error is not None:
-        return hook(client, "PostToolUseFailure", tool_name=name, tool_use_id=tid, tool_input=tool_input, error=error,
-                    is_interrupt=False, **over)
-    return hook(client, "PostToolUse", tool_name=name, tool_use_id=tid, tool_input=tool_input,
-                tool_response=response or {}, **over)
 
 
 def launch(client, agent_id: str, description: str, prompt: str = "Work in your own worktree.") -> dict:
@@ -179,17 +134,43 @@ def test_main_session_events_and_unmapped_subagents_move_no_step(client, job):
     assert [s["phase"] for s in steps(client)] == ["Pending", "Pending"]
 
 
-def test_a_subagent_starting_before_it_is_known_is_asked_to_name_its_ticket(client, job):
+def launching(client, tool_use_id: str, description: str, prompt: str = "Work in your own worktree.") -> dict:
+    """implement-spec's Agent call as PreToolUse sees it; its PostToolUse (with the agentId) may come after SubagentStart."""
+    return {"tool_name": "Agent", "tool_use_id": tool_use_id,
+            "tool_input": {"description": description, "prompt": prompt, "subagent_type": "general-purpose",
+                           "run_in_background": True, "isolation": "worktree"}}
+
+
+def launched(client, call: dict, agent_id: str) -> dict:
+    return hook(client, "PostToolUse", **call, tool_response={"isAsync": True, "status": "async_launched", "agentId": agent_id})
+
+
+def test_a_subagent_starting_before_its_launch_completes_is_not_asked_when_the_launch_names_its_ticket(client, job):
+    call = launching(client, "t1", "Implement ticket #6")
+    hook(client, "PreToolUse", **call)
+
+    reply = hook(client, "SubagentStart", **agent("a1"))  # SubagentStart and PostToolUse(Agent) come in either order
+    assert reply["inject"] is None
+
+    launched(client, call, "a1")
+    reply = hook(client, "PreToolUse", tool_name="Read", tool_use_id="t2", tool_input={}, **agent("a1"))
+    assert reply["step_id"] == step_numbered(client, 6)["id"]
+
+
+@pytest.mark.parametrize("starts_first", [True, False])
+def test_a_subagent_whose_launch_names_no_ticket_is_asked_to_name_it(client, job, starts_first):
+    call = launching(client, "t1", "Implementer", "Implement the next ticket on the frontier.")
+    hook(client, "PreToolUse", **call)
+    if not starts_first:
+        launched(client, call, "a1")
+
     reply = hook(client, "SubagentStart", **agent("a1"))
 
     assert f"factory step --ticket N --job {job}" in reply["inject"]
 
-    launch(client, "a1", "Implement ticket #6")  # its launch's PostToolUse arrives after all
-    reply = hook(client, "PreToolUse", tool_name="Read", tool_use_id="t1", tool_input={}, **agent("a1"))
-    assert reply["step_id"] == step_numbered(client, 6)["id"]
-
 
 def test_a_subagent_that_reports_its_ticket_works_that_step(client, job):
+    launch(client, "a1", "Implementer", "Implement the next ticket on the frontier.")
     hook(client, "SubagentStart", **agent("a1"))
 
     tool(client, "Bash", {"command": f"factory step --ticket 5 --job {job}"}, **agent("a1"))
@@ -205,11 +186,46 @@ def test_a_step_report_must_name_one_of_the_specs_tickets(client, job, ticket):
     assert report(client, "report_step", job, ticket=ticket).status_code in (404, 422)
 
 
+INTEGRATION = f"{REPO_PATH}/.claude/worktrees/spec-4-widget-export"
+INTEGRATION_BRANCH = "worktree-spec-4-widget-export"
+
+
+def enter_integration_worktree(client) -> None:
+    """The Spec Job's main session enters the worktree whose branch is the integration branch."""
+    tool(client, "EnterWorktree", {"name": "spec-4-widget-export"},
+         response={"worktreePath": INTEGRATION, "worktreeBranch": INTEGRATION_BRANCH})
+
+
+def merger(agent_id: str) -> dict:
+    """A merger subagent: not isolated, so it works in the main session's integration worktree."""
+    return {"agent_id": agent_id, "agent_type": "general-purpose", "cwd": INTEGRATION}
+
+
 def test_a_merge_into_the_integration_branch_ends_the_step_at_merged(client, job):
+    enter_integration_worktree(client)
     launch(client, "m1", "Merge ticket #5 into the integration branch")
-    tool(client, "Bash", {"command": "git merge --no-ff worktree-agent-a1"}, **agent("m1"))
+    tool(client, "Bash", {"command": "git merge --no-ff worktree-agent-a1"}, **merger("m1"))
 
     assert step_numbered(client, 5)["phase"] == "Merged"
+
+
+def test_a_merge_run_on_the_integration_worktree_from_elsewhere_ends_the_step_at_merged(client, job):
+    enter_integration_worktree(client)
+    launch(client, "m1", "Merge ticket #5 into the integration branch")
+    tool(client, "Bash", {"command": f"git -C {INTEGRATION} merge --no-ff worktree-agent-a1"}, **agent("m1"))
+
+    assert step_numbered(client, 5)["phase"] == "Merged"
+
+
+@pytest.mark.parametrize("entered", [True, False])
+def test_an_implementer_merging_the_integration_tip_into_its_own_branch_is_not_merged(client, job, entered):
+    if entered:
+        enter_integration_worktree(client)
+    launch(client, "a1", "Implement ticket #5")
+    tool(client, "Edit", {"file_path": "/w/tests/test_schema.py"}, **agent("a1"))
+    tool(client, "Bash", {"command": f"git merge {INTEGRATION_BRANCH}"}, **agent("a1"))
+
+    assert step_numbered(client, 5)["phase"] == "Red"
 
 
 def test_spec_job_steps_never_reach_reviewing(client, job):

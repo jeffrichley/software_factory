@@ -2,9 +2,7 @@
 
 import pytest
 
-from test_github import client, clock, github, install, issue, poll  # noqa: F401 - shared fixtures
-from test_spec_job import tool
-from test_ticket_job import hook
+from conftest import gh, hook, install, issue, poll
 
 MAP = 1
 MAP_BODY = """## Destination
@@ -61,11 +59,6 @@ def wayfinder(client, args: str = f"#{MAP}", **over) -> dict:
     """The human typed `/wayfinder <args>`."""
     return hook(client, "UserPromptExpansion", expansion_type="slash_command", command_name="wayfinder",
                 command_args=args, command_source="plugin", prompt=f"/wayfinder {args}".strip(), **over)
-
-
-def gh(client, command: str, stdout: str = "", **over) -> dict:
-    """The session runs a `gh` command through Bash."""
-    return tool(client, "Bash", {"command": command, "description": "gh"}, response={"stdout": stdout, "stderr": ""}, **over)
 
 
 def state(client) -> dict:

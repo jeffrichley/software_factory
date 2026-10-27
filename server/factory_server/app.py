@@ -16,8 +16,8 @@ from pydantic import BaseModel
 from . import sounds, states
 from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub, read_blocked_by, read_checks, read_issues
-from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, spec_job_start, spec_step_start, ticket_job_start,
-                   tickets_named, worktree_of)
+from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, is_agent_worktree, merge_of, spec_job_start,
+                   spec_step_start, ticket_job_start, tickets_named, worktree_of)
 from . import planning
 from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import as_shown, is_silent
@@ -318,7 +318,8 @@ def create_app(
                 step_id = step_of(job_id, event)
                 plan(session_id, event, envelope.repo)
                 take_notes(session_id, event, envelope)
-                if spec_job and name == "SubagentStart" and step_id is None:
+                if (spec_job and name == "SubagentStart" and step_id is None
+                        and not launch_names_ticket(job_id, session_id, event, envelope.repo)):
                     inject = spec_step_start(str(job_id))
                 if job_id is not None:
                     inject = observe_review(job_id, step_id, event) or inject
@@ -329,14 +330,15 @@ def create_app(
                     store.resume_session(session_id, now)
                     without_pr = job_id is not None and store.job_stage(job_id) == IN_PROGRESS
                     # A Spec Job's subagent asking for the human asks about its Step's Ticket.
-                    ticket = store.step_number(step_id) if spec_job and step_id is not None else None
-                    states.apply(store, session_id, event, now, job_without_pr=without_pr, ticket=ticket,
-                                 hitl=hitl_wait(session_id, event, envelope.repo))
+                    states.apply(store, session_id, event, now, job_without_pr=without_pr,
+                                 ticket=store.spec_step_ticket(step_id), hitl=hitl_wait(session_id, event, envelope.repo))
                     sounds.schedule(store, session_id, event, now)
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
                 observe(session_id, event, now)
                 signal = phase_rules.load().signal(event, envelope.repo) if job_id is not None else None
+                if signal == "merge" and spec_job and not into_integration(job_id, event, envelope.repo_path):
+                    signal = "explore"  # e.g. an implementer merging the integration tip into its own branch
                 if signal in REPLAY_SIGNALS:
                     kind, label = REPLAY_SIGNALS[signal]
                     store.record_job_event(job_id, now, kind, f"{label}: {signal_subject(event)}")
@@ -372,7 +374,7 @@ def create_app(
                     if main:  # a subagent's claim is not the ticket this session works
                         store.set_wayfinder(session_id, ticket=number)
                 for number in closes(command, repo):
-                    store.record_wayfinder_ticket(session_id, number, "closed")
+                    store.record_decision_ticket(session_id, number, "closed")
                     if main and store.wayfinder(session_id)["ticket"] is None:
                         store.set_wayfinder(session_id, ticket=number)
             case "PostToolUse" if command:
@@ -382,7 +384,7 @@ def create_app(
                         if is_map:
                             store.set_wayfinder(session_id, map=number)
                         else:
-                            store.record_wayfinder_ticket(session_id, number, "created")
+                            store.record_decision_ticket(session_id, number, "created")
             case "MessageDisplay" | "Stop" as name:
                 text = event.get("last_assistant_message") if name == "Stop" else event.get("delta") or event.get("message")
                 if found := questions(text):
@@ -469,7 +471,7 @@ def create_app(
         item = store.issue(repo, number) if number is not None else None
         mode = mode_of(item and item["type"])
         asked = questions(event.get("last_assistant_message")) or w["questions"]
-        if number is not None and number in store.wayfinder_tickets(session_id, "closed"):
+        if number is not None and number in store.decision_tickets(session_id, "closed"):
             return None
         if mode == "AFK" or (mode not in WAITS_ON_HUMAN and not questions(event.get("last_assistant_message"))):
             return None
@@ -497,8 +499,7 @@ def create_app(
         agent_id, named = None, []
         if event.get("hook_event_name") == "PostToolUse" and event.get("tool_name") == "Agent" and "agent_id" not in event:
             agent_id = response.get("agentId")
-            text = f"{tool_input.get('description') or ''}\n{tool_input.get('prompt') or ''}"
-            named = tickets_named(text, repo)
+            named = launch_tickets(tool_input, repo)
         elif event.get("hook_event_name") == "PreToolUse" and event.get("tool_name") == "Bash" and event.get("agent_id"):
             agent_id = event["agent_id"]
             named = [int(m[1]) for m in [STEP_REPORT.search(str(tool_input.get("command") or ""))] if m]
@@ -511,6 +512,36 @@ def create_app(
         if store.step_phase(step_id) == PENDING:
             store.set_phase(step_id, None, now)  # started: Phase unknown until a signal says more
 
+    def launch_tickets(tool_input: dict, repo: str) -> list[int]:
+        """The issues an Agent launch's description or prompt names."""
+        return tickets_named(f"{tool_input.get('description') or ''}\n{tool_input.get('prompt') or ''}", repo)
+
+    def launch_names_ticket(job_id: int, session_id: int, event: dict, repo: str) -> bool:
+        """Whether a subagent starting before its launch's PostToolUse(Agent) will be tied to its Step by it: each
+        launch still open that could be this subagent (same agent type) names one of the Job's Tickets.
+        SubagentStart carries no prompt or description, and comes before or after PostToolUse(Agent)."""
+        kind = event.get("agent_type")
+        candidates = [i for i in store.open_calls(session_id, "Agent")
+                      if not kind or (i.get("subagent_type") or "general-purpose") == kind]
+        return bool(candidates) and all(
+            any(store.job_step_numbered(job_id, n) is not None for n in launch_tickets(i, repo)) for i in candidates)
+
+    def into_integration(job_id: int, event: dict, main_tree: str) -> bool:
+        """Whether a `git merge` merges into the Job's integration branch: run in the Job's worktree when that is
+        known, never in an isolated subagent's own worktree, and never merging the integration branch itself."""
+        tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+        merge = merge_of(str(tool_input.get("command") or ""), event.get("cwd"))
+        if merge is None:
+            return False
+        where, refs = merge
+        worktree, branch = store.job_tree(job_id)
+        if branch and branch in refs:
+            return False
+        ran_in = worktree_of(where, main_tree)
+        if worktree:
+            return ran_in is not None and ran_in.rstrip("/") == worktree.replace("\\", "/").rstrip("/")
+        return not is_agent_worktree(ran_in)
+
     def observe_review(job_id: int, step_id: int | None, event: dict) -> str | None:
         """code-review in a Job: ask its agent for the findings count, and read its summary line meanwhile."""
         name = event.get("hook_event_name")
@@ -519,8 +550,7 @@ def create_app(
         elif name == "PostToolUse" and event.get("tool_name") == "Skill":
             tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
             if bare_name(str(tool_input.get("skill") or "")) == CODE_REVIEW:
-                ticket = store.step_number(step_id) if step_id is not None and store.job_kind(job_id) == SPEC_JOB else None
-                return review_report_ask(str(job_id), ticket)
+                return review_report_ask(str(job_id), store.spec_step_ticket(step_id))
         elif name in ("MessageDisplay", "Stop") and store.review_started(job_id):
             text = str(event.get("delta") or event.get("last_assistant_message") or "")
             if counts := review_counts(text):
