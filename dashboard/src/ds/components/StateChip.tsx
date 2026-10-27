@@ -23,13 +23,15 @@ export interface StateChipProps {
   repo: string;
   blocked?: boolean;
   staleReason?: string;
+  /** ms a Working session has had no events: its chip is dimmed. */
+  quietMs?: number;
   selected?: boolean;
   onOpen?: () => void;
 }
 
 /** Flow-strip chip for one Step or planning session: coloured by state, pulses when it Needs you, glides between Phases. */
 export function StateChip(p: StateChipProps) {
-  const { tone, label: stateLabel } = stateLook(p.state, p.seen);
+  const { tone, label: stateLabel } = stateLook(p.state, p.seen, undefined, p.quietMs);
   const [tip, setTip] = useState<DOMRect | null>(null);
   const tipRef = useRef<HTMLSpanElement>(null);
   const chipRef = useRef<HTMLButtonElement>(null);
@@ -57,7 +59,7 @@ export function StateChip(p: StateChipProps) {
         ref={chipRef}
         onLayoutAnimationStart={() => chipRef.current && gliding(chipRef.current, true)}
         onLayoutAnimationComplete={() => chipRef.current && gliding(chipRef.current, false)}
-        className={`fchip fs-${tone} ${phaseClass(p.phase)}${p.selected ? " sel" : ""}`}
+        className={`fchip fs-${tone} ${phaseClass(p.phase)}${p.quietMs !== undefined ? " quiet" : ""}${p.selected ? " sel" : ""}`}
         aria-label={`${p.name} — ${phaseTxt}, ${stateTxt}, ${p.machine}`}
         onClick={p.onOpen}
         onMouseEnter={(e) => setTip(e.currentTarget.getBoundingClientRect())}

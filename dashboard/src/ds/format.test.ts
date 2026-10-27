@@ -24,6 +24,11 @@ describe("stateLook", () => {
   it("says why a session is Stale", () => {
     expect(stateLook("Stale", false, "Machine silent")).toEqual({ tone: "stale", label: "Stale · Machine silent" });
   });
+
+  it("says how long a quiet Working session has had no events, keeping it Working", () => {
+    expect(stateLook("Working", false, undefined, 23 * 60_000 + 10_000)).toEqual({ tone: "working", label: "Working · quiet 23m" });
+    expect(stateLook("Working", false, undefined, 2 * 3_600_000 + 5 * 60_000)).toEqual({ tone: "working", label: "Working · quiet 2h 5m" });
+  });
 });
 
 describe("phaseClass", () => {

@@ -20,7 +20,7 @@ from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, is_agent_work
                    spec_step_start, ticket_job_start, tickets_named, worktree_of)
 from . import planning
 from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
-from .silence import as_shown, is_silent
+from .silence import QUIET_AFTER, as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
 from .step_detail import (CODE_REVIEW, REVIEW_AXES, checklist_after, commit_made, repo_relative, review_counts, review_report_ask,
                           test_counts, test_output)
@@ -115,6 +115,8 @@ def create_app(
     phase_rules_path: Path = DEFAULT_PHASE_RULES,
     # Often enough that a sound whose grace runs out reaches the dashboard about on time.
     refresh_s: float = 1,
+    # A Working session with no events of its own for this long shows as quiet.
+    quiet_after: timedelta = QUIET_AFTER,
 ) -> FastAPI:
     store = Store(db_path)
     skills = SkillTable(skill_table)
@@ -127,7 +129,7 @@ def create_app(
         store.release_sounds(now)
         machines = [{**m, "silent": is_silent(m["last_seen"], now)} for m in store.machines()]
         silent_since = {m["machine"]: m["last_seen"] for m in machines if m["silent"]}
-        sessions = [as_shown(s, silent_since.get(s["machine"])) for s in store.live_sessions()]
+        sessions = [as_shown(s, silent_since.get(s["machine"]), now, quiet_after) for s in store.live_sessions()]
         # A silent Step's Machine is often silent too: Stale is still Working, as far as it is known.
         working = {s["id"] for s in sessions if s["state"] in ("Working", "Stale")}
         return {

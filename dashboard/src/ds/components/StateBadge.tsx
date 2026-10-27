@@ -8,12 +8,14 @@ export interface StateBadgeProps {
   state: SessionState;
   seen?: boolean;
   staleReason?: string;
+  /** Working only: ms without events, shown as "Working · quiet 23m". */
+  quietMs?: number;
   /** Pass when the caller already has it (e.g. for a row's label), so it isn't worked out twice. */
   look?: StateLook;
 }
 
-export function StateBadge({ state, seen, staleReason, look }: StateBadgeProps) {
-  const { tone, label } = look ?? stateLook(state, seen, staleReason);
+export function StateBadge({ state, seen, staleReason, quietMs, look }: StateBadgeProps) {
+  const { tone, label } = look ?? stateLook(state, seen, staleReason, quietMs);
   return (
     <span className={`state st-${tone}`}>
       <Icon name={ICON[tone]} />

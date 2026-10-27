@@ -233,6 +233,7 @@ SESSION_COLUMNS = {
     "seen": "INTEGER NOT NULL DEFAULT 0",  # Done has been seen by the human
     "hidden": "INTEGER NOT NULL DEFAULT 0",  # hidden by the human: out of the dashboard's views, and silent
     "transitions": "INTEGER NOT NULL DEFAULT 0",  # counts changes of shown state: a sound belongs to one
+    "last_event_at": "TEXT",  # its latest event, its subagents' included: how long it has been quiet
 }
 WORK_ITEM_COLUMNS = {
     "parent": "INTEGER",  # the parent issue's number: a Ticket's Spec, a Decision ticket's Map
@@ -319,9 +320,12 @@ class Store:
         """The server's id for a Claude Code session, creating its row (Working) on first sight."""
         with self.db:
             self.db.execute(
-                "INSERT INTO sessions (machine, repo, cc_session_id, state, state_since) VALUES (?, ?, ?, 'Working', ?)"
-                " ON CONFLICT (machine, cc_session_id) DO NOTHING",
-                (machine, repo, cc_session_id, iso(now)),
+                "INSERT INTO sessions (machine, repo, cc_session_id, state, state_since, last_event_at)"
+                " VALUES (?, ?, ?, 'Working', ?, ?)"
+                # A queued event arriving late never moves the latest event back.
+                " ON CONFLICT (machine, cc_session_id) DO UPDATE SET"
+                " last_event_at = MAX(COALESCE(last_event_at, ''), excluded.last_event_at)",
+                (machine, repo, cc_session_id, iso(now), iso(now)),
             )
         row = self.db.execute(
             "SELECT id FROM sessions WHERE machine = ? AND cc_session_id = ?", (machine, cc_session_id)
@@ -392,6 +396,7 @@ class Store:
         """Live rows, Needs you first (longest waiting first), then the rest in order of first sight."""
         rows = self.db.execute(
             "SELECT id, machine, repo, cc_session_id, state, state_since, reason, seen, hidden, kind, skill, headline,"
+            " COALESCE(last_event_at, state_since) AS last_event_at,"
             " (SELECT skill FROM unknown_skills u WHERE u.session_id = sessions.id ORDER BY u.id DESC LIMIT 1) AS unknown_skill"
             " FROM sessions WHERE ended_at IS NULL"
             " ORDER BY state != 'Needs you', CASE WHEN state = 'Needs you' THEN state_since END, id"
@@ -405,7 +410,7 @@ class Store:
         return [
             {
                 "id": str(r["id"]), "machine": r["machine"], "repo": r["repo"], "cc_session_id": r["cc_session_id"],
-                "state": r["state"], "state_since": r["state_since"],
+                "state": r["state"], "state_since": r["state_since"], "last_event_at": r["last_event_at"],
                 "reason": r["reason"] and json.loads(r["reason"]), "seen": bool(r["seen"]), "hidden": bool(r["hidden"]),
                 "kind": r["kind"], "skill": r["skill"], "unknown_skill": r["unknown_skill"], "now": r["headline"],
                 "actions": actions.get(r["id"], []),

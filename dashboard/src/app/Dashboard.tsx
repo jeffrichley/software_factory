@@ -80,6 +80,8 @@ interface FactoryState {
     state_since: string;
     /** A Working session on a silent Machine is Stale, with stale_reason "Machine silent". */
     stale_reason?: string;
+    /** A Working session with no events of its own for a while (its Machine still reporting): since its last one; null otherwise. */
+    quiet_since: string | null;
     /** Why it Needs you; null otherwise. */
     reason: NeedsReason | null;
     /** Done has been seen. */
@@ -298,6 +300,7 @@ export function Dashboard() {
     id: s.id, machine: s.machine, repo: s.repo, ccSessionId: s.cc_session_id, state: s.state, staleReason: s.stale_reason, reason: s.reason,
     seen: s.seen, hidden: s.hidden, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, actions: s.actions,
     inStateMs: now - Date.parse(s.state_since),
+    ...(s.quiet_since ? { quietMs: now - Date.parse(s.quiet_since) } : {}),
   })) ?? [];
   const view = viewOf(sessions, hiddenMachines);
   const selected = [...view.shown, ...view.hiddenSessions].find((s) => s.id === selectedId);

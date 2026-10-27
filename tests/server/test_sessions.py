@@ -72,6 +72,7 @@ def test_a_started_session_appears_as_working(client, clock):
             "unknown_skill": None,
             "now": None,
             "actions": [],
+            "quiet_since": None,
         }
     ]
 

@@ -28,6 +28,8 @@ export interface FlowSession {
   state: SessionState;
   seen: boolean;
   staleReason?: string;
+  /** ms a Working session has had no events; none unless it is quiet. */
+  quietMs?: number;
   kind: string;
 }
 
@@ -60,6 +62,7 @@ export interface FlowChipData {
   machine: string;
   repo: string;
   staleReason?: string;
+  quietMs?: number;
 }
 
 /** Each planning kind's icon on its chip; any other kind (ad hoc) shows a terminal. */
@@ -84,6 +87,7 @@ export function flowRows(
     const look = {
       sessionId: s.id, state: s.state, seen: s.seen, machine: s.machine, repo: s.repo,
       ...(s.staleReason ? { staleReason: s.staleReason } : {}),
+      ...(s.quietMs !== undefined ? { quietMs: s.quietMs } : {}),
     };
     const job = currentJob(jobs, s.id);
     if (!job) {

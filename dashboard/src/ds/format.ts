@@ -20,13 +20,14 @@ export interface StateLook {
   label: string;
 }
 
-/** A state's tone and label; a Stale label says why, e.g. "Stale · Machine silent". */
-export function stateLook(state: SessionState, seen = false, staleReason?: string): StateLook {
+/** A state's tone and label; a Stale label says why, e.g. "Stale · Machine silent"; a quiet Working one for how long,
+ * e.g. "Working · quiet 23m" (still Working: a long tool call is silent too). */
+export function stateLook(state: SessionState, seen = false, staleReason?: string, quietMs?: number): StateLook {
   switch (state) {
     case "Needs you":
       return { tone: "needs", label: state };
     case "Working":
-      return { tone: "working", label: state };
+      return { tone: "working", label: quietMs === undefined ? state : `${state} · quiet ${formatDuration(quietMs)}` };
     case "Stale":
       return { tone: "stale", label: staleReason ? `${state} · ${staleReason}` : state };
     case "Done":

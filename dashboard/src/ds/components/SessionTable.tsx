@@ -11,6 +11,8 @@ export interface SessionRowData {
   state: SessionState;
   /** Why a Stale session can't be trusted, e.g. "Machine silent". */
   staleReason?: string;
+  /** ms a Working session has had no events of its own; none unless it is quiet ("Working · quiet 23m"). */
+  quietMs?: number;
   /** Ticket Job, Spec Job, a planning kind (Wayfinder, to-spec, to-tickets, research) or ad hoc. */
   kind: string;
   /** The latest skill the skill table doesn't know, if any; an ad hoc row names it. */
@@ -41,7 +43,7 @@ export function SessionTable({
       </thead>
       <tbody>
         {sessions.map((s) => {
-          const look = stateLook(s.state, s.seen, s.staleReason);
+          const look = stateLook(s.state, s.seen, s.staleReason, s.quietMs);
           return (
             <tr
               key={s.id}
