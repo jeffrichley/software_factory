@@ -250,11 +250,14 @@ JOB_COLUMNS = {
     "duplicate_of": "INTEGER",  # the active Job already on its Work item when it started (or learnt it): flagged, not blocked
     "reviewed": "INTEGER NOT NULL DEFAULT 0",  # code-review has run in the Job: its summary line may follow
     "ended_at": "TEXT",  # when the Job was first seen Merged, Closed or Abandoned: its replay ends there
+    "pr_track": "TEXT NOT NULL DEFAULT '[]'",  # JSON: each PR stage (Draft, Ready, Merged, Closed) its PR was seen reach, with when
 }
 STEP_COLUMNS = {
     "first_phase": "TEXT",  # the Phase it was added in (Pending, or NULL = unknown): where its replay starts
     "checklist": "TEXT",  # JSON: the agent's live checklist; NULL while it has none (no todo or task tools)
     "active_at": "TEXT",  # the Step's latest event; NULL before any
+    "merged_at": "TEXT",  # a Spec Job's Step: when it was first merged into the integration branch
+    "merged_sha": "TEXT",  # ...and the commit that left it on, when git printed it
 }
 STEP_FILE_COLUMNS = {
     "added": "INTEGER",  # lines its edits added; NULL = unknown (and for files recorded before it was kept)
@@ -288,6 +291,11 @@ def reason_text(reason: dict | None) -> str:
         case {"kind": "no-pr"}:
             return "ended without a PR"
     return "unknown"
+
+
+def pr_stage(pr: dict) -> str:
+    """Where a PR is on its track: Draft, Ready (for review), Merged, or Closed without merging."""
+    return {"merged": "Merged", "closed": "Closed"}.get(pr["state"], "Draft" if pr["draft"] else "Ready")
 
 
 def iso(t: datetime) -> str:
@@ -941,6 +949,12 @@ class Store:
             return {"number": int(m[1]) if m else None, "url": job["pr_url"], "draft": False, "state": "open"}
         return None
 
+    def _pr_checks(self, repo: str, pr: dict | None) -> list[dict] | None:
+        """The CI checks on the PR's head, as last read; None until read."""
+        row = pr and self.db.execute(
+            "SELECT checks FROM pr_checks WHERE repo = ? AND number = ?", (repo, pr["number"])).fetchone()
+        return json.loads(row["checks"]) if row else None
+
     def _original_active(self, job: sqlite3.Row) -> bool:
         """Whether the Job is a duplicate whose original is still going: a PR closing their Work item is the original's."""
         if job["duplicate_of"] is None:
@@ -985,6 +999,8 @@ class Store:
                 "worktree": j["worktree"], "branch": j["branch"],
                 "stage": self._stage(j, pr),
                 "pr": pr and {k: pr[k] for k in ("number", "url", "draft")}, "started_at": j["started_at"],
+                "pr_checks": self._pr_checks(j["repo"], pr),
+                "pr_track": [{"stage": t["stage"], "at": t["at"]} for t in json.loads(j["pr_track"]) if pr and t["url"] == pr["url"]],
                 "duplicate_of": None if j["duplicate_of"] is None else str(j["duplicate_of"]),
             })
         return out
@@ -1091,6 +1107,12 @@ class Store:
                 "SELECT 1 FROM job_events WHERE job_id = ? AND kind = 'pr' AND text = ?", (job_id, f"PR: {pr['url']}")
             ).fetchone():
                 self._job_event(job_id, now, "pr", f"PR: {pr['url']}")
+            if pr:
+                track = json.loads(job["pr_track"])
+                seen = [t["stage"] for t in track if t["url"] == pr["url"]]
+                if not seen or seen[-1] != pr_stage(pr):
+                    track.append({"url": pr["url"], "stage": pr_stage(pr), "at": iso(now)})
+                    self.db.execute("UPDATE jobs SET pr_track = ? WHERE id = ?", (json.dumps(track), job_id))
             stage = self._stage(job, pr)
             if stage in ENDED and job["ended_at"] is None:
                 self.db.execute("UPDATE jobs SET ended_at = ? WHERE id = ?", (iso(now), job_id))
@@ -1218,6 +1240,15 @@ class Store:
             )
 
     @locked
+    def record_merge(self, step_id: int, sha: str | None, now: datetime) -> None:
+        """A Spec Job's Step merged into its integration branch: the first merge's time, the latest known SHA."""
+        with self.db:
+            self.db.execute(
+                "UPDATE steps SET merged_at = COALESCE(merged_at, ?), merged_sha = COALESCE(?, merged_sha) WHERE id = ?",
+                (iso(now), sha, step_id),
+            )
+
+    @locked
     def record_edit(self, step_id: int, path: str, lines: tuple[int, int] | None) -> None:
         """One edit to a file, with the (added, deleted) lines of its patch; None (unknown) makes the file's unknown."""
         added, deleted = lines or (None, None)
@@ -1234,12 +1265,12 @@ class Store:
         """What each Step (of a Job in a repo some Machine tracks) has done, by Step id, and whether it is
         struggling; `working` holds the ids of the sessions Working (Stale included), whose Steps can be silent."""
         rows = self.db.execute(
-            "SELECT j.*, s.id AS step_id, s.checklist, s.phase, s.first_phase, COALESCE(s.active_at, s.phase_since) AS active_at"
+            "SELECT j.*, s.id AS step_id, s.checklist, s.phase, s.merged_at, s.merged_sha, s.first_phase, COALESCE(s.active_at, s.phase_since) AS active_at"
             " FROM steps s JOIN jobs j ON j.id = s.job_id WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY s.id"
         ).fetchall()
         ids = [r["step_id"] for r in rows]
         details: dict[str, dict] = {str(i): {"phase_events": [], "tests": None, "files": [], "commits": [], "pr": None,
-                                    "review": None, "checklist": None} for i in ids}
+                                    "review": None, "checklist": None, "merge": None} for i in ids}
         # The Phase track: each Step's Phase changes from its replay, each from the Phase before (first the one it began in).
         phase = {str(r["step_id"]): r["first_phase"] for r in rows}
         for e in self.db.execute("SELECT step_id, at, phase FROM job_events WHERE kind = 'phase' AND step_id IS NOT NULL ORDER BY id"):
@@ -1253,16 +1284,15 @@ class Store:
             if (d := details.get(str(c["step_id"]))) is not None:
                 d["commits"].append({k: c[k] for k in ("sha", "message", "files", "added", "deleted")})
         for r in rows:
+            if r["merged_at"]:
+                details[str(r["step_id"])]["merge"] = {"sha": r["merged_sha"], "at": r["merged_at"]}
             if r["checklist"]:
                 details[str(r["step_id"])]["checklist"] = [
                     {"text": i["text"], "status": i["status"]} for i in json.loads(r["checklist"])]
             # A Ticket Job's Step ends as the Job's PR; a Spec Job's Steps merge into its integration branch.
             if r["kind"] == "Ticket Job" and (pr := self._job_pr(r)):
-                checks = self.db.execute(
-                    "SELECT checks FROM pr_checks WHERE repo = ? AND number = ?", (r["repo"], pr["number"])
-                ).fetchone()
                 details[str(r["step_id"])]["pr"] = {**{k: pr[k] for k in ("number", "url", "draft")},
-                                            "checks": json.loads(checks["checks"]) if checks else None}
+                                            "checks": self._pr_checks(r["repo"], pr)}
         for v in self.db.execute("SELECT * FROM reviews WHERE step_id != 0"):
             if (d := details.get(str(v["step_id"]))) is not None:
                 d["review"] = {k: v[k] for k in ("standards", "spec", "source")}

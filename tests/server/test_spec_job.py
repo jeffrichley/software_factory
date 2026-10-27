@@ -209,6 +209,41 @@ def test_a_merge_into_the_integration_branch_ends_the_step_at_merged(client, job
     assert step_numbered(client, 5)["phase"] == "Merged"
 
 
+def merge_of_step(client, number: int) -> dict | None:
+    return client.get("/api/state").json()["step_details"][step_numbered(client, number)["id"]]["merge"]
+
+
+def test_a_steps_merge_into_the_integration_branch_is_kept_with_its_sha_when_git_printed_it(client, job, clock):
+    enter_integration_worktree(client)
+    assert merge_of_step(client, 5) is None
+
+    launch(client, "m1", "Merge ticket #5 into the integration branch")
+    clock.advance(60)
+    tool(client, "Bash", {"command": "git merge worktree-agent-a1"}, **merger("m1"),
+         response={"stdout": "Updating 1f0e2d3..a41c9e2\nFast-forward\n src/schema.py | 4 ++++\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) == {"sha": "a41c9e2", "at": "2026-10-26T12:01:00Z"}
+    assert merge_of_step(client, 6) is None
+
+
+def test_a_merge_commit_whose_sha_git_did_not_print_is_kept_without_one(client, job):
+    enter_integration_worktree(client)
+    launch(client, "m1", "Merge ticket #5 into the integration branch")
+    tool(client, "Bash", {"command": "git merge --no-ff worktree-agent-a1"}, **merger("m1"),
+         response={"stdout": "Merge made by the 'ort' strategy.\n src/schema.py | 4 ++++\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) == {"sha": None, "at": "2026-10-26T12:00:00Z"}
+
+
+def test_an_implementer_merging_the_integration_tip_into_its_own_branch_records_no_merge(client, job):
+    enter_integration_worktree(client)
+    launch(client, "a1", "Implement ticket #5")
+    tool(client, "Bash", {"command": f"git merge {INTEGRATION_BRANCH}"}, **agent("a1"),
+         response={"stdout": "Updating 1f0e2d3..a41c9e2\nFast-forward\n", "stderr": ""})
+
+    assert merge_of_step(client, 5) is None
+
+
 def test_a_merge_run_on_the_integration_worktree_from_elsewhere_ends_the_step_at_merged(client, job):
     enter_integration_worktree(client)
     launch(client, "m1", "Merge ticket #5 into the integration branch")
@@ -274,6 +309,44 @@ def test_the_draft_pr_is_a_link_until_marked_ready_then_the_job_is_pr_open_and_d
     assert jobs(client)[0]["stage"] == "PR open"
     [row] = client.get("/api/state").json()["sessions"]
     assert (row["state"], row["seen"]) == ("Done", False)
+
+
+def test_the_spec_prs_track_keeps_when_it_was_drafted_marked_ready_and_merged(client, job, github, clock):
+    assert jobs(client)[0]["pr_track"] == []
+
+    github.issues["jeff/widgets"].append(spec_pr(60, (SPEC, 5, 6), draft=True))
+    clock.advance(60)
+    poll(client)
+    assert jobs(client)[0]["pr_track"] == [{"stage": "Draft", "at": "2026-10-26T12:01:00Z"}]
+
+    clock.advance(60)
+    poll(client)  # still a draft: nothing new
+    github.issues["jeff/widgets"][-1]["draft"] = False
+    clock.advance(60)
+    poll(client)
+    github.issues["jeff/widgets"][-1].update(state="closed", pull_request={"merged_at": "2026-10-26T12:04:00Z"})
+    clock.advance(60)
+    poll(client)
+
+    assert jobs(client)[0]["pr_track"] == [
+        {"stage": "Draft", "at": "2026-10-26T12:01:00Z"},
+        {"stage": "Ready", "at": "2026-10-26T12:03:00Z"},
+        {"stage": "Merged", "at": "2026-10-26T12:04:00Z"},
+    ]
+
+
+def test_the_spec_prs_ci_checks_are_shown_once_read(client, job, github, clock):
+    github.issues["jeff/widgets"].append(spec_pr(60, (SPEC, 5, 6), draft=True))
+    github.check_runs[("jeff/widgets", "head-60")] = [
+        {"name": "lint", "status": "completed", "conclusion": "success"},
+        {"name": "e2e", "status": "in_progress", "conclusion": None},
+    ]
+    assert jobs(client)[0]["pr_checks"] is None
+
+    clock.advance(60)
+    poll(client)
+
+    assert jobs(client)[0]["pr_checks"] == [{"name": "lint", "status": "pass"}, {"name": "e2e", "status": "pending"}]
 
 
 def test_a_spec_jobs_replay_starts_its_steps_pending_and_shows_each_starting_and_moving(client, job):

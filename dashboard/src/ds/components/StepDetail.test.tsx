@@ -34,3 +34,17 @@ describe("StepDetail files touched", () => {
     expect(row.querySelector("[aria-label='unknown']")).not.toBeNull();
   });
 });
+
+describe("StepDetail in a Spec Job", () => {
+  it("shows its merge into the integration branch with the merge SHA and how long ago", () => {
+    render(
+      <StepDetail
+        step={{ number: 5, title: "API", phase: "Merged", phaseSince: "2026-10-26T12:00:00Z" }}
+        detail={{ ...detail, merge: { sha: "a41c9e2", at: "2026-10-26T12:00:00Z" } }}
+        nowMs={Date.parse("2026-10-26T12:31:00Z")} inSpecJob integrationBranch="spec/order-export"
+      />,
+    );
+
+    expect(screen.getByText(/Merged into/).textContent?.trim()).toBe("Merged into spec/order-export · a41c9e2 · 31m ago");
+  });
+});

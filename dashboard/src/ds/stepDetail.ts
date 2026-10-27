@@ -1,4 +1,5 @@
 import { formatDuration } from "./format";
+import type { MergeData } from "./specJob";
 
 /** One change of a Step's Phase; null = Phase unknown. */
 export interface PhaseChangeData {
@@ -62,6 +63,8 @@ export interface StepDetailData {
   /** null: the agent has no todo or task tools, so no checklist. */
   checklist: ChecklistItem[] | null;
   struggle: StruggleData | null;
+  /** A Spec Job's Step: its merge into the integration branch, once seen. */
+  merge?: MergeData | null;
 }
 
 /** The struggle badge's tags, one per reason that holds. */

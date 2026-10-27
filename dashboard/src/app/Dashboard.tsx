@@ -59,6 +59,9 @@ import {
   type SessionState,
   type SoundName,
   type StepDetailData,
+  type CheckData,
+  type MergeData,
+  type PrTrackEntry,
   type StepPhase,
   type TimelineEntry,
 } from "../ds";
@@ -113,6 +116,10 @@ interface FactoryState {
     branch: string | null;
     stage: string;
     pr: { number: number | null; url: string; draft: boolean } | null;
+    /** The stages its PR was seen to reach, with when. */
+    pr_track: PrTrackEntry[];
+    /** The CI checks on its PR's head; null until read. */
+    pr_checks: CheckData[] | null;
     started_at: string;
     /** The active Job already on its Work item when it started; flagged, not blocked. */
     duplicate_of: string | null;
@@ -157,6 +164,8 @@ interface FactoryState {
     review: StepDetailData["review"];
     checklist: StepDetailData["checklist"];
     struggle: { failures: number | null; churn: string[]; silent_for_s: number | null } | null;
+    /** A Spec Job's Step: its merge into the integration branch, once seen. */
+    merge: MergeData | null;
   }>;
   /** Code-review findings on a whole Job (a Spec Job's integration branch), by Job id. */
   job_reviews: Record<string, NonNullable<StepDetailData["review"]>>;
@@ -320,7 +329,7 @@ export function Dashboard() {
   const jobs: JobData[] = (state?.jobs ?? []).map((j) => ({
     id: j.id, sessionId: j.session_id, machine: j.machine, kind: j.kind, repo: j.repo, startedAt: j.started_at, duplicateOf: j.duplicate_of,
     number: j.number, stage: j.stage, branch: j.branch,
-    worktree: j.worktree, pr: j.pr, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
+    worktree: j.worktree, pr: j.pr, prTrack: j.pr_track, prChecks: j.pr_checks, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
   }));
   const history = historyOf(jobs, hiddenMachines);
   // The centre's session: the one opened (a hidden one too, opened from the list), else the default like variant E.
@@ -343,7 +352,7 @@ export function Dashboard() {
   const details: Record<string, StepDetailData> = Object.fromEntries(
     Object.entries(state?.step_details ?? {}).map(([id, d]) => [id, {
       phaseEvents: d.phase_events, tests: d.tests, files: d.files, commits: d.commits, pr: d.pr, review: d.review,
-      checklist: d.checklist, struggle: d.struggle && { failures: d.struggle.failures, churn: d.struggle.churn, silentForS: d.struggle.silent_for_s },
+      checklist: d.checklist, merge: d.merge, struggle: d.struggle && { failures: d.struggle.failures, churn: d.struggle.churn, silentForS: d.struggle.silent_for_s },
     }]),
   );
   const ticketStepOf = (job: JobData | null) => {

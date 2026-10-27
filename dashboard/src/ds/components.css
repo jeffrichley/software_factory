@@ -426,8 +426,8 @@ a { color: inherit; }
 .thist i { display: block; width: 6px; height: 16px; border-radius: 1px; }
 .thist i.p { background: var(--pass); opacity: .75; }
 .thist i.f { background: var(--fail); height: 20px; }
-.step .files, .commits, .events, .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-sm); }
-.step .files li, .commits li, .checks li { display: flex; gap: var(--s2); align-items: baseline; min-width: 0; }
+.step .files, .commits, .events, .checks, .merges { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-sm); }
+.step .files li, .commits li, .checks li, .merges li { display: flex; gap: var(--s2); align-items: baseline; min-width: 0; }
 .step .files .path { font-family: var(--font-mono); flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
 .step .files .muted { color: var(--text-3); }
 .churn { color: var(--fail-soft); }
@@ -441,7 +441,29 @@ a { color: inherit; }
 .dstat i.d { background: var(--fail); }
 .review { display: flex; align-items: baseline; gap: var(--s3); }
 .big-num { font: 700 var(--fs-xl)/1 var(--font-mono); }
-.pr-line { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.pr-line { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; min-width: 0; }
+.pr-line .muted { overflow-wrap: anywhere; min-width: 0; }
+
+/* Spec Job: stat tiles, merges, PR track (variant E) */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); }
+.stat { display: grid; gap: 2px; align-content: start; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s3) var(--s4); }
+.stat-v { font: 600 var(--fs-md)/1.3 var(--font-mono); color: var(--text); overflow-wrap: anywhere; }
+@media (max-width: 720px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.job-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); font-size: var(--fs-sm); min-width: 0; }
+.job-line .mono { overflow-wrap: anywhere; color: var(--text-2); }
+.job-line .btn { margin-left: auto; }
+.spec-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); }
+.spec-cols > .panel { align-content: start; }
+@media (max-width: 1100px) { .spec-cols { grid-template-columns: minmax(0, 1fr); } }
+.merges .merged-mark, .merged-note .icon { color: var(--done); }
+.merges .merge-t { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.merged-note { color: var(--done); }
+.prtrack { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s4); font: 500 var(--fs-xs)/1 var(--font-mono); color: var(--text-3); }
+.prtrack li { position: relative; padding: var(--s1) var(--s2); border-radius: var(--r-sm); border: 1px solid var(--line); }
+.prtrack li + li::before { content: "→"; position: absolute; left: calc(-1 * var(--s4) - 1px); inline-size: var(--s4); text-align: center; color: var(--text-3); }
+.prtrack li.pt-done { color: var(--text-2); }
+.prtrack li.pt-current { border-color: var(--text-2); color: var(--text); }
+.prtrack time { color: var(--text-3); }
 .checks li.chk-pass { color: var(--pass); }
 .checks li.chk-fail { color: var(--fail); }
 .checks li.chk-pending { color: var(--needs-fg); }
