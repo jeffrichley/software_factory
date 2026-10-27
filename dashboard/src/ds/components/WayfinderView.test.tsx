@@ -35,4 +35,10 @@ describe("WayfinderView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Actual size" }));
     expect(screen.getByRole("button", { name: "Fit to width" })).toBeTruthy();
   });
+
+  it("says in the Map's legend what fog is, as variant E does", () => {
+    render(<WayfinderView {...props} map={{ ...props.map!, fog: [] }} />);
+
+    expect(screen.getByText("Fog = not yet specified")).toBeTruthy();
+  });
 });

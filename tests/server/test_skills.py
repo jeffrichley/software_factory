@@ -139,7 +139,7 @@ def test_the_headline_and_timeline_follow_tool_activity(client, clock):
         ("Read", {"file_path": "/home/jeff/widgets/src/render/chunk.ts"}, "reading src/render/chunk.ts"),
         ("Grep", {"pattern": "seamOffset", "path": "src/"}, "searching for \"seamOffset\""),
         ("Edit", {"file_path": "/home/jeff/widgets/src/a.ts", "old_string": "x", "new_string": "y"}, "editing src/a.ts"),
-        ("Bash", {"command": "cargo test\n--quiet", "description": "Run tests"}, "running cargo test"),
+        ("Bash", {"command": "cargo test\n--quiet", "description": "Run tests"}, "run tests"),
         ("Write", {"file_path": "/tmp/elsewhere.txt", "content": ""}, "editing /tmp/elsewhere.txt"),
         ("WebFetch", {"url": "https://docs.github.com/rest", "prompt": "?"}, "fetching https://docs.github.com/rest"),
         ("Agent", {"description": "Explore the repo", "prompt": "..."}, "running subagent: Explore the repo"),
@@ -161,6 +161,41 @@ def test_the_headline_and_timeline_follow_tool_activity(client, clock):
     actions = session(client)["actions"]
     assert len(actions) == 8
     assert (actions[0]["text"], actions[-1]["text"]) == ("searching for \"seamOffset\"", "reading b.py")
+
+
+@pytest.mark.parametrize(("command", "description", "now"), [
+    # A short command reads as it is; a `cd` into the repo first is left out.
+    ("cargo test", "Run tests", "running cargo test"),
+    ("cd /home/jeff/widgets && cargo test", None, "running cargo test"),
+    # A long one reads as what it does: a new issue or PR by its title, else the command's own description ...
+    ('gh issue create --title "Prove the shaky fields can be sourced" --label wayfinder:research --body "## Q\n\nx"', None,
+     'creating issue "Prove the shaky fields can be sourced"'),
+    ("gh pr create --draft --title 'Hook posts events' --body \"$(cat <<'EOF'\nCloses #5\nEOF\n)\"", "Open the PR",
+     'opening PR "Hook posts events"'),
+    ("uv run pytest -q tests/server/test_sessions.py tests/server/test_skills.py --maxfail=1 -x", "Run the server tests",
+     "run the server tests"),
+    # ... else its first line, cut short.
+    ("python3 - <<'EOF'\nimport json\nprint(json.load(open('/home/jeff/widgets/a-rather-long-file-name.json')))\nEOF", None,
+     "running python3 - <<'EOF' …"),
+    ("npx vitest run src/ds/flow.test.ts src/ds/format.test.ts src/ds/jobs.test.ts --reporter verbose", None,
+     "running npx vitest run src/ds/flow.test.ts src/ds/format.test.ts sr…"),
+])
+def test_a_command_headline_is_short_and_human_with_the_full_command_beside_it(client, command, description, now):
+    client.post("/api/events", json=start())
+    tool_input = {"command": command, **({"description": description} if description else {})}
+    client.post("/api/events", json=hook_event("PreToolUse", tool_name="Bash", tool_input=tool_input, tool_use_id="t1"))
+
+    row = session(client)
+    assert (row["now"], row["now_detail"]) == (now, command)
+    assert row["actions"][-1]["text"] == now
+
+
+def test_a_headline_that_is_not_a_command_has_nothing_beside_it(client):
+    client.post("/api/events", json=start())
+    client.post("/api/events", json=hook_event("PreToolUse", tool_name="Bash", tool_input={"command": "ls"}, tool_use_id="t1"))
+    client.post("/api/events", json=hook_event("PreToolUse", tool_name="Read", tool_input={"file_path": "/home/jeff/widgets/a.py"}))
+
+    assert (session(client)["now"], session(client)["now_detail"]) == ("reading a.py", None)
 
 
 @pytest.fixture

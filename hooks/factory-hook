@@ -13,6 +13,7 @@ With the server down it queues the event and exits; the next event delivers the 
 
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -40,6 +41,31 @@ def mattpocock_skills_version() -> str | None:
         return None
 
 
+# TERM_PROGRAM values with a better-known name; any other value is shown as it is.
+TERM_PROGRAMS = {"Apple_Terminal": "Terminal.app", "iTerm.app": "iTerm2", "vscode": "VS Code", "WezTerm": "WezTerm"}
+
+
+def terminal() -> str | None:
+    """Where the session runs, from the environment Claude Code passes its hooks: the tmux session and window
+    (e.g. "tmux · factory:2"), else the terminal app; None when nothing says."""
+    if os.environ.get("TMUX"):
+        pane = os.environ.get("TMUX_PANE")
+        try:
+            where = subprocess.run(
+                ["tmux", "display-message", "-p", "-t", pane, "#S:#I"] if pane else ["tmux", "display-message", "-p", "#S:#I"],
+                capture_output=True, text=True, timeout=1,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            where = ""
+        return f"tmux · {where}" if where else "tmux"
+    if os.environ.get("STY"):
+        return f"screen · {os.environ['STY'].split('.', 1)[-1]}"
+    if os.environ.get("WT_SESSION"):
+        return "Windows Terminal"
+    program = os.environ.get("TERM_PROGRAM")
+    return TERM_PROGRAMS.get(program, program) if program else None
+
+
 def main() -> None:
     event = json.load(sys.stdin)
     setup = load_setup()
@@ -60,6 +86,7 @@ def main() -> None:
     body = {"machine": machine, "repo": marker["repo"], "repo_path": str(main_tree), "ids": ids, "event": event}
     if event.get("hook_event_name") == "SessionStart":
         body["mattpocock_skills_version"] = mattpocock_skills_version()
+        body["terminal"] = terminal()
 
     try:
         # Queued events go first, in order; with the server down (or out of time) this one joins them.

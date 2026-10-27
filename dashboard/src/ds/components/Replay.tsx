@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import type { JobData } from "../jobs";
+import { endedJob, type JobData } from "../jobs";
 import { formatOffset, MARKED_KINDS, replayFrame, replayLength, type ReplayData } from "../replay";
 import { PENDING, type Phase } from "../types";
 import { Icon } from "./Icon";
 import { WorkItemLink } from "./InboxCards";
 import { Eyebrow, Panel } from "./Panel";
 import { PhaseTrack } from "./PhaseTrack";
+import { RepoName } from "./RepoName";
 import { Hint, PrLink } from "./SessionDetail";
 import { Tag } from "./Tag";
+import { Unknown } from "./Unknown";
 
 /** How many ticks a full play takes, whatever the Job's length (variant E: 120 ticks of 100 ms). */
 const PLAY_TICKS = 120;
@@ -37,10 +39,12 @@ export interface ReplayViewProps {
   onBack: () => void;
   /** Where the scrubber starts, in seconds since the Job started (the gallery shows a moment mid-Job). */
   initialPos?: number;
+  /** The time now, for "ended 3h 10m ago". */
+  nowMs: number;
 }
 
 /** A finished Job replayed: play/pause and a scrubber with its events marked, each Step's Phase then, and the events. */
-export function ReplayView({ job, replay, onBack, initialPos = 0 }: ReplayViewProps) {
+export function ReplayView({ job, replay, onBack, initialPos = 0, nowMs }: ReplayViewProps) {
   const [pos, setPos] = useState(initialPos);
   const [playing, setPlaying] = useState(false);
   const length = replay ? replayLength(replay) : 1;
@@ -79,9 +83,10 @@ export function ReplayView({ job, replay, onBack, initialPos = 0 }: ReplayViewPr
         <div className="sd-meta">
           <Tag tone={job.stage === "Merged" ? "plain" : "unknown"}>{job.stage}</Tag>
           <span>PR <PrLink pr={job.pr} /></span>
-          <span>repo <span className="mono">{job.repo}</span></span>
+          <span>repo <RepoName className="mono" repo={job.repo} /></span>
           <span className="mono">{job.machine}</span>
           {replay ? <span>took {formatOffset(length)}</span> : null}
+          <span>ended {job.endedAt ? <time dateTime={job.endedAt}>{endedJob(job, nowMs).ago}</time> : <Unknown />}</span>
         </div>
       </header>
       {replay && frame ? (

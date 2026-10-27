@@ -95,6 +95,8 @@ def env(tmp_path) -> dict:
     )
     e = {**os.environ, "CLAUDE_CONFIG_DIR": str(claude)}
     e.pop("CLAUDE_PLUGIN_DATA", None)
+    for terminal in ("TMUX", "TMUX_PANE", "STY", "WT_SESSION", "TERM_PROGRAM"):
+        e.pop(terminal, None)  # each test says which terminal the session runs in
     return e
 
 

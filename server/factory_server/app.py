@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import sounds, states
-from .activity import running_skill, started_skill, tool_headline
+from .activity import running_skill, started_skill, tool_detail, tool_headline
 from .github import GitHub, read_blocked_by, read_checks, read_issues
 from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, is_agent_worktree, merge_of, spec_job_start,
                    spec_step_start, ticket_job_start, tickets_named, worktree_of)
@@ -65,6 +65,8 @@ class Envelope(BaseModel):
     event: dict
     # Sent with SessionStart only: the installed mattpocock-skills version, for the skill table's version ranges.
     mattpocock_skills_version: str | None = None
+    # Sent with SessionStart only: where the session runs, e.g. "tmux · factory:2"; None when the hook can't tell.
+    terminal: str | None = None
     # Set on an event that was queued while the server was down: when it happened on the Machine.
     queued_at: datetime | None = None
 
@@ -283,7 +285,7 @@ def create_app(
                 store.classify(session_id, role.kind, name)
             store.record_action(session_id, started_skill(name), now)
         elif event.get("hook_event_name") == "PreToolUse":
-            store.record_action(session_id, tool_headline(event), now)
+            store.record_action(session_id, tool_headline(event), now, detail=tool_detail(event))
 
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
@@ -337,6 +339,7 @@ def create_app(
                     sounds.schedule(store, session_id, event, now)
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
+                    store.set_terminal(session_id, envelope.terminal)
                 observe(session_id, event, now)
                 signal = phase_rules.load().signal(event, envelope.repo) if job_id is not None else None
                 if signal == "merge" and spec_job and not into_integration(job_id, event, envelope.repo_path):

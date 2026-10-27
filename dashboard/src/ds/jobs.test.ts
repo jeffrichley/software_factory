@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentJob, historyOf, isEnded } from "./jobs";
+import { currentJob, endedJob, historyOf, isEnded } from "./jobs";
 
 describe("currentJob", () => {
   it("is the session's latest started Job, by numeric id", () => {
@@ -42,5 +42,23 @@ describe("historyOf with the Machine filter", () => {
       { id: "2", stage: "Merged", machine: "mac" },
     ];
     expect(historyOf(jobs, ["mac"]).map((j) => j.id)).toEqual(["1"]);
+  });
+});
+
+describe("endedJob", () => {
+  const now = Date.parse("2026-10-27T15:00:00Z");
+
+  it("says how a Job ended, how long it took and how long ago, as variant E's History rows do", () => {
+    expect(endedJob({ stage: "Merged", startedAt: "2026-10-27T10:38:00Z", endedAt: "2026-10-27T11:50:00Z" }, now)).toEqual({
+      outcome: "PR merged", icon: "check", tone: "merged", took: "1h 12m", ago: "3h 10m ago",
+    });
+    expect(endedJob({ stage: "Closed", startedAt: "2026-10-26T10:00:00Z", endedAt: "2026-10-26T10:54:00Z" }, now)).toMatchObject({
+      outcome: "PR closed", icon: "x", took: "54m", ago: "1d ago",
+    });
+    expect(endedJob({ stage: "Abandoned", startedAt: "2026-10-27T14:00:00Z", endedAt: "2026-10-27T14:26:00Z" }, now).outcome).toBe("Abandoned");
+  });
+
+  it("leaves how long it took and when it ended unknown until the server has seen it end", () => {
+    expect(endedJob({ stage: "Merged", startedAt: "2026-10-27T10:38:00Z", endedAt: null }, now)).toMatchObject({ took: null, ago: null });
   });
 });

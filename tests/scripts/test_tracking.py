@@ -68,6 +68,42 @@ def test_the_hook_posts_each_event_stamped_and_sends_back_cached_ids(env, repo, 
     assert "mattpocock_skills_version" not in second
 
 
+def started_in(env, repo, server, **terminal) -> dict:
+    """The SessionStart body the hook posts from a session whose environment has `terminal`."""
+    set_up_machine(env, repo, server.url)
+    run_factory(env, repo, "install")
+    assert run_hook({**env, **terminal}, event(repo, source="startup")).returncode == 0
+    assert run_hook({**env, **terminal}, event(repo, "PreToolUse", tool_name="Bash")).returncode == 0
+    start, later = (r["body"] for r in server.received[1:])
+    assert "terminal" not in later  # sent once, with SessionStart
+    return start
+
+
+def test_the_hook_names_the_tmux_session_and_window_a_session_runs_in(env, repo, server, tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    tmux = bin_dir / "tmux"
+    tmux.write_text('#!/bin/sh\n[ "$1 $2 $3 $4 $5" = "display-message -p -t %3 #S:#I" ] && echo factory:2\n')
+    tmux.chmod(0o755)
+
+    start = started_in(env, repo, server, TMUX="/tmp/tmux-1000/default,1,0", TMUX_PANE="%3",
+                       PATH=f"{bin_dir}:{env['PATH']}", WT_SESSION="abc")
+
+    assert start["terminal"] == "tmux · factory:2"
+
+
+def test_the_hook_names_the_terminal_app_a_session_runs_in(env, repo, server):
+    assert started_in(env, repo, server, WT_SESSION="0f2c")["terminal"] == "Windows Terminal"
+
+
+def test_the_hook_names_a_terminal_by_its_term_program(env, repo, server):
+    assert started_in(env, repo, server, TERM_PROGRAM="Apple_Terminal")["terminal"] == "Terminal.app"
+
+
+def test_the_terminal_is_unknown_when_the_session_gives_no_sign_of_it(env, repo, server):
+    assert started_in(env, repo, server)["terminal"] is None
+
+
 def test_a_session_in_a_linked_worktree_reports_against_the_main_tree(env, repo, server, tmp_path):
     set_up_machine(env, repo, server.url)
     run_factory(env, repo, "install")

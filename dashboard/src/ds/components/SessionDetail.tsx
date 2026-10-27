@@ -28,6 +28,8 @@ export interface SessionData {
   unknownSkill: string | null;
   /** The "now: …" headline; null until the session does something. */
   now: string | null;
+  /** What the headline leaves out, e.g. the full command; shown on hover. */
+  nowDetail?: string | null;
   /** Done has been seen by the human. */
   seen?: boolean;
   /** ms the session has been in its state. */
@@ -73,6 +75,7 @@ export interface SessionHeaderProps {
   quietMs?: number;
   inStateMs: number;
   now: string | null;
+  nowDetail?: string | null;
   /** The detail's title: the Work item, or what kind of session it is. */
   title: ReactNode;
   /** Stale on a silent Machine: ms since the Machine was last seen. */
@@ -113,7 +116,7 @@ export function SessionHeader({ needsElsewhere, ...p }: SessionHeaderProps & { n
           <span className="sd-where"><Icon name="terminal" /><span className="mono">{p.machine}</span></span>
           <span>repo <span className="mono">{p.repo}</span></span>
         </div>
-        <NowLine now={p.now} />
+        <NowLine now={p.now} detail={p.nowDetail} />
       </header>
       {p.state === "Stale" ? <StaleNote reason={p.staleReason ?? "state can't be trusted"} machine={p.machineSilentForMs !== undefined ? p.machine : undefined} silentForMs={p.machineSilentForMs} /> : null}
       {needsElsewhere ? null : <SessionNeeds {...p} />}

@@ -1,6 +1,6 @@
 import { motion as m } from "framer-motion";
 import { useLayoutEffect, useRef, useState } from "react";
-import { phaseClass, stateLook } from "../format";
+import { phaseClass, repoName, stateLook } from "../format";
 import { glide } from "../motion";
 import type { Phase, SessionState } from "../types";
 import { Icon, type IconName } from "./Icon";
@@ -78,7 +78,7 @@ export function StateChip(p: StateChipProps) {
           {p.groupName ? <span className="ft-tg">{p.groupName}</span> : null}
           <span className="ft-tp">{phaseTxt}</span>
           <span className="ft-ts">{stateTxt}</span>
-          <span className="ft-tm">{`${p.machine} · ${p.repo}`}</span>
+          <span className="ft-tm">{`${p.machine} · ${repoName(p.repo)}`}</span>
         </span>
       ) : null}
     </>

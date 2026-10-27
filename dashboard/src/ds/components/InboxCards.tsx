@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { formatDuration } from "../format";
 import { Icon, type IconName } from "./Icon";
 import { NowLine } from "./NowLine";
+import { RepoName } from "./RepoName";
 import { Unknown } from "./Unknown";
 
 export type NeedsReason = (
@@ -96,7 +97,7 @@ export function NeedsYouCard(p: NeedsYouCardProps) {
       </header>
       <div className="nb">
         <span className="nwhat">
-          <b>{p.repo}</b> · {p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} />
+          <b><RepoName repo={p.repo} /></b> · {p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} />
           {p.reason?.step_ticket ? <> · Ticket <span className="mono">#{p.reason.step_ticket}</span></> : null}
         </span>
         <NeedsBody reason={p.reason} />
@@ -168,6 +169,7 @@ export interface DoneCardProps {
   machine: string;
   agoMs: number;
   now: string | null;
+  nowDetail?: string | null;
   onOpen?: () => void;
 }
 
@@ -176,8 +178,8 @@ export function DoneCard(p: DoneCardProps) {
   return (
     <div className="dcard">
       <span className="dt">{p.kind ?? <Unknown />} · <WorkItemLink item={p.workItem} /></span>
-      <span className="dm">{p.repo} · {p.machine} · {formatDuration(p.agoMs)} ago</span>
-      <NowLine now={p.now} />
+      <span className="dm"><RepoName repo={p.repo} /> · {p.machine} · {formatDuration(p.agoMs)} ago</span>
+      <NowLine now={p.now} detail={p.nowDetail} />
       <div className="nact">
         <button type="button" className="btn" onClick={p.onOpen}>Open</button>
       </div>
@@ -233,7 +235,7 @@ export function HiddenSessions({ sessions, open, onToggle, selectedId, onOpen }:
           {sessions.map((s) => (
             <li key={s.id}>
               <button type="button" className={`linkbtn${s.id === selectedId ? " sel" : ""}`} onClick={() => onOpen(s.id)}>
-                {s.kind} · <span className="mono">{s.repo}</span> · <span className="mono">{s.machine}</span>
+                {s.kind} · <RepoName className="mono" repo={s.repo} /> · <span className="mono">{s.machine}</span>
               </button>
             </li>
           ))}
