@@ -10,12 +10,22 @@ when no open call holds it, since parallel calls run beside a waiting one. With 
 waiting, the session shows its base state: Working, Done after Stop, or Needs you after StopFailure.
 """
 
+import json
 from datetime import datetime
 
 from .store import MAIN, Store
 
 # Tools whose call is itself a prompt for the human.
 ASK_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
+# A Job that stopped before its non-draft PR exists.
+NO_PR = {"kind": "no-pr"}
+
+
+def pr_arrived(store: Store, session_id: int, now: datetime) -> None:
+    """The session's Job now has its non-draft PR: if it stopped without one, it is Done after all."""
+    if (store.session(session_id)["base_reason"] or "") == json.dumps(NO_PR):
+        store.set_base(session_id, "Done")
+        store.settle(session_id, now)
 
 
 def permission_reason(event: dict) -> dict:
@@ -40,8 +50,8 @@ def running_background_tasks(event: dict) -> bool:
     return any(t.get("status") == "running" for t in event.get("background_tasks") or [] if isinstance(t, dict))
 
 
-def apply(store: Store, session_id: int, event: dict, now: datetime) -> None:
-    """Apply one hook event's effect on the session's state."""
+def apply(store: Store, session_id: int, event: dict, now: datetime, job_without_pr: bool = False) -> None:
+    """Apply one hook event's effect on the session's state; `job_without_pr`: its current Job has no non-draft PR."""
     subagent = event.get("agent_id") or MAIN
     tool_use_id = event.get("tool_use_id")
     match event.get("hook_event_name"):
@@ -81,7 +91,11 @@ def apply(store: Store, session_id: int, event: dict, now: datetime) -> None:
                 store.set_base(session_id, "Working")
             else:
                 store.end_turn(session_id)
-                store.set_base(session_id, "Done")
+                # A Job is Done only once its non-draft PR exists.
+                if job_without_pr:
+                    store.set_base(session_id, "Needs you", NO_PR)
+                else:
+                    store.set_base(session_id, "Done")
         case "SubagentStop":
             # Never Done: only the subagent finished. Its prompts are over.
             store.end_turn(session_id, subagent)

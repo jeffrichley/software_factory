@@ -26,6 +26,7 @@ import {
   SessionHeader,
   SessionTable,
   Split,
+  TicketJobView,
   TopBar,
   StateBadge,
   StateChip,
@@ -231,6 +232,21 @@ export function Gallery() {
           <AdHocView machine="desk-wsl" repo="worlds" kind={AD_HOC} state="Working" inStateMs={4 * 60_000} now="reading src/render/chunk.ts" unknownSkill={null} actions={adhocActions} />
           <AdHocView machine="mac-mini" repo="gateway" kind={AD_HOC} state="Done" inStateMs={30_000} now={null} unknownSkill="deploy-preview" actions={[]} />
           <AdHocView machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Needs you" inStateMs={3 * 60_000} now="started `implement`" unknownSkill={null} actions={adhocActions.slice(-3)} />
+          <Eyebrow>Ticket Job · PR open, Done</Eyebrow>
+          <TicketJobView
+            machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Done" inStateMs={2 * 60_000} now="ran `factory report pr`" actions={adhocActions.slice(-2)}
+            job={{ id: "12", sessionId: "3", kind: "Ticket Job", number: 28, workItem: { name: "Ticket Job: launch to Done", url: "https://github.com/jeff/widgets/issues/28" }, stage: "PR open", branch: "worktree-ticket-28-ticket-job-launch-to-done", worktree: "/home/jeff/widgets/.claude/worktrees/ticket-28-ticket-job-launch-to-done", pr: { number: 46, url: "https://github.com/jeff/widgets/pull/46", draft: false } }}
+          />
+          <Eyebrow>Ticket Job · Work item unknown, ended without a PR</Eyebrow>
+          <TicketJobView
+            machine="mac-studio" repo="jeff/widgets" kind="Ticket Job" state="Needs you" inStateMs={60_000} now={null} actions={[]}
+            job={{ id: "13", sessionId: "4", kind: "Ticket Job", number: null, workItem: null, stage: "In progress", branch: null, worktree: null, pr: null }}
+          />
+          <Eyebrow>Ticket Job · draft PR</Eyebrow>
+          <TicketJobView
+            machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Working" inStateMs={30_000} now="pushing" actions={[]}
+            job={{ id: "14", sessionId: "5", kind: "Ticket Job", number: 31, workItem: null, stage: "In progress", branch: null, worktree: "/home/jeff/widgets-31", pr: { number: 47, url: "https://github.com/jeff/widgets/pull/47", draft: true } }}
+          />
           <Eyebrow>Session header · every state</Eyebrow>
           {headerStates.map(([state, seen]) => (
             <SessionHeader key={`${state}-${seen}`} machine="mac-studio" repo="jeff/widgets" kind="research" state={state} seen={seen} staleReason={state === "Stale" ? "Machine silent" : undefined} inStateMs={7 * 60_000} now={state === "Stale" ? null : "fetching https://docs.github.com/rest"} title="research session" />

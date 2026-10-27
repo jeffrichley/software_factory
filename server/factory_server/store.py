@@ -2,12 +2,14 @@
 
 import functools
 import json
+import re
 import sqlite3
 import threading
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from .jobs import IN_PROGRESS, PR_OPEN
 from .skills import AD_HOC
 
 SCHEMA = """
@@ -93,6 +95,20 @@ CREATE TABLE IF NOT EXISTS tool_uses (
   tool_input TEXT NOT NULL,
   PRIMARY KEY (session_id, tool_use_id)
 );
+-- A Job: one typed launch of a Job skill. number is NULL until the Work item is known; pr_url is the PR
+-- the agent reported, if any (the poll may know it, or another one, better).
+CREATE TABLE IF NOT EXISTS jobs (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL REFERENCES sessions (id),
+  kind TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  number INTEGER,
+  started_at TEXT NOT NULL,
+  worktree TEXT,
+  branch TEXT,
+  pr_url TEXT
+);
+CREATE INDEX IF NOT EXISTS jobs_by_session ON jobs (session_id, id);
 -- A sound for one transition of a session's state, due at `due`. It plays (gets `seq`, the order the
 -- dashboard plays sounds in) once due if the session is still in that transition, else it is dropped.
 CREATE TABLE IF NOT EXISTS sounds (
@@ -117,6 +133,9 @@ SESSION_COLUMNS = {
     "seen": "INTEGER NOT NULL DEFAULT 0",  # Done has been seen by the human
     "hidden": "INTEGER NOT NULL DEFAULT 0",  # hidden by the human: out of the dashboard's views, and silent
     "transitions": "INTEGER NOT NULL DEFAULT 0",  # counts changes of shown state: a sound belongs to one
+}
+PULL_REQUEST_COLUMNS = {
+    "closes": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues its body closes
 }
 # The ad hoc detail view's timeline shows a session's last few actions; older ones are dropped.
 KEEP_ACTIONS = 8
@@ -148,11 +167,12 @@ class Store:
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
-        have = {r["name"] for r in self.db.execute("PRAGMA table_info(sessions)")}
         with self.db:
-            for column, decl in SESSION_COLUMNS.items():
-                if column not in have:
-                    self.db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {decl}")
+            for table, columns in (("sessions", SESSION_COLUMNS), ("pull_requests", PULL_REQUEST_COLUMNS)):
+                have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
+                for column, decl in columns.items():
+                    if column not in have:
+                        self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     @locked
     def touch_session(self, machine: str, repo: str, cc_session_id: str, now: datetime) -> int:
@@ -476,9 +496,9 @@ class Store:
             )
             self.db.execute("DELETE FROM pull_requests WHERE repo = ?", (repo,))
             self.db.executemany(
-                "INSERT INTO pull_requests (repo, number, title, state, draft, url)"
-                " VALUES (:repo, :number, :title, :state, :draft, :url)",
-                [{**pull, "repo": repo} for pull in pulls],
+                "INSERT INTO pull_requests (repo, number, title, state, draft, url, closes)"
+                " VALUES (:repo, :number, :title, :state, :draft, :url, :closes)",
+                [{**pull, "repo": repo, "closes": json.dumps(pull.get("closes", []))} for pull in pulls],
             )
 
     @locked
@@ -525,3 +545,92 @@ class Store:
             " WHERE s.ended_at IS NULL ORDER BY k.id"
         ).fetchall()
         return [{**dict(r), "session_id": str(r["session_id"])} for r in rows]
+
+    # ---------- Jobs ----------
+
+    @locked
+    def start_job(self, session_id: int, kind: str, repo: str, number: int | None, now: datetime) -> int:
+        """A new Job in the session; older ones are never closed by it."""
+        with self.db:
+            return self.db.execute(
+                "INSERT INTO jobs (session_id, kind, repo, number, started_at) VALUES (?, ?, ?, ?, ?)",
+                (session_id, kind, repo, number, iso(now)),
+            ).lastrowid
+
+    @locked
+    def current_job(self, session_id: int) -> int | None:
+        """The session's most recently started Job."""
+        row = self.db.execute("SELECT id FROM jobs WHERE session_id = ? ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+        return row["id"] if row else None
+
+    @locked
+    def job_session(self, job_id: int) -> int | None:
+        row = self.db.execute("SELECT session_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return row["session_id"] if row else None
+
+    @locked
+    def set_job_number(self, job_id: int, number: int) -> None:
+        with self.db:
+            self.db.execute("UPDATE jobs SET number = ? WHERE id = ?", (number, job_id))
+
+    @locked
+    def set_job_worktree(self, job_id: int, worktree: str, branch: str | None = None) -> None:
+        """Where the Job works; a known branch is kept until another is learnt for the same worktree."""
+        with self.db:
+            self.db.execute(
+                "UPDATE jobs SET branch = CASE WHEN worktree IS ? THEN COALESCE(?, branch) ELSE ? END, worktree = ?"
+                " WHERE id = ?",
+                (worktree, branch, branch, worktree, job_id),
+            )
+
+    @locked
+    def set_job_pr(self, job_id: int, url: str) -> None:
+        with self.db:
+            self.db.execute("UPDATE jobs SET pr_url = ? WHERE id = ?", (url, job_id))
+
+    @locked
+    def work_item(self, repo: str, number: int) -> dict | None:
+        row = self.db.execute("SELECT title, url FROM work_items WHERE repo = ? AND number = ?", (repo, number)).fetchone()
+        return dict(row) if row else None
+
+    def _job_pr(self, job: sqlite3.Row) -> dict | None:
+        """The Job's PR: the one it reported (as the poll knows it, if it does), else an open or merged PR
+        closing its Work item. A reported PR the poll hasn't seen yet counts as non-draft, as the Job was told."""
+        pulls = self.db.execute(
+            "SELECT number, url, draft, state, closes FROM pull_requests WHERE repo = ? ORDER BY number DESC", (job["repo"],)
+        ).fetchall()
+        found = next((p for p in pulls if p["url"] == job["pr_url"]), None)
+        if found is None and job["pr_url"] is None and job["number"] is not None:
+            found = next((p for p in pulls if p["state"] != "closed" and job["number"] in json.loads(p["closes"])), None)
+        if found is not None:
+            return {"number": found["number"], "url": found["url"], "draft": bool(found["draft"])}
+        if job["pr_url"]:
+            m = re.search(r"/pull/(\d+)", job["pr_url"])
+            return {"number": int(m[1]) if m else None, "url": job["pr_url"], "draft": False}
+        return None
+
+    @locked
+    def job_has_pr(self, job_id: int) -> bool:
+        """A non-draft PR exists for the Job, which makes it Done."""
+        pr = self._job_pr(self.db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
+        return bool(pr and not pr["draft"])
+
+    @locked
+    def jobs(self) -> list[dict]:
+        """Jobs in repos some Machine tracks, oldest first, with their Work item, PR and stage."""
+        rows = self.db.execute(
+            "SELECT j.*, w.title, w.url FROM jobs j LEFT JOIN work_items w ON w.repo = j.repo AND w.number = j.number"
+            " WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY j.id"
+        ).fetchall()
+        out = []
+        for j in rows:
+            pr = self._job_pr(j)
+            out.append({
+                "id": str(j["id"]), "session_id": str(j["session_id"]), "kind": j["kind"], "repo": j["repo"],
+                "number": j["number"],
+                "work_item": {"title": j["title"], "url": j["url"]} if j["title"] is not None else None,
+                "worktree": j["worktree"], "branch": j["branch"],
+                "stage": PR_OPEN if pr and not pr["draft"] else IN_PROGRESS,
+                "pr": pr, "started_at": j["started_at"],
+            })
+        return out
