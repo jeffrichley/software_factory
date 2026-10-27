@@ -22,6 +22,7 @@ import {
   TicketJobView,
   TopBar,
   filterUrl,
+  flowRows,
   hiddenMachinesOf,
   currentJob,
   inboxOf,
@@ -31,6 +32,7 @@ import {
   resumeCommand,
   viewOf,
   type NeedsReason,
+  type Phase,
   type SessionRowData,
   type SessionState,
   type SoundName,
@@ -82,6 +84,18 @@ interface FactoryState {
     stage: string;
     pr: { number: number | null; url: string; draft: boolean } | null;
     started_at: string;
+  }[];
+  /** Steps of those Jobs, oldest first: a Ticket Job has one. */
+  steps: {
+    id: string;
+    job_id: string;
+    session_id: string;
+    repo: string;
+    number: number | null;
+    title: string | null;
+    /** null = Phase unknown. */
+    phase: Phase | null;
+    phase_since: string;
   }[];
   /** The latest sounds the server has played, one per transition; ids only grow. */
   sounds: { id: number; session_id: string; machine: string; sound: SoundName; at: string }[];
@@ -210,6 +224,13 @@ export function Dashboard() {
     worktree: j.worktree, pr: j.pr, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
   }));
   const jobOf = (sessionId: string) => currentJob(jobs, sessionId);
+  const steps = (state?.steps ?? []).map((s) => ({
+    id: s.id, jobId: s.job_id, sessionId: s.session_id, repo: s.repo, number: s.number, title: s.title, phase: s.phase,
+  }));
+  const flow = flowRows(repos?.map((r) => r.repo) ?? [], view.shown, jobs, steps).map((r) => ({
+    repo: r.repo,
+    chips: r.chips.map(({ sessionId, ...c }) => ({ ...c, selected: sessionId === selectedId, onOpen: () => open(sessionId) })),
+  }));
   const workItemOf = (sessionId: string) => jobOf(sessionId)?.workItem ?? null;
 
   const seen = (id: string) => void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
@@ -286,7 +307,7 @@ export function Dashboard() {
           </Inbox>
         }
       >
-        {repos ? <FlowStrip rows={repos.map((r) => ({ repo: r.repo, chips: [] }))} /> : null}
+        {repos ? <FlowStrip rows={flow} /> : null}
         {state ? (
           <SessionTable
             sessions={showHiddenSessions ? [...view.shown, ...view.hiddenSessions] : view.shown}
