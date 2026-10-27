@@ -53,7 +53,8 @@ export interface StepDetailData {
   phaseEvents: PhaseChangeData[];
   /** null until a test run. */
   tests: { last: "pass" | "fail"; passed: number | null; failed: number | null; runs: TestRunData[] } | null;
-  files: { path: string; edits: number }[];
+  /** Lines each file's edits added and deleted; null when some edit's patch couldn't be read. */
+  files: { path: string; edits: number; added: number | null; deleted: number | null }[];
   commits: CommitData[];
   /** A Ticket Job's PR; checks null until read. A Spec Job's Steps merge into its integration branch instead. */
   pr: { number: number | null; url: string; draft: boolean; checks: CheckData[] | null } | null;

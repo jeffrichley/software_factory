@@ -149,13 +149,16 @@ CREATE TABLE IF NOT EXISTS test_runs (
   failed INTEGER
 );
 CREATE INDEX IF NOT EXISTS test_runs_by_step ON test_runs (step_id, id);
--- Each file a Step's agent edited, with its edits in all and since the Step's tests last passed (for churn).
+-- Each file a Step's agent edited, with its edits in all and since the Step's tests last passed (for churn), and
+-- the lines its edits added and deleted (NULL = unknown: some edit's patch couldn't be read).
 CREATE TABLE IF NOT EXISTS step_files (
   id INTEGER PRIMARY KEY,
   step_id INTEGER NOT NULL REFERENCES steps (id),
   path TEXT NOT NULL,
   edits INTEGER NOT NULL,
   since_pass INTEGER NOT NULL,
+  added INTEGER,
+  deleted INTEGER,
   UNIQUE (step_id, path)
 );
 -- Each commit a Step's agent made, with its diffstat.
@@ -253,6 +256,10 @@ STEP_COLUMNS = {
     "checklist": "TEXT",  # JSON: the agent's live checklist; NULL while it has none (no todo or task tools)
     "active_at": "TEXT",  # the Step's latest event; NULL before any
 }
+STEP_FILE_COLUMNS = {
+    "added": "INTEGER",  # lines its edits added; NULL = unknown (and for files recorded before it was kept)
+    "deleted": "INTEGER",
+}
 PULL_REQUEST_COLUMNS = {
     "closes": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues its body closes
 }
@@ -309,7 +316,8 @@ class Store:
         self.db.executescript(SCHEMA)
         with self.db:
             for table, columns in (("sessions", SESSION_COLUMNS), ("work_items", WORK_ITEM_COLUMNS),
-                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS), ("steps", STEP_COLUMNS)):
+                                   ("pull_requests", PULL_REQUEST_COLUMNS), ("jobs", JOB_COLUMNS), ("steps", STEP_COLUMNS),
+                                   ("step_files", STEP_FILE_COLUMNS)):
                 have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
                 for column, decl in columns.items():
                     if column not in have:
@@ -1210,12 +1218,15 @@ class Store:
             )
 
     @locked
-    def record_edit(self, step_id: int, path: str) -> None:
+    def record_edit(self, step_id: int, path: str, lines: tuple[int, int] | None) -> None:
+        """One edit to a file, with the (added, deleted) lines of its patch; None (unknown) makes the file's unknown."""
+        added, deleted = lines or (None, None)
         with self.db:
             self.db.execute(
-                "INSERT INTO step_files (step_id, path, edits, since_pass) VALUES (?, ?, 1, 1)"
-                " ON CONFLICT (step_id, path) DO UPDATE SET edits = edits + 1, since_pass = since_pass + 1",
-                (step_id, path),
+                "INSERT INTO step_files (step_id, path, edits, since_pass, added, deleted) VALUES (?, ?, 1, 1, ?, ?)"
+                " ON CONFLICT (step_id, path) DO UPDATE SET edits = edits + 1, since_pass = since_pass + 1,"
+                " added = added + excluded.added, deleted = deleted + excluded.deleted",
+                (step_id, path, added, deleted),
             )
 
     @locked
@@ -1235,9 +1246,9 @@ class Store:
             if (d := details.get(str(e["step_id"]))) is not None:
                 d["phase_events"].append({"at": e["at"], "from": phase[str(e["step_id"])], "to": e["phase"]})
                 phase[str(e["step_id"])] = e["phase"]
-        for f in self.db.execute("SELECT step_id, path, edits FROM step_files ORDER BY id"):
+        for f in self.db.execute("SELECT step_id, path, edits, added, deleted FROM step_files ORDER BY id"):
             if (d := details.get(str(f["step_id"]))) is not None:
-                d["files"].append({"path": f["path"], "edits": f["edits"]})
+                d["files"].append({k: f[k] for k in ("path", "edits", "added", "deleted")})
         for c in self.db.execute("SELECT * FROM step_commits ORDER BY id"):
             if (d := details.get(str(c["step_id"]))) is not None:
                 d["commits"].append({k: c[k] for k in ("sha", "message", "files", "added", "deleted")})
