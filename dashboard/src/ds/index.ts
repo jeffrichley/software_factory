@@ -7,6 +7,7 @@ export * from "./format";
 export * from "./flow";
 export * from "./graph";
 export * from "./inbox";
+export * from "./jobs";
 export * from "./motion";
 export * from "./components/Icon";
 export * from "./components/Unknown";

@@ -3,6 +3,8 @@
 import re
 from typing import Literal
 
+from .jobs import closed_by
+
 Kind = Literal["Map", "Decision ticket", "Spec", "Ticket"]
 MAP: Kind = "Map"
 DECISION_TICKET: Kind = "Decision ticket"
@@ -55,7 +57,7 @@ def work_items(repo: str, issues: list[dict]) -> list[dict]:
 
 
 def pull_requests(issues: list[dict]) -> list[dict]:
-    """The repo's PRs, each open, closed or merged, and whether it is a draft."""
+    """The repo's PRs, each open, closed or merged, whether it is a draft, and the issues its body closes."""
     return [
         {
             "number": i["number"],
@@ -63,6 +65,7 @@ def pull_requests(issues: list[dict]) -> list[dict]:
             "state": "merged" if i["pull_request"].get("merged_at") else i["state"],
             "draft": bool(i.get("draft")),
             "url": i["html_url"],
+            "closes": closed_by(i.get("body")),
         }
         for i in issues
         if "pull_request" in i

@@ -13,8 +13,12 @@ import {
   SectionHeading,
   SessionTable,
   Split,
+  TICKET_JOB,
+  TicketJobView,
   TopBar,
+  currentJob,
   inboxOf,
+  type JobData,
   resumeCommand,
   type NeedsReason,
   type SessionRowData,
@@ -51,6 +55,20 @@ interface FactoryState {
     now: string | null;
     /** The last few actions, oldest first. */
     actions: TimelineEntry[];
+  }[];
+  /** Jobs in Tracked repos, oldest first. */
+  jobs: {
+    id: string;
+    session_id: string;
+    kind: string;
+    repo: string;
+    number: number | null;
+    work_item: { title: string; url: string } | null;
+    worktree: string | null;
+    branch: string | null;
+    stage: string;
+    pr: { number: number | null; url: string; draft: boolean } | null;
+    started_at: string;
   }[];
 }
 
@@ -95,6 +113,12 @@ export function Dashboard() {
     seen: s.seen, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, actions: s.actions,
     inStateMs: now - Date.parse(s.state_since),
   }));
+  const jobs: JobData[] = (state?.jobs ?? []).map((j) => ({
+    id: j.id, sessionId: j.session_id, kind: j.kind, number: j.number, stage: j.stage, branch: j.branch,
+    worktree: j.worktree, pr: j.pr, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
+  }));
+  const jobOf = (sessionId: string) => currentJob(jobs, sessionId);
+  const workItemOf = (sessionId: string) => jobOf(sessionId)?.workItem ?? null;
   const selected = sessions?.find((s) => s.id === selectedId);
   const { needs, doneUnseen } = inboxOf(sessions ?? []);
 
@@ -126,7 +150,7 @@ export function Dashboard() {
                   waitingMs={s.inStateMs}
                   repo={s.repo}
                   kind={s.kind}
-                  workItem={null}
+                  workItem={workItemOf(s.id)}
                   machine={s.machine}
                   session={s.ccSessionId.slice(0, SESSION_ID_CHARS)}
                   terminal={null}
@@ -145,7 +169,7 @@ export function Dashboard() {
                 <DoneCard
                   key={s.id}
                   kind={s.kind}
-                  workItem={null}
+                  workItem={workItemOf(s.id)}
                   repo={s.repo}
                   machine={s.machine}
                   agoMs={s.inStateMs}
@@ -161,8 +185,10 @@ export function Dashboard() {
       >
         {state ? <FlowStrip rows={state.repos.map((r) => ({ repo: r.repo, chips: [] }))} /> : null}
         {sessions ? <SessionTable sessions={sessions} selectedId={selectedId} onSelect={open} /> : null}
-        {/* Every kind shows the ad hoc view, titled by its kind, until its own detail view arrives. */}
-        {selected ? <AdHocView {...selected} /> : null}
+        {/* Kinds without their own detail view yet show the ad hoc view, titled by their kind. */}
+        {selected ? (
+          selected.kind === TICKET_JOB ? <TicketJobView {...selected} job={jobOf(selected.id)} /> : <AdHocView {...selected} />
+        ) : null}
       </Split>
     </>
   );

@@ -238,6 +238,41 @@ def dashboard() -> None:
     webbrowser.open(f"{url}/")
 
 
+report_app = typer.Typer(no_args_is_help=True, help="Report what hooks can't see about a Job.")
+app.add_typer(report_app, name="report")
+JobOption = Annotated[str, typer.Option("--job", help="The Job's id, as the Factory gave it at Job start.")]
+
+
+def self_report(name: str, job: str, **fields) -> None:
+    """Send a self-report about a Job through the hook's event path: queued while the server is down."""
+    setup = require_setup()
+    main = require_repo()
+    machine = setup["machine"]
+    marker = marker_path(main, machine)
+    if not marker.exists():
+        fail(f"Not tracked on '{machine}': {main}. Run `factory install` (or /factory:install) to track it.")
+    body = {
+        "machine": machine, "repo": json.loads(marker.read_text())["repo"], "repo_path": str(main), "ids": {},
+        "event": {"hook_event_name": name, "job_id": job, **fields},
+    }
+    if send(main, machine, setup["server_url"], body) is None:
+        typer.echo(f"Server unreachable at {setup['server_url']}; the report is queued and goes with the next event.")
+    else:
+        typer.echo("Reported.")
+
+
+@report_app.command("pr")
+def report_pr(url: Annotated[str, typer.Argument(help="The PR's URL.")], job: JobOption) -> None:
+    """The Job opened its non-draft PR."""
+    self_report("report_pr", job, url=url)
+
+
+@app.command("job")
+def job_(issue: Annotated[int, typer.Option("--issue", help="The Work item's issue number.")], job: JobOption) -> None:
+    """The Work item a Job started without one is working."""
+    self_report("job_issue", job, issue=issue)
+
+
 @app.command()
 def server(
     port: Annotated[int, typer.Option(help="Port to listen on.")] = DEFAULT_PORT,

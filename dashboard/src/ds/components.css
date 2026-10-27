@@ -292,6 +292,10 @@ a { color: inherit; }
 .sd-meta .mono { color: var(--text); }
 .sd-where { display: inline-flex; align-items: center; gap: var(--s2); }
 .hint { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s3) var(--s4); margin: 0; }
+.facts div { display: grid; gap: 2px; min-width: 0; }
+.facts dt { font: 600 var(--fs-2xs)/1.2 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.facts dd { margin: 0; font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
 
 /* ---------- Timeline (last actions) ---------- */
 .tl { list-style: none; margin: 0; padding: 0; display: grid; }

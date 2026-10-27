@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from . import states
 from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub, read_issues
+from .jobs import ticket_job_start, worktree_of
 from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
 from .store import Store
@@ -105,6 +106,7 @@ def create_app(
             "sessions": [as_shown(s, silent_since.get(s["machine"])) for s in store.live_sessions()],
             "work_items": store.work_items(),
             "pull_requests": store.pull_requests(),
+            "jobs": store.jobs(),
             "mismatches": mismatches(),
         }
 
@@ -137,9 +139,17 @@ def create_app(
             try:
                 issues = read_issues(github, repo)
                 store.save_poll(repo, work_items(repo, issues), pull_requests(issues))
+                prs_arrived(repo)
                 hub.publish(state())
             except Exception:
                 log.exception("GitHub poll of %s failed", repo)
+
+    def prs_arrived(repo: str) -> None:
+        """A poll may bring the non-draft PR of a Job that already stopped without one."""
+        for s in store.live_sessions():
+            job_id = store.current_job(int(s["id"]))
+            if s["repo"] == repo and job_id is not None and store.job_has_pr(job_id):
+                states.pr_arrived(store, int(s["id"]), clock())
 
     async def poll_forever() -> None:
         while True:
@@ -182,31 +192,81 @@ def create_app(
         # The Machine reports now, but a queued event counts from when it happened (never later than now).
         store.machine_seen(envelope.machine, clock())
         now = min(envelope.queued_at, clock()) if envelope.queued_at else clock()
-        session_id = None
+        session_id = job_id = inject = None
         match event.get("hook_event_name"):
             case "repo_installed":
                 store.track_repo(envelope.repo, envelope.machine, envelope.repo_path, now)
             case "repo_uninstalled":
                 store.untrack_repo(envelope.repo, envelope.machine, now)
                 polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
+            case "report_pr" | "job_issue" as name:
+                session_id, job_id = self_report(name, event, now)
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
                 if invocation := skill_invocation(event):
                     skill, number = bare_name(invocation[0]), work_item_named(invocation[1], envelope.repo)
+                    typed = name == "UserPromptExpansion"
                     if skill and number:
-                        typed = name == "UserPromptExpansion"
                         store.record_skill_start(session_id, skill, envelope.repo, number, typed=typed)
+                    if typed and skill:
+                        inject = start_job(session_id, skill, number, envelope, now)
+                job_id = store.current_job(session_id)
+                if job_id is not None and "agent_id" not in event:
+                    follow_worktree(job_id, event, envelope.repo_path)
                 if name == "SessionEnd":
                     store.end_session(session_id, now)
                 else:
                     # A resumed session, or one still running when its repo was uninstalled and reinstalled.
                     store.resume_session(session_id, now)
-                    states.apply(store, session_id, event, now)
+                    without_pr = job_id is not None and not store.job_has_pr(job_id)
+                    states.apply(store, session_id, event, now, job_without_pr=without_pr)
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
                 observe(session_id, event, now)
         hub.publish(state())
-        return Reply(session_id=None if session_id is None else str(session_id))
+        return Reply(
+            session_id=None if session_id is None else str(session_id),
+            job_id=None if job_id is None else str(job_id),
+            inject=inject,
+        )
+
+    def start_job(session_id: int, skill: str, number: int | None, envelope: Envelope, now: datetime) -> str | None:
+        """A typed Job skill starts a new Job (older ones carry on); returns what to tell the agent."""
+        role = skills.role(skill, store.session(session_id)["mattpocock_skills_version"])
+        if role is None or role.role != "Ticket Job":
+            return None
+        job_id = store.start_job(session_id, role.role, envelope.repo, number, now)
+        item = store.work_item(envelope.repo, number) if number else None
+        worktree = worktree_of(envelope.event.get("cwd"), envelope.repo_path)
+        return ticket_job_start(str(job_id), number, item and item["title"], worktree)
+
+    def follow_worktree(job_id: int, event: dict, main_tree: str) -> None:
+        """Where the Job works: the worktree EnterWorktree made, else the session's own cwd when in one."""
+        response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+        if event.get("hook_event_name") == "PostToolUse" and event.get("tool_name") == "EnterWorktree" and response.get("worktreePath"):
+            store.set_job_worktree(job_id, response["worktreePath"], response.get("worktreeBranch"))
+        elif worktree := worktree_of(event.get("cwd"), main_tree):
+            store.set_job_worktree(job_id, worktree)
+
+    def self_report(name: str, event: dict, now: datetime) -> tuple[int, int]:
+        """A `factory` self-report about a Job; every one names its Job."""
+        try:
+            job_id = int(event.get("job_id"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="a self-report needs --job <id>") from None
+        session_id = store.job_session(job_id)
+        if session_id is None:
+            raise HTTPException(status_code=404, detail=f"no Job {job_id}")
+        match name:
+            case "report_pr":
+                store.set_job_pr(job_id, str(event.get("url") or ""))
+            case "job_issue":
+                if not str(event.get("issue", "")).isdigit():
+                    raise HTTPException(status_code=422, detail="`factory job` needs --issue <number>")
+                store.set_job_number(job_id, int(event["issue"]))
+        if store.current_job(session_id) == job_id and store.job_has_pr(job_id):
+            states.pr_arrived(store, session_id, now)
+        return session_id, job_id
 
     @app.post("/api/sessions/{session_id}/seen")
     async def seen(session_id: int) -> dict:
