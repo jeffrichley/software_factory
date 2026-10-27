@@ -6,12 +6,12 @@ import { Empty, Eyebrow, Panel } from "./Panel";
 import { Detail, Hint, PrLink } from "./SessionDetail";
 import { Tag } from "./Tag";
 
-/** The header's History button: how many Jobs have ended; opens the History list. */
+/** The header's History button (variant E's), with how many Jobs have ended; opens the History list. */
 export function HistoryCount({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
   return (
-    <button type="button" className={`count count-history${open ? " on" : ""}`} aria-pressed={open} onClick={onToggle}>
-      <Icon name="clock" />
-      <b>{count}</b>History
+    <button type="button" className={`btn${open ? " btn-on" : ""}`} aria-pressed={open} onClick={onToggle}>
+      <Icon name="history" />
+      History<b className="btn-count">{count}</b>
     </button>
   );
 }
