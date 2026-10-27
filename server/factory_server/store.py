@@ -1,6 +1,7 @@
 """SQLite state: stdlib sqlite3, no ORM."""
 
 import functools
+import json
 import sqlite3
 import threading
 from collections.abc import Callable
@@ -67,6 +68,27 @@ CREATE TABLE IF NOT EXISTS skill_starts (
   number INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS skill_starts_session ON skill_starts (session_id);
+-- A prompt waiting on the human (permission, question, plan approval, elicitation), in the main
+-- session (subagent '') or one of its subagents (by agent_id). key is the tool_use_id or
+-- elicitation it belongs to; NULL when a PermissionRequest matched no open call.
+CREATE TABLE IF NOT EXISTS prompts (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL,
+  subagent TEXT NOT NULL,
+  key TEXT,
+  reason TEXT NOT NULL,
+  since TEXT NOT NULL
+);
+-- Tool calls between PreToolUse and their PostToolUse/Failure: PermissionRequest carries no
+-- tool_use_id, so its prompt is tied to the open call it asks about.
+CREATE TABLE IF NOT EXISTS tool_uses (
+  session_id INTEGER NOT NULL,
+  subagent TEXT NOT NULL,
+  tool_use_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  tool_input TEXT NOT NULL,
+  PRIMARY KEY (session_id, tool_use_id)
+);
 """
 # Columns added after the first release, so an existing database gains them on start.
 SESSION_COLUMNS = {
@@ -74,9 +96,16 @@ SESSION_COLUMNS = {
     "skill": "TEXT",
     "headline": "TEXT",
     "mattpocock_skills_version": "TEXT",
+    "base": "TEXT NOT NULL DEFAULT 'Working'",  # the state shown when no prompt is waiting
+    "base_reason": "TEXT",
+    "reason": "TEXT",  # JSON reason shown with Needs you
+    "seen": "INTEGER NOT NULL DEFAULT 0",  # Done has been seen by the human
 }
 # The ad hoc detail view's timeline shows a session's last few actions; older ones are dropped.
 KEEP_ACTIONS = 8
+
+# The `subagent` value for the main session itself.
+MAIN = ""
 
 
 def iso(t: datetime) -> str:
@@ -124,15 +153,24 @@ class Store:
     def resume_session(self, session_id: int, now: datetime) -> None:
         """An ended session that is active again keeps its id: bring its row back, Working from now."""
         with self.db:
-            self.db.execute(
-                "UPDATE sessions SET ended_at = NULL, state = 'Working', state_since = ? WHERE id = ? AND ended_at IS NOT NULL",
+            cur = self.db.execute(
+                "UPDATE sessions SET ended_at = NULL, state = 'Working', state_since = ?, base = 'Working',"
+                " base_reason = NULL, reason = NULL WHERE id = ? AND ended_at IS NOT NULL",
                 (iso(now), session_id),
             )
+            if cur.rowcount:
+                self._drop_waiting(session_id)
 
     @locked
     def end_session(self, session_id: int, now: datetime) -> None:
+        """The row ends (and stays in history); prompts it left waiting are dropped."""
         with self.db:
             self.db.execute("UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL", (iso(now), session_id))
+            self._drop_waiting(session_id)
+
+    def _drop_waiting(self, session_id: int) -> None:
+        self.db.execute("DELETE FROM prompts WHERE session_id = ?", (session_id,))
+        self.db.execute("DELETE FROM tool_uses WHERE session_id = ?", (session_id,))
 
     @locked
     def set_mattpocock_skills_version(self, session_id: int, version: str | None) -> None:
@@ -167,10 +205,12 @@ class Store:
 
     @locked
     def live_sessions(self) -> list[dict]:
+        """Live rows, Needs you first (longest waiting first), then the rest in order of first sight."""
         rows = self.db.execute(
-            "SELECT id, machine, repo, state, state_since, kind, skill, headline,"
+            "SELECT id, machine, repo, cc_session_id, state, state_since, reason, seen, kind, skill, headline,"
             " (SELECT skill FROM unknown_skills u WHERE u.session_id = sessions.id ORDER BY u.id DESC LIMIT 1) AS unknown_skill"
-            " FROM sessions WHERE ended_at IS NULL ORDER BY id"
+            " FROM sessions WHERE ended_at IS NULL"
+            " ORDER BY state != 'Needs you', CASE WHEN state = 'Needs you' THEN state_since END, id"
         ).fetchall()
         actions: dict[int, list[dict]] = {}
         for a in self.db.execute(
@@ -180,13 +220,124 @@ class Store:
             actions.setdefault(a["session_id"], []).append({"at": a["at"], "text": a["text"]})
         return [
             {
-                "id": str(r["id"]), "machine": r["machine"], "repo": r["repo"], "state": r["state"],
-                "state_since": r["state_since"], "kind": r["kind"], "skill": r["skill"],
-                "unknown_skill": r["unknown_skill"], "now": r["headline"],
+                "id": str(r["id"]), "machine": r["machine"], "repo": r["repo"], "cc_session_id": r["cc_session_id"],
+                "state": r["state"], "state_since": r["state_since"],
+                "reason": r["reason"] and json.loads(r["reason"]), "seen": bool(r["seen"]),
+                "kind": r["kind"], "skill": r["skill"], "unknown_skill": r["unknown_skill"], "now": r["headline"],
                 "actions": actions.get(r["id"], []),
             }
             for r in rows
         ]
+
+    # ---------- Needs you and Done (rules in states.py) ----------
+
+    @locked
+    def set_base(self, session_id: int, base: str, reason: dict | None = None) -> None:
+        """The state the session shows when no prompt is waiting; becoming Done makes it unseen."""
+        with self.db:
+            self.db.execute(
+                "UPDATE sessions SET seen = CASE WHEN ? = 'Done' AND base != 'Done' THEN 0 ELSE seen END,"
+                " base = ?, base_reason = ? WHERE id = ?",
+                (base, base, None if reason is None else json.dumps(reason), session_id),
+            )
+
+    @locked
+    def mark_seen(self, session_id: int) -> bool:
+        with self.db:
+            return self.db.execute("UPDATE sessions SET seen = 1 WHERE id = ?", (session_id,)).rowcount > 0
+
+    @locked
+    def open_tool_use(self, session_id: int, subagent: str, tool_use_id: str, tool_name: str, tool_input: dict) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO tool_uses VALUES (?, ?, ?, ?, ?)",
+                (session_id, subagent, tool_use_id, tool_name, json.dumps(tool_input, sort_keys=True)),
+            )
+
+    @locked
+    def close_tool_use(self, session_id: int, tool_use_id: str) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM tool_uses WHERE session_id = ? AND tool_use_id = ?", (session_id, tool_use_id))
+
+    @locked
+    def find_tool_use(self, session_id: int, subagent: str, tool_name: str, tool_input: dict) -> str | None:
+        """The open call a PermissionRequest asks about: that tool, same input preferred, then one
+        no prompt holds yet (so concurrent calls to one tool each get theirs), then the latest."""
+        row = self.db.execute(
+            "SELECT tool_use_id FROM tool_uses t WHERE session_id = ? AND subagent = ? AND tool_name = ?"
+            " ORDER BY tool_input = ? DESC,"
+            " EXISTS (SELECT 1 FROM prompts p WHERE p.session_id = t.session_id AND p.key = t.tool_use_id),"
+            " rowid DESC LIMIT 1",
+            (session_id, subagent, tool_name, json.dumps(tool_input, sort_keys=True)),
+        ).fetchone()
+        return row["tool_use_id"] if row else None
+
+    @locked
+    def add_prompt(self, session_id: int, subagent: str, key: str | None, reason: dict, now: datetime) -> None:
+        """A prompt starts waiting, unless the same one already waits (same call, or same ask with no call)."""
+        reason_json = json.dumps(reason)
+        with self.db:
+            if self.db.execute(
+                "SELECT 1 FROM prompts WHERE session_id = ? AND (key = ? OR (? IS NULL AND key IS NULL AND subagent = ? AND reason = ?))",
+                (session_id, key, key, subagent, reason_json),
+            ).fetchone():
+                return
+            self.db.execute(
+                "INSERT INTO prompts (session_id, subagent, key, reason, since) VALUES (?, ?, ?, ?, ?)",
+                (session_id, subagent, key, reason_json, iso(now)),
+            )
+
+    @locked
+    def clear_prompts(self, session_id: int, *, key: str | None = None) -> None:
+        """Resolve waiting prompts: the one for `key`, or all of them."""
+        with self.db:
+            if key is None:
+                self.db.execute("DELETE FROM prompts WHERE session_id = ?", (session_id,))
+            else:
+                self.db.execute("DELETE FROM prompts WHERE session_id = ? AND key = ?", (session_id, key))
+
+    @locked
+    def clear_loose_prompts(self, session_id: int, subagent: str) -> None:
+        """Backstop on later tool activity: drop this subagent's prompts that no open call holds.
+        Elicitations wait inside a call of their own and clear on their result."""
+        with self.db:
+            self.db.execute(
+                "DELETE FROM prompts WHERE session_id = ? AND subagent = ? AND (key IS NULL OR (key NOT LIKE 'elicitation:%'"
+                " AND key NOT IN (SELECT tool_use_id FROM tool_uses WHERE session_id = ?)))",
+                (session_id, subagent, session_id),
+            )
+
+    @locked
+    def end_turn(self, session_id: int, subagent: str | None = None) -> None:
+        """A turn ended (the main session's, or a subagent's; None = every one): its prompts and calls are over."""
+        with self.db:
+            for table in ("prompts", "tool_uses"):
+                if subagent is None:
+                    self.db.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
+                else:
+                    self.db.execute(f"DELETE FROM {table} WHERE session_id = ? AND subagent = ?", (session_id, subagent))
+
+    @locked
+    def settle(self, session_id: int, now: datetime) -> None:
+        """The shown state: Needs you for the oldest waiting prompt, else the base state; since = last change."""
+        prompt = self.db.execute(
+            "SELECT reason FROM prompts WHERE session_id = ? ORDER BY id LIMIT 1", (session_id,)
+        ).fetchone()
+        with self.db:
+            if prompt:
+                self.db.execute(
+                    "UPDATE sessions SET state_since = CASE WHEN state = 'Needs you' THEN state_since ELSE ? END,"
+                    " state = 'Needs you', reason = ? WHERE id = ?",
+                    (iso(now), prompt["reason"], session_id),
+                )
+            else:
+                self.db.execute(
+                    "UPDATE sessions SET state_since = CASE WHEN state = base THEN state_since ELSE ? END,"
+                    " state = base, reason = base_reason WHERE id = ?",
+                    (iso(now), session_id),
+                )
+
+    # ---------- Tracking ----------
 
     @locked
     def track_repo(self, repo: str, machine: str, repo_path: str, now: datetime) -> None:

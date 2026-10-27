@@ -300,3 +300,13 @@ a { color: inherit; }
 .tl li:last-child .tl-m::after { background: var(--working); border-color: var(--working); }
 .tl li > span:last-child { padding: var(--s1) 0 var(--s3); color: var(--text-2); overflow-wrap: anywhere; }
 .tl li:last-child > span:last-child { color: var(--text); }
+
+/* ---------- Body: inbox beside the focus area (variant E) ---------- */
+.split { display: grid; grid-template-columns: var(--inbox-w) minmax(0, 1fr); min-height: calc(100vh - var(--top-h)); }
+.split > * { min-width: 0; padding: var(--s5); }
+.inbox { background: var(--surface-sunken); border-right: 1px solid var(--line); }
+.split-main { display: grid; gap: var(--s5); align-content: start; }
+@media (max-width: 900px) {
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .inbox { border-right: 0; border-bottom: 1px solid var(--line); }
+}

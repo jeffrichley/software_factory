@@ -23,6 +23,16 @@ export function Eyebrow({ children }: { children: ReactNode }) {
   return <span className="eyebrow">{children}</span>;
 }
 
+/** Variant E's body: a fixed-width left panel (the inbox) beside the focus area. */
+export function Split({ side, children }: { side: ReactNode; children: ReactNode }) {
+  return (
+    <div className="split">
+      {side}
+      <section className="split-main" aria-label="Focus">{children}</section>
+    </div>
+  );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }

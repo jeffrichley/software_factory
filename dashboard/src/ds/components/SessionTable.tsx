@@ -15,6 +15,8 @@ export interface SessionRowData {
   unknownSkill: string | null;
   /** The "now: …" headline; null until the session does something. */
   now: string | null;
+  /** Done has been seen by the human. */
+  seen?: boolean;
   /** ms the session has been in its state. */
   inStateMs: number;
 }
@@ -45,7 +47,7 @@ export function SessionTable({
             onClick={onSelect ? () => onSelect(s.id) : undefined}
             onKeyDown={onSelect ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(s.id); } } : undefined}
           >
-            <td><StateBadge state={s.state} /></td>
+            <td><StateBadge state={s.state} seen={s.seen} /></td>
             <td className="mono">{s.machine}</td>
             <td className="mono">{s.repo}</td>
             <td>{s.kind}{s.kind === AD_HOC && s.unknownSkill ? <SkillNote skill={s.unknownSkill} /> : null}</td>

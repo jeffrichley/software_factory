@@ -8,11 +8,12 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import states
 from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub, read_issues
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
@@ -180,11 +181,20 @@ def create_app(
                 else:
                     # A resumed session, or one still running when its repo was uninstalled and reinstalled.
                     store.resume_session(session_id, now)
+                    states.apply(store, session_id, event, now)
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
                 observe(session_id, event, now)
         hub.publish(state())
         return Reply(session_id=None if session_id is None else str(session_id))
+
+    @app.post("/api/sessions/{session_id}/seen")
+    async def seen(session_id: int) -> dict:
+        """The human opened the session's detail: its Done is seen."""
+        if not store.mark_seen(session_id):
+            raise HTTPException(status_code=404, detail="no such session")
+        hub.publish(state())
+        return {"ok": True}
 
     @app.get("/api/health")
     async def health() -> dict:

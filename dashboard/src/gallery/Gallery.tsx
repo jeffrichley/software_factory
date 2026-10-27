@@ -12,6 +12,7 @@ import {
   FlowStrip,
   GraphView,
   Icon,
+  Inbox,
   InboxHeader,
   MachinePill,
   NeedsYouCard,
@@ -23,6 +24,7 @@ import {
   SectionHeading,
   SessionHeader,
   SessionTable,
+  Split,
   TopBar,
   StateBadge,
   StateChip,
@@ -212,6 +214,7 @@ export function Gallery() {
               { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", kind: "research", unknownSkill: null, now: "pushed findings to research/runtime.md", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
               { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", kind: "ad hoc", unknownSkill: null, now: null, inStateMs: 14 * 60_000 },
               { id: "5", machine: "mac-studio", repo: "jeff/gateway", state: "Working", kind: "Wayfinder", unknownSkill: null, now: "reading docs/agents/a-very-long-path/that/ellipsizes/in/the/headline/column/of/the/session/table.md", inStateMs: 7 * 60_000 },
+              { id: "6", machine: "mac-studio", repo: "jeff/gadgets", state: "Done", seen: true, kind: "ad hoc", unknownSkill: null, now: "tidied the README", inStateMs: 5 * 60_000 },
             ]}
           />
           <SessionTable sessions={[]} />
@@ -287,6 +290,19 @@ export function Gallery() {
               <Empty>Everything Done has been seen.</Empty>
             </div>
           </div>
+          <Split
+            side={
+              <Inbox>
+                <InboxHeader count={2} />
+                <NeedsYouCard reason={{ kind: "permission", tool: "Bash", command: "git push" }} waitingMs={12_000} repo="jeff/widgets" kind={null} workItem={null} machine="wsl-desk" session="0196viHB" terminal={null} resumeCommand="claude --resume 0196viHB" />
+                <NeedsYouCard reason={null} waitingMs={50_000} repo="jeff/widgets" kind={null} workItem={null} machine="mac-studio" session="7f3e21c0" terminal={null} resumeCommand="claude --resume 7f3e21c0" />
+                <SectionHeading icon="check" tone="done">Done — unseen · 1</SectionHeading>
+                <DoneCard kind={null} workItem={null} repo="jeff/gadgets" machine="mac-studio" agoMs={3 * 60_000} now={null} />
+              </Inbox>
+            }
+          >
+            <p className="muted g-small">The dashboard body: the inbox on the left (kind and Work item unknown here), the focus area beside it.</p>
+          </Split>
         </Section>
 
         <Section id="panels" title="Panel & section">
