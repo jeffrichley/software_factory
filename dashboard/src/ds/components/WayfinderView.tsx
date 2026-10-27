@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { decisionName, mapGraph, type DecisionTicketData, type MapData, type WayfinderData } from "../wayfinder";
 import { GraphView } from "./Graph";
 import { WorkItemLink } from "./InboxCards";
-import { Panel } from "./Panel";
-import { Detail, Facts, Hint, SessionHeader, Timeline, type SessionHeaderProps, type TimelineEntry } from "./SessionDetail";
+import { Eyebrow, Panel } from "./Panel";
+import { Detail, Facts, Hint, SessionHeader, SessionNeeds, Timeline, type SessionHeaderProps, type TimelineEntry } from "./SessionDetail";
 import { Tag } from "./Tag";
 import { Unknown } from "./Unknown";
 
@@ -31,6 +31,7 @@ function TicketRef({ number, map }: { number: number; map: MapData | null }) {
  */
 export function WayfinderView({ plan, map, actions, ...header }: WayfinderViewProps) {
   const [selected, setSelected] = useState<string>();
+  const [fit, setFit] = useState(false);
   const needs = header.state === "Needs you";
   const items = useMemo(() => (map ? mapGraph(map, { ticket: plan?.ticket ?? null, needs }) : []), [map, plan?.ticket, needs]);
   const working = plan?.ticket != null ? map?.tickets.find((t) => t.number === plan.ticket) : undefined;
@@ -39,51 +40,65 @@ export function WayfinderView({ plan, map, actions, ...header }: WayfinderViewPr
   const created = plan?.created ?? [];
   return (
     <Detail label="Wayfinder session detail">
-      <SessionHeader {...header} title={map ? <WorkItemLink item={{ name: decisionName(map), url: map.url }} /> : plan?.map ? `#${plan.map}` : <Unknown />} />
-      <Panel title="Destination">
-        {map?.destination ? <p className="prose">{map.destination}</p> : <Unknown />}
-      </Panel>
-      <Panel title="Decision ticket">
-        <Facts
-          items={[
-            ["Working", plan?.ticket != null ? <TicketRef number={plan.ticket} map={map} /> : <Unknown />],
-            ["Type", working?.type ? <><Tag>{working.type}</Tag> <Tag>{working.mode ?? "—"}</Tag></> : <Unknown />],
-            ["Current question", plan?.questions.length ? (
-              <ul className="files">{plan.questions.map((q) => <li key={q}>{q}</li>)}</ul>
-            ) : <Unknown />],
-          ]}
-        />
-      </Panel>
-      <Panel title={map ? "Map" : "Map — not polled yet"}>
-        {map && items.length ? (
-          <GraphView items={items} fog={map.fog} selectedId={selected} onSelect={setSelected} label={`Map: ${map.title}`} />
-        ) : map ? (
-          <Hint>No Decision tickets on this Map yet.</Hint>
-        ) : (
-          <Hint>The Map appears once the server reads it from GitHub.</Hint>
-        )}
-      </Panel>
-      {pick && map ? <DecisionPanel t={pick} map={map} /> : map && items.length ? <Hint>Select a Decision ticket to see its decision, dependencies and claim.</Hint> : null}
-      <Panel title={`Decisions recorded this session · ${closed.length}`}>
-        {closed.length ? (
-          <ul className="files">
-            {closed.map((n) => (
-              <li key={n}><TicketRef number={n} map={map} />{" "}<span className="muted">{map?.tickets.find((t) => t.number === n)?.gist ?? "—"}</span></li>
-            ))}
-          </ul>
-        ) : <Hint>None yet.</Hint>}
-      </Panel>
-      <Panel title="Tickets this session">
-        <Facts
-          items={[
-            [`Created ${created.length}`, created.length ? <>{created.map((n, i) => <span key={n}>{i ? ", " : ""}<TicketRef number={n} map={map} /></span>)}</> : "none"],
-            [`Closed ${closed.length}`, closed.length ? <>{closed.map((n, i) => <span key={n}>{i ? ", " : ""}<TicketRef number={n} map={map} /></span>)}</> : "none"],
-          ]}
-        />
-      </Panel>
-      <Panel title={actions.length ? `Last ${actions.length} actions` : "Last actions"}>
-        {actions.length ? <Timeline actions={actions} /> : <Hint>No actions yet.</Hint>}
-      </Panel>
+      <SessionHeader {...header} needsElsewhere title={map ? <WorkItemLink item={{ name: decisionName(map), url: map.url }} /> : plan?.map ? `#${plan.map}` : <Unknown />} />
+      <div className="mapgrid">
+        <div className="map-main">
+          <div className="map-h">
+            <div>
+              <Eyebrow>Map</Eyebrow>
+              <h3>{map ? map.title : plan?.map ? `#${plan.map}` : <Unknown />}</h3>
+            </div>
+            {map && items.length ? (
+              <button type="button" className="btn" aria-pressed={fit} onClick={() => setFit(!fit)}>{fit ? "Actual size" : "Fit to width"}</button>
+            ) : null}
+          </div>
+          {map && items.length ? (
+            <GraphView items={items} fog={map.fog} selectedId={selected} onSelect={setSelected} label={`Map: ${map.title}`} fit={fit} />
+          ) : map ? (
+            <Hint>No Decision tickets on this Map yet.</Hint>
+          ) : (
+            <Hint>The Map appears once the server reads it from GitHub.</Hint>
+          )}
+          {pick && map ? <DecisionPanel t={pick} map={map} /> : map && items.length ? <Hint>Select a Decision ticket to see its decision, dependencies and claim.</Hint> : null}
+          <Panel title={actions.length ? `Last ${actions.length} actions` : "Last actions"}>
+            {actions.length ? <Timeline actions={actions} /> : <Hint>No actions yet.</Hint>}
+          </Panel>
+        </div>
+        <aside className="map-side" aria-label="This Wayfinder session">
+          <Panel title="Destination">
+            {map?.destination ? <p className="prose">{map.destination}</p> : <Unknown />}
+          </Panel>
+          <SessionNeeds {...header} />
+          <Panel title="Decision ticket">
+            <Facts
+              items={[
+                ["Working", plan?.ticket != null ? <TicketRef number={plan.ticket} map={map} /> : <Unknown />],
+                ["Type", working?.type ? <><Tag>{working.type}</Tag> <Tag>{working.mode ?? "—"}</Tag></> : <Unknown />],
+                ["Current question", plan?.questions.length ? (
+                  <ul className="files">{plan.questions.map((q) => <li key={q}>{q}</li>)}</ul>
+                ) : <Unknown />],
+              ]}
+            />
+          </Panel>
+          <Panel title={`Decisions this session · ${closed.length}`}>
+            {closed.length ? (
+              <ul className="files">
+                {closed.map((n) => (
+                  <li key={n}><TicketRef number={n} map={map} />{" "}<span className="muted">{map?.tickets.find((t) => t.number === n)?.gist ?? "—"}</span></li>
+                ))}
+              </ul>
+            ) : <Hint>None yet.</Hint>}
+          </Panel>
+          <Panel title="Tickets this session">
+            <Facts
+              items={[
+                [`Created ${created.length}`, created.length ? <>{created.map((n, i) => <span key={n}>{i ? ", " : ""}<TicketRef number={n} map={map} /></span>)}</> : "none"],
+                [`Closed ${closed.length}`, closed.length ? <>{closed.map((n, i) => <span key={n}>{i ? ", " : ""}<TicketRef number={n} map={map} /></span>)}</> : "none"],
+              ]}
+            />
+          </Panel>
+        </aside>
+      </div>
     </Detail>
   );
 }

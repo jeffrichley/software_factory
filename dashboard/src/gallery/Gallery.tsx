@@ -34,7 +34,8 @@ import {
   ToTicketsView,
   WayfinderView,
   SessionHeader,
-  SessionTable,
+  HiddenSessions,
+  NeedsDetail,
   Split,
   TicketJobView,
   TopBar,
@@ -141,7 +142,8 @@ export function Gallery() {
   const [hidden, setHidden] = useState<Set<string>>(new Set(["win-ps"]));
   const [selected, setSelected] = useState<string | undefined>("api");
   const [mapSel, setMapSel] = useState<string | undefined>();
-  const [selectedRow, setSelectedRow] = useState<string | undefined>("2");
+  const [hiddenListOpen, setHiddenListOpen] = useState(true);
+  const [mapFit, setMapFit] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [selectedSpecStep, setSelectedSpecStep] = useState<string | undefined>("s28");
@@ -155,7 +157,7 @@ export function Gallery() {
       <header className="g-top">
         <div className="g-brand"><span className="g-mark" aria-hidden="true" />Factory <small>design system</small></div>
         <nav className="g-nav" aria-label="Sections">
-          {["tokens", "states", "sessions", "detail", "step", "spec", "planning", "machines", "history", "replay", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
+          {["tokens", "states", "topbar", "detail", "step", "spec", "planning", "machines", "history", "replay", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
         </nav>
         <div className="g-theme" role="group" aria-label="Theme">
           {(["system", "light", "dark"] as const).map((t) => (
@@ -221,7 +223,7 @@ export function Gallery() {
           </div>
         </Section>
 
-        <Section id="sessions" title="Top bar & session table" note="One row per Tracked session, in every state; empty until a session starts in a Tracked repo.">
+        <Section id="topbar" title="Top bar" note="Machine pills and the header's counts. There is no session table (as in variant E): sessions are reached through the flow strip, the inbox and the default selection.">
           <TopBar>
             <MachinePills>
               <MachinePill name="mac-studio" sessions={5} />
@@ -229,26 +231,23 @@ export function Gallery() {
               <MachinePill name="mbp-travel" sessions={2} silentForMs={14 * 60_000} />
             </MachinePills>
           </TopBar>
-          <SessionTable
-            selectedId={selectedRow}
-            onSelect={setSelectedRow}
-            sessions={[
-              { id: "1", machine: "wsl-desk", repo: "jeff/widgets", state: "Needs you", kind: "Ticket Job", unknownSkill: null, now: "waiting on permission — Bash", inStateMs: 3 * 60_000 },
-              { id: "2", machine: "wsl-desk", repo: "jeff/widgets", state: "Working", kind: "ad hoc", unknownSkill: "deploy-preview", now: "running skill `deploy-preview`", inStateMs: 42_000 },
-              { id: "3", machine: "mac-studio", repo: "jeff/a-much-longer-repository-name-that-ellipsizes", state: "Done", kind: "research", unknownSkill: null, now: "pushed findings to research/runtime.md", inStateMs: 2 * 3_600_000 + 14 * 60_000 },
-              { id: "4", machine: "mbp-travel", repo: "jeff/widgets", state: "Stale", staleReason: "Machine silent", kind: "ad hoc", unknownSkill: null, now: null, inStateMs: 14 * 60_000 },
-              { id: "5", machine: "mac-studio", repo: "jeff/gateway", state: "Working", kind: "Wayfinder", unknownSkill: null, now: "reading docs/agents/a-very-long-path/that/ellipsizes/in/the/headline/column/of/the/session/table.md", inStateMs: 7 * 60_000 },
-              { id: "6", machine: "mac-studio", repo: "jeff/gadgets", state: "Done", seen: true, kind: "ad hoc", unknownSkill: null, now: "tidied the README", inStateMs: 5 * 60_000 },
-              { id: "7", machine: "wsl-desk", repo: "jeff/gadgets", state: "Working", quietMs: 23 * 60_000, kind: "ad hoc", unknownSkill: null, now: "running uv run pytest", inStateMs: 41 * 60_000 },
-            ]}
-          />
-          <SessionTable sessions={[]} />
         </Section>
 
         <Section id="detail" title="Session detail (ad hoc)" note="AdHocView: header with state, time in state and the now: headline; a timeline of the last actions, the latest marked. Other kinds use it, titled by their kind, until their own view arrives.">
           <AdHocView machine="desk-wsl" repo="worlds" kind={AD_HOC} state="Working" inStateMs={4 * 60_000} now="reading src/render/chunk.ts" unknownSkill={null} actions={adhocActions} />
           <AdHocView machine="mac-mini" repo="gateway" kind={AD_HOC} state="Done" inStateMs={30_000} now={null} unknownSkill="deploy-preview" actions={[]} />
-          <AdHocView machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Needs you" inStateMs={3 * 60_000} now="started `implement`" unknownSkill={null} actions={adhocActions.slice(-3)} />
+          <Eyebrow>Needs you · the centre's Needs you block, and the Hide button beside the crumbs</Eyebrow>
+          <AdHocView
+            machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Needs you" inStateMs={3 * 60_000} now="started `implement`" unknownSkill={null} actions={adhocActions.slice(-3)}
+            needs={{ reason: { kind: "permission", tool: "Bash", command: "rm -rf .factory/tmp && npm test" }, session: "0196viHB", terminal: null, resumeCommand: "claude --resume 0196viHB-5c2e", onCopy: () => {} }}
+            controls={<button type="button" className="btn"><Icon name="eye-off" />Hide this session</button>}
+          />
+          <Eyebrow>Stale · its Machine silent, with when it was last seen</Eyebrow>
+          <AdHocView machine="mbp-travel" repo="worlds" kind={AD_HOC} state="Stale" staleReason="Machine silent" machineSilentForMs={31 * 60_000} inStateMs={31 * 60_000} now="running cargo build" unknownSkill={null} actions={adhocActions.slice(-2)} />
+          <Eyebrow>Needs you block · every reason</Eyebrow>
+          <NeedsDetail reason={{ kind: "question", text: "Which of the three layouts should win?" }} waitingMs={60_000} machine="desk-win" session="wf" terminal={null} resumeCommand="claude --resume wf" />
+          <NeedsDetail reason={{ kind: "hitl", ticket: "#53 Prototype the dashboard", questions: ["Q1 - Layout", "Q2 - Flow strip"] }} waitingMs={34 * 60_000} machine="desk-win" session="wf" terminal="tmux · factory:2" resumeCommand="claude --resume wf" />
+          <NeedsDetail reason={null} waitingMs={5_000} machine="desk-win" session="7f3e21c0" terminal={null} resumeCommand="claude --resume 7f3e21c0" />
           <Eyebrow>Ticket Job · PR open, Done</Eyebrow>
           <TicketJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Ticket Job" state="Done" inStateMs={2 * 60_000} now="ran `factory report pr`" actions={adhocActions.slice(-2)}
@@ -319,7 +318,8 @@ export function Gallery() {
 
         <Section id="planning" title="Planning views" note="Wayfinder, research, to-spec and to-tickets sessions: the plan taking shape, each in every state, and unknown until the server has seen it start.">
           <Eyebrow>Wayfinder · grilling a HITL Decision ticket, waiting on the human</Eyebrow>
-          <WayfinderView machine="wsl-desk" repo="jeff/widgets" kind="Wayfinder" state="Needs you" inStateMs={4 * 60_000} now={null} actions={adhocActions.slice(-2)} plan={wayfinderPlan} map={MAP} />
+          <WayfinderView machine="wsl-desk" repo="jeff/widgets" kind="Wayfinder" state="Needs you" inStateMs={4 * 60_000} now={null} actions={adhocActions.slice(-2)} plan={wayfinderPlan} map={MAP}
+            needs={{ reason: { kind: "hitl", ticket: "#53 Prototype the dashboard", questions: ["Q1 - Layout"] }, session: "wf", terminal: null, resumeCommand: "claude --resume wf" }} />
           <Eyebrow>Wayfinder · Map unknown</Eyebrow>
           <WayfinderView machine="mac-studio" repo="jeff/widgets" kind="Wayfinder" state="Working" inStateMs={30_000} now="started `wayfinder`" actions={[]} plan={null} map={null} />
           <Eyebrow>research · findings written</Eyebrow>
@@ -418,6 +418,10 @@ export function Gallery() {
               <DoneCard kind="ad hoc" workItem={null} repo="gateway" machine="mac-studio" agoMs={41 * 60_000} now={null} />
               <SectionHeading icon="check" tone="done">Done — unseen · 0</SectionHeading>
               <Empty>Everything Done has been seen.</Empty>
+              <HiddenSessions
+                sessions={[{ id: "h1", kind: "ad hoc", repo: "jeff/widgets", machine: "wsl-desk" }, { id: "h2", kind: "research", repo: "jeff/gadgets", machine: "mac-studio" }]}
+                open={hiddenListOpen} onToggle={() => setHiddenListOpen(!hiddenListOpen)} selectedId="h2" onOpen={() => {}}
+              />
             </div>
           </div>
           <TopBar>
@@ -426,7 +430,9 @@ export function Gallery() {
               <MachinePill name="mac-studio" sessions={2} silentForMs={9 * 60_000} />
             </MachinePills>
           </TopBar>
+          <div className="g-split">
           <Split
+            top={<FlowStrip rows={flowRows} />}
             side={
               <Inbox>
                 <InboxHeader count={2} />
@@ -437,8 +443,9 @@ export function Gallery() {
               </Inbox>
             }
           >
-            <p className="muted g-small">The dashboard page: the top bar with its Machine pills, then the inbox on the left (kind and Work item unknown here), the focus area beside it.</p>
+            <p className="muted g-small">The dashboard page: the top bar with its Machine pills, the flow strip full width, then the inbox on the left (kind and Work item unknown here) beside the centre, which shows one session's detail (or History, or a Replay) in place of a session table. On a wide screen the inbox and the centre each scroll on their own.</p>
           </Split>
+          </div>
         </Section>
 
         <Section id="panels" title="Panel & section">
@@ -472,6 +479,9 @@ export function Gallery() {
           <GraphView label="Ticket DAG for The Factory" items={specItems} selectedId={selected} onSelect={setSelected} />
           <Eyebrow>Map · Decision tickets with fog past the frontier</Eyebrow>
           <GraphView label="Map: Software Factory" items={mapItems} fog={mapFog} selectedId={mapSel} onSelect={setMapSel} />
+          <Eyebrow>Map · fitted to its box (Wayfinder's "Fit to width"); unfitted, a wide graph scrolls inside its box</Eyebrow>
+          <div className="g-row"><button type="button" className="btn" aria-pressed={mapFit} onClick={() => setMapFit(!mapFit)}>{mapFit ? "Actual size" : "Fit to width"}</button></div>
+          <div className="g-narrowbox"><GraphView label="Map: Software Factory, fitted" items={mapItems} fog={mapFog} legend={false} fit={mapFit} /></div>
           <Eyebrow>to-tickets output</Eyebrow>
           <GraphView label="Tickets created by to-tickets" items={ticketItems} legend={false} />
         </Section>
@@ -479,7 +489,8 @@ export function Gallery() {
         <Section id="unknown" title="Unknown placeholders" note="Unknown data is shown as unknown, never guessed.">
           <div className="g-row"><span>Terminal: <Unknown /></span><UnknownPhaseTag /></div>
           <UnknownPhase detail="the Factory has received no Phase events for this Job, so there is no Phase track." />
-          <StaleNote reason="Machine silent — mbp-travel last seen 14m ago" />
+          <StaleNote reason="Machine silent" machine="mbp-travel" silentForMs={14 * 60_000} />
+          <StaleNote reason="Machine silent" />
         </Section>
       </main>
     </div>
