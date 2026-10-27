@@ -30,6 +30,12 @@ import {
   SectionHeading,
   SoundToggle,
   SpecJobView,
+  Merges,
+  PrTrack,
+  Stat,
+  StatTiles,
+  mergesOf,
+  prTrack,
   StepDetail,
   ToSpecView,
   ToTicketsView,
@@ -158,7 +164,7 @@ export function Gallery() {
       <header className="g-top">
         <div className="g-brand"><span className="g-mark" aria-hidden="true" />Factory <small>design system</small></div>
         <nav className="g-nav" aria-label="Sections">
-          {["tokens", "states", "topbar", "detail", "step", "spec", "planning", "machines", "history", "replay", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
+          {["tokens", "states", "topbar", "detail", "step", "spec", "spec-progress", "planning", "machines", "history", "replay", "chips", "flow", "inbox", "panels", "phase", "graph", "unknown"].map((s) => <a key={s} href={`#${s}`}>{s}</a>)}
         </nav>
         <div className="g-theme" role="group" aria-label="Theme">
           {(["system", "light", "dark"] as const).map((t) => (
@@ -305,17 +311,26 @@ export function Gallery() {
           <StepDetail step={freshStep.step} detail={freshStep.detail} nowMs={Date.now()} />
         </Section>
 
-        <Section id="spec" title="Spec Job detail" note="SpecJobView: Spec, stage, integration branch, merged count, PR and whole-branch review; the Ticket DAG; the Step opened from the DAG (or from its flow-strip chip). Click a node to open its Step.">
-          <Eyebrow>Spec Job · a Step open, draft PR</Eyebrow>
+        <Section id="spec" title="Spec Job detail" note="SpecJobView as variant E: four stat tiles (integration branch, Tickets merged, final code review, Spec PR), stage, worktree and Mark abandoned; the Ticket DAG; the merges into the integration branch with their SHAs, the final code review and the PR track with CI checks; the Step opened from the DAG (or from its flow-strip chip). Click a node to open its Step.">
+          <Eyebrow>Spec Job · a Step open, draft PR, one merge SHA unknown</Eyebrow>
           <SpecJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Spec Job" state="Working" inStateMs={9 * 60_000} now="running uv run pytest" actions={adhocActions.slice(-3)}
             job={SPEC_JOB} steps={specSteps} details={specDetails} review={{ standards: 3, spec: 0, source: "summary" }} nowMs={Date.now()} onAbandon={() => {}}
             stepId={selectedSpecStep} onSelectStep={setSelectedSpecStep}
           />
-          <Eyebrow>Spec Job · no Step open</Eyebrow>
+          <Eyebrow>Spec Job · no Step open, no PR yet, duplicate</Eyebrow>
           <SpecJobView
             machine="wsl-desk" repo="jeff/widgets" kind="Spec Job" state="Needs you" inStateMs={60_000} now={null} actions={[]}
-            job={{ ...SPEC_JOB, duplicateOf: "29", pr: null }} steps={specSteps} nowMs={Date.now()}
+            job={{ ...SPEC_JOB, duplicateOf: "29", pr: null, prTrack: [], prChecks: null }} steps={specSteps} nowMs={Date.now()}
+          />
+          <Eyebrow>Spec Job · every Ticket merged and reviewed, PR ready</Eyebrow>
+          <SpecJobView
+            machine="wsl-desk" repo="jeff/widgets" kind="Spec Job" state="Done" seen={false} inStateMs={60_000} now={null} actions={[]}
+            job={{ ...SPEC_JOB, pr: { ...SPEC_JOB.pr!, draft: false }, stage: "PR open",
+              prTrack: [...SPEC_JOB.prTrack!, { stage: "Ready", at: new Date(Date.now() - 5 * 60_000).toISOString() }],
+              prChecks: SPEC_JOB.prChecks!.map((c) => ({ ...c, status: "pass" as const })) }}
+            steps={specSteps.map((s) => ({ ...s, phase: "Merged" as const }))} details={specDetails}
+            review={{ standards: 1, spec: 0, source: "report" }} nowMs={Date.now()}
           />
           <Eyebrow>Spec Job · no Tickets read yet, Spec unknown</Eyebrow>
           <SpecJobView
@@ -472,6 +487,24 @@ export function Gallery() {
           <div className="g-row"><Tag>Ticket</Tag><Tag tone="frontier">Frontier</Tag><Tag tone="blocked">Blocked by #19</Tag><Tag tone="struggle"><Icon name="flame" />Struggling · 4 test failures</Tag><Tag tone="needs">Needs you</Tag><Tag tone="unknown">Phase unknown</Tag></div>
           <div className="g-row"><button type="button" className="btn">Default button</button><button type="button" className="btn btn-needs"><Icon name="copy" />Needs-you action</button><button type="button" className="btn btn-on">Toggled on</button></div>
           <NowLine now="running tests: uv run pytest tests/server" />
+        </Section>
+
+        <Section id="spec-progress" title="Spec Job progress" note="Stat tiles; the PR track Draft → Ready → Merged in every state (times as the poll saw each stage; Closed in Merged's place); the merges list with SHAs (unknown when git didn't print one).">
+          <StatTiles>
+            <Stat label="Integration branch">worktree-spec-18-the-factory</Stat>
+            <Stat label="Merged">2 / 5 Tickets</Stat>
+            <Stat label="Final code review">Waiting</Stat>
+            <Stat label="Spec PR">#60 · Draft</Stat>
+          </StatTiles>
+          <div className="g-stack">
+            <PrTrack stages={prTrack({ ...SPEC_JOB.pr!, draft: true }, [])} />
+            <PrTrack stages={prTrack(SPEC_JOB.pr!, SPEC_JOB.prTrack!)} />
+            <PrTrack stages={prTrack(SPEC_JOB.pr!, [...SPEC_JOB.prTrack!, { stage: "Ready", at: new Date().toISOString() }])} />
+            <PrTrack stages={prTrack(SPEC_JOB.pr!, [...SPEC_JOB.prTrack!, { stage: "Ready", at: new Date().toISOString() }, { stage: "Merged", at: new Date().toISOString() }])} />
+            <PrTrack stages={prTrack(SPEC_JOB.pr!, [...SPEC_JOB.prTrack!, { stage: "Closed", at: new Date().toISOString() }])} />
+          </div>
+          <Merges branch={SPEC_JOB.branch} merges={mergesOf(specSteps, { s24: specDetails.s24.merge, s25: specDetails.s25.merge })} total={specSteps.length} />
+          <Merges branch={null} merges={[]} total={0} />
         </Section>
 
         <Section id="phase" title="Phase track" note="Seven Phases; past grey, current coloured (Red red, Green green, Merged teal, others blue).">

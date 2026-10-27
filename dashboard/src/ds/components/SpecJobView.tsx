@@ -4,9 +4,12 @@ import { specGraph, ticketName, type SpecStepData } from "../specDag";
 import { GraphView } from "./Graph";
 import { WorkItemLink } from "./InboxCards";
 import { Panel } from "./Panel";
-import { Review, StepDetail } from "./StepDetail";
+import { mergesOf, prTrack } from "../specJob";
+import { Icon } from "./Icon";
+import { Merges, PrTrack, Stat, StatTiles } from "./SpecProgress";
+import { Checks, Review, StepDetail } from "./StepDetail";
 import type { StepDetailData } from "../stepDetail";
-import { Detail, Facts, Hint, PrLink, SessionHeader, Timeline, type SessionHeaderProps, type TimelineEntry } from "./SessionDetail";
+import { Detail, Hint, SessionHeader, Timeline, type SessionHeaderProps, type TimelineEntry } from "./SessionDetail";
 import { Tag } from "./Tag";
 import { Unknown } from "./Unknown";
 
@@ -30,7 +33,8 @@ export interface SpecJobViewProps extends Omit<SessionHeaderProps, "title"> {
   onSelectStep?: (stepId: string) => void;
 }
 
-/** A Spec Job: its Spec, integration branch, stage and PR, its Ticket DAG, and the Step opened from the DAG. */
+/** A Spec Job as variant E: stat tiles (integration branch, Tickets merged, final code review, Spec PR), its Ticket DAG, the
+ * merges into the integration branch, the final review and the PR track, then the Step opened from the DAG. */
 export function SpecJobView({
   job, steps, details = {}, review = null, nowMs, actions, onAbandon, stepId: chosen, onSelectStep, ...header
 }: SpecJobViewProps) {
@@ -41,32 +45,31 @@ export function SpecJobView({
   const step = steps.find((s) => s.id === stepId);
   const merged = steps.filter((s) => s.phase === "Merged").length;
   const spec = job?.workItem ? <WorkItemLink item={job.workItem} /> : job?.number ? `#${job.number}` : <Unknown />;
+  const branch = job?.branch ?? null;
+  const merges = mergesOf(steps, Object.fromEntries(steps.map((s) => [s.id, details[s.id]?.merge])));
+  const track = job?.pr ? prTrack(job.pr, job.prTrack ?? []) : [];
+  const prStage = track.find((s) => s.status === "current")?.stage;
+  const allMerged = steps.length > 0 && merged === steps.length;
+  const findings = review ? review.standards + review.spec : null;
   return (
     <Detail label="Spec Job detail">
       <SessionHeader {...header} title={spec} />
-      <Panel title="Job">
-        <Facts
-          items={[
-            ["Spec", job?.number ? <span className="mono">#{job.number}</span> : <Unknown />],
-            ["Stage", job ? (
-              <>
-                <Tag>{job.stage}</Tag>
-                {job.duplicateOf ? <> <Tag tone="struggle">duplicate of Job {job.duplicateOf}</Tag></> : null}
-              </>
-            ) : <Unknown />],
-            ["Integration branch", job?.branch ? <span className="mono">{job.branch}</span> : <Unknown />],
-            ["Worktree", job?.worktree ? <span className="mono">{job.worktree}</span> : <Unknown />],
-            ["Merged", steps.length ? `${merged} / ${steps.length} Tickets` : <Unknown />],
-            ["PR", <PrLink pr={job?.pr ?? null} />],
-            ["Review findings", <Review review={review} />],
-          ]}
-        />
+      <StatTiles>
+        <Stat label="Integration branch">{branch ?? <Unknown />}</Stat>
+        <Stat label="Merged">{steps.length ? `${merged} / ${steps.length} Tickets` : <Unknown />}</Stat>
+        <Stat label="Final code review">
+          {findings !== null ? `${findings} ${findings === 1 ? "finding" : "findings"}` : allMerged ? "Not reviewed yet" : "Waiting"}
+        </Stat>
+        <Stat label="Spec PR">{job?.pr ? `${job.pr.number ? `#${job.pr.number}` : "PR"} · ${prStage}` : "No PR yet"}</Stat>
+      </StatTiles>
+      <div className="job-line">
+        {job ? <Tag>{job.stage}</Tag> : null}
+        {job?.duplicateOf ? <Tag tone="struggle">duplicate of Job {job.duplicateOf}</Tag> : null}
+        <span className="muted">worktree {job?.worktree ? <span className="mono">{job.worktree}</span> : <Unknown />}</span>
         {job && onAbandon && !isEnded(job.stage) ? (
-          <div className="toolbar">
-            <button type="button" className="btn" onClick={onAbandon}>Mark abandoned</button>
-          </div>
+          <button type="button" className="btn" onClick={onAbandon}>Mark abandoned</button>
         ) : null}
-      </Panel>
+      </div>
       <Panel title="Ticket DAG">
         {steps.length ? (
           <GraphView items={items} selectedId={stepId} onSelect={setStepId} label={`Ticket DAG for ${job?.workItem?.name ?? "the Spec"}`} />
@@ -74,7 +77,31 @@ export function SpecJobView({
           <Hint>No Tickets yet: they appear once the Spec's child Tickets are read from GitHub.</Hint>
         )}
       </Panel>
-      {step ? <StepDetail step={step} detail={details[step.id] ?? null} nowMs={nowMs} inSpecJob blockers={blockersOf(step, steps)} /> : steps.length ? <Hint>Select a Ticket in the DAG to open its Step.</Hint> : null}
+      <div className="spec-cols">
+        <Merges branch={branch} merges={merges} total={steps.length} />
+        <Panel title="Final code review">
+          {review ? <Review review={review} /> : (
+            <Hint>
+              {allMerged ? "Not reviewed yet: code-review runs on the whole integration branch now every Ticket is merged."
+                : `Starts when ${steps.length || "every"} / ${steps.length || "every"} Tickets are merged into ${branch ?? "the integration branch"}.`}
+            </Hint>
+          )}
+        </Panel>
+        <Panel title="Pull request">
+          {job?.pr ? (
+            <>
+              <div className="pr-line">
+                <Icon name="pr" />
+                <a className="wi" href={job.pr.url}>{job.pr.number ? `PR #${job.pr.number}` : job.pr.url}</a>
+                {branch ? <span className="muted">{branch}</span> : null}
+              </div>
+              <PrTrack stages={track} />
+              <Checks checks={job.prChecks ?? null} />
+            </>
+          ) : <Hint>No PR yet: implement-spec opens a draft once Tickets are merged, and marks it ready for review at the end.</Hint>}
+        </Panel>
+      </div>
+      {step ? <StepDetail step={step} detail={details[step.id] ?? null} nowMs={nowMs} inSpecJob blockers={blockersOf(step, steps)} integrationBranch={branch} /> : steps.length ? <Hint>Select a Ticket in the DAG to open its Step.</Hint> : null}
       <Panel title={actions.length ? `Last ${actions.length} actions` : "Last actions"}>
         {actions.length ? <Timeline actions={actions} /> : <Hint>No actions yet.</Hint>}
       </Panel>

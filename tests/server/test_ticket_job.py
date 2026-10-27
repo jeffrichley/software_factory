@@ -22,6 +22,8 @@ def test_implement_with_a_ticket_starts_a_ticket_job_and_injects_how_to_work_it(
         "branch": None,
         "stage": "In progress",
         "pr": None,
+        "pr_checks": None,
+        "pr_track": [],
         "started_at": "2026-10-26T12:00:00Z",
         "duplicate_of": None,
     }]

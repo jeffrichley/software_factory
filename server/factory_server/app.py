@@ -22,7 +22,7 @@ from . import planning
 from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import QUIET_AFTER, as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
-from .step_detail import (CODE_REVIEW, REVIEW_AXES, checklist_after, commit_made, lines_changed, repo_relative, review_counts,
+from .step_detail import (CODE_REVIEW, REVIEW_AXES, checklist_after, commit_made, lines_changed, merge_sha, repo_relative, review_counts,
                           review_report_ask, test_counts, test_output)
 from .store import Store
 from .wayfinder import (WAITS_ON_HUMAN, WAYFINDER, claims, closes, created_numbers, creates, mode_of, questions)
@@ -348,6 +348,8 @@ def create_app(
                     store.step_active(step_id, now)
                     infer_phase(step_id, job_id, signal, session_id, now)
                     record_detail(step_id, event, signal, envelope.repo_path, now)
+                    if signal == "merge" and spec_job:
+                        store.record_merge(step_id, merge_sha(event), now)
         hub.publish(state())
         return Reply(
             session_id=None if session_id is None else str(session_id),

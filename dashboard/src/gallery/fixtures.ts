@@ -167,6 +167,8 @@ export const SPEC_JOB: JobData = {
   number: 18, workItem: { name: "#18 The Factory", url: "https://github.com/jeff/widgets/issues/18" }, stage: "In progress",
   branch: "worktree-spec-18-the-factory", worktree: "/home/jeff/widgets/.claude/worktrees/spec-18-the-factory",
   pr: { number: 60, url: "https://github.com/jeff/widgets/pull/60", draft: true },
+  prTrack: [{ stage: "Draft", at: at(40) }],
+  prChecks: [{ name: "lint", status: "pass" }, { name: "unit", status: "pass" }, { name: "integration", status: "pending" }],
 };
 export const specSteps: SpecStepData[] = [
   { id: "s24", number: 24, title: "Tracer bullet", phase: "Merged", phaseSince: at(70), blockedBy: [] },
@@ -175,7 +177,12 @@ export const specSteps: SpecStepData[] = [
   { id: "s30", number: 30, title: "Phases and the flow strip", phase: null, phaseSince: at(2), blockedBy: [25] },
   { id: "s31", number: 31, title: "Step detail", phase: "Pending", phaseSince: at(90), blockedBy: [28, 30] },
 ];
-export const specDetails: Record<string, StepDetailData> = { s28: { ...ticketStep.detail, pr: null, review: null } };
+const merged = (sha: string | null, minutesAgo: number): StepDetailData => ({
+  ...freshStep.detail, struggle: null, merge: { sha, at: at(minutesAgo) },
+});
+export const specDetails: Record<string, StepDetailData> = {
+  s24: merged("a41c9e2", 70), s25: merged(null, 50), s28: { ...ticketStep.detail, pr: null, review: null },
+};
 
 /** A Map with Decision tickets closed, claimed by this session, and open. */
 export const MAP: MapData = {
