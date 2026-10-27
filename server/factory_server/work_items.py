@@ -77,39 +77,3 @@ def parent_of(repo: str, issue: dict) -> int | None:
         return int(m[1]) if m else None
     m = BODY_PARENT.search(issue.get("body") or "")
     return int(m[1] or m[2]) if m else None
-
-
-# The kinds of Work item each skill is meant for; a skill not listed is never flagged.
-EXPECTED_KINDS: dict[str, list[Kind]] = {
-    "implement": [TICKET],
-    "implement-spec": [SPEC],
-    "to-tickets": [SPEC],
-    "to-spec": [MAP],
-    "wayfinder": [MAP],
-}
-
-
-def skill_start(event: dict, repo: str) -> tuple[str, int] | None:
-    """The skill an event starts and the Work item its args name: a typed `/skill #N`, or the Skill tool.
-
-    The item is a bare `#N`, or an issue URL in the session's own repo.
-    """
-    match event.get("hook_event_name"), event.get("tool_name"):
-        case "UserPromptExpansion", _:
-            skill, args = event.get("command_name"), event.get("command_args")
-        case "PreToolUse", "Skill":
-            tool_input = event.get("tool_input") or {}
-            skill, args = tool_input.get("skill"), tool_input.get("args")
-        case _:
-            return None
-    issue_ref = re.compile(rf"(?:^|\s)#(\d+)\b|github\.com/{re.escape(repo)}/issues/(\d+)\b")
-    m = issue_ref.search(args or "")
-    if not skill or not m:
-        return None
-    return skill.rpartition(":")[2], int(m[1] or m[2])  # `mattpocock-skills:implement` → `implement`
-
-
-def expected_kinds(skill: str, kind: Kind | None) -> list[Kind] | None:
-    """The kinds the skill expects, when it started against a Work item of another kind; else None."""
-    expected = EXPECTED_KINDS.get(skill)
-    return expected if expected and kind and kind not in expected else None

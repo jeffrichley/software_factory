@@ -62,6 +62,11 @@ def test_a_started_session_appears_as_working(client, clock):
             "repo": "jeff/widgets",
             "state": "Working",
             "state_since": "2026-10-26T12:00:00Z",
+            "kind": "ad hoc",
+            "skill": None,
+            "unknown_skill": None,
+            "now": None,
+            "actions": [],
         }
     ]
 

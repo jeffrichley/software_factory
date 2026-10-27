@@ -13,9 +13,11 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub, read_issues
+from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
 from .store import Store
-from .work_items import expected_kinds, pull_requests, skill_start, work_items
+from .work_items import pull_requests, work_items
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 SERVER_VERSION: str = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
@@ -34,6 +36,8 @@ class Envelope(BaseModel):
     repo_path: str
     ids: dict = {}
     event: dict
+    # Sent with SessionStart only: the installed mattpocock-skills version, for the skill table's version ranges.
+    mattpocock_skills_version: str | None = None
 
 
 class Reply(BaseModel):
@@ -67,8 +71,11 @@ class Broadcaster:
             self.queues.pop(q, None)
 
 
-def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> FastAPI:
+def create_app(
+    db_path: Path, github: GitHub, clock: Callable[[], datetime], skill_table: Path = DEFAULT_SKILL_TABLE
+) -> FastAPI:
     store = Store(db_path)
+    skills = SkillTable(skill_table)
     hub = Broadcaster()
     polled_at: dict[str, datetime] = {}
 
@@ -86,8 +93,9 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
         """Skill starts in live sessions against the wrong kind of Work item."""
         found = []
         for start in store.live_skill_starts():
-            expected = expected_kinds(start["skill"], start["kind"])
-            if expected:
+            role = skills.role(start["skill"], start.pop("mattpocock_skills_version"))
+            expected = list(role.work_items) if role else []
+            if expected and start["kind"] and start["kind"] not in expected:
                 found.append({**start, "expected": expected})
         return found
 
@@ -131,6 +139,24 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
     # Tests call the poller by hand with a fake clock, instead of running the background loop.
     app.state.poll_once = poll_once
 
+    def observe(session_id: int, event: dict, now: datetime) -> None:
+        """Kind, headline and timeline from what the session does."""
+        if invocation := skill_invocation(event):
+            skill = invocation[0]
+            name = bare_name(skill)  # Matt's skills go by their table name, without the plugin prefix
+            role = skills.role(name, store.session(session_id)["mattpocock_skills_version"]) if name else None
+            if role is None:
+                # Recorded even inside a Job or a subagent; it labels the session only while it is ad hoc.
+                store.record_unknown_skill(session_id, skill, now)
+                store.record_action(session_id, running_skill(skill), now)
+                return
+            # A subagent's skills (an implementer's tdd) belong to its parent's Job: they never reclassify the session.
+            if role.kind and "agent_id" not in event:
+                store.classify(session_id, role.kind, name)
+            store.record_action(session_id, started_skill(name), now)
+        elif event.get("hook_event_name") == "PreToolUse":
+            store.record_action(session_id, tool_headline(event), now)
+
     @app.post("/api/events")
     async def ingest(envelope: Envelope) -> Reply:
         event = envelope.event
@@ -144,15 +170,19 @@ def create_app(db_path: Path, github: GitHub, clock: Callable[[], datetime]) -> 
                 polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
-                if start := skill_start(event, envelope.repo):
-                    skill, number = start
-                    typed = name == "UserPromptExpansion"
-                    store.record_skill_start(session_id, skill, envelope.repo, number, typed=typed)
+                if invocation := skill_invocation(event):
+                    skill, number = bare_name(invocation[0]), work_item_named(invocation[1], envelope.repo)
+                    if skill and number:
+                        typed = name == "UserPromptExpansion"
+                        store.record_skill_start(session_id, skill, envelope.repo, number, typed=typed)
                 if name == "SessionEnd":
                     store.end_session(session_id, now)
                 else:
                     # A resumed session, or one still running when its repo was uninstalled and reinstalled.
                     store.resume_session(session_id, now)
+                if name == "SessionStart":
+                    store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
+                observe(session_id, event, now)
         hub.publish(state())
         return Reply(session_id=None if session_id is None else str(session_id))
 

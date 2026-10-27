@@ -7,6 +7,8 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from .skills import AD_HOC
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
   id INTEGER PRIMARY KEY,
@@ -24,6 +26,20 @@ CREATE TABLE IF NOT EXISTS tracking (
   repo_path TEXT NOT NULL,
   installed_at TEXT NOT NULL,
   PRIMARY KEY (repo, machine)
+);
+CREATE TABLE IF NOT EXISTS actions (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL REFERENCES sessions (id),
+  at TEXT NOT NULL,
+  text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS actions_by_session ON actions (session_id, id);
+-- Every start of a skill the skill table does not know, kept for good (the timeline drops old actions).
+CREATE TABLE IF NOT EXISTS unknown_skills (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL REFERENCES sessions (id),
+  skill TEXT NOT NULL,
+  at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS work_items (
   repo TEXT NOT NULL,
@@ -52,6 +68,15 @@ CREATE TABLE IF NOT EXISTS skill_starts (
 );
 CREATE INDEX IF NOT EXISTS skill_starts_session ON skill_starts (session_id);
 """
+# Columns added after the first release, so an existing database gains them on start.
+SESSION_COLUMNS = {
+    "kind": f"TEXT NOT NULL DEFAULT '{AD_HOC}'",
+    "skill": "TEXT",
+    "headline": "TEXT",
+    "mattpocock_skills_version": "TEXT",
+}
+# The ad hoc detail view's timeline shows a session's last few actions; older ones are dropped.
+KEEP_ACTIONS = 8
 
 
 def iso(t: datetime) -> str:
@@ -75,6 +100,11 @@ class Store:
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        have = {r["name"] for r in self.db.execute("PRAGMA table_info(sessions)")}
+        with self.db:
+            for column, decl in SESSION_COLUMNS.items():
+                if column not in have:
+                    self.db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {decl}")
 
     @locked
     def touch_session(self, machine: str, repo: str, cc_session_id: str, now: datetime) -> int:
@@ -105,11 +135,58 @@ class Store:
             self.db.execute("UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL", (iso(now), session_id))
 
     @locked
+    def set_mattpocock_skills_version(self, session_id: int, version: str | None) -> None:
+        with self.db:
+            self.db.execute("UPDATE sessions SET mattpocock_skills_version = ? WHERE id = ?", (version, session_id))
+
+    @locked
+    def session(self, session_id: int) -> sqlite3.Row:
+        return self.db.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+
+    @locked
+    def classify(self, session_id: int, kind: str, skill: str | None) -> None:
+        with self.db:
+            self.db.execute("UPDATE sessions SET kind = ?, skill = ? WHERE id = ?", (kind, skill, session_id))
+
+    @locked
+    def record_unknown_skill(self, session_id: int, skill: str, now: datetime) -> None:
+        with self.db:
+            self.db.execute("INSERT INTO unknown_skills (session_id, skill, at) VALUES (?, ?, ?)", (session_id, skill, iso(now)))
+
+    @locked
+    def record_action(self, session_id: int, text: str, now: datetime) -> None:
+        """The session's headline is now `text`; it joins the timeline, which keeps the last few."""
+        with self.db:
+            self.db.execute("UPDATE sessions SET headline = ? WHERE id = ?", (text, session_id))
+            self.db.execute("INSERT INTO actions (session_id, at, text) VALUES (?, ?, ?)", (session_id, iso(now), text))
+            self.db.execute(
+                "DELETE FROM actions WHERE session_id = ? AND id NOT IN"
+                " (SELECT id FROM actions WHERE session_id = ? ORDER BY id DESC LIMIT ?)",
+                (session_id, session_id, KEEP_ACTIONS),
+            )
+
+    @locked
     def live_sessions(self) -> list[dict]:
         rows = self.db.execute(
-            "SELECT id, machine, repo, state, state_since FROM sessions WHERE ended_at IS NULL ORDER BY id"
+            "SELECT id, machine, repo, state, state_since, kind, skill, headline,"
+            " (SELECT skill FROM unknown_skills u WHERE u.session_id = sessions.id ORDER BY u.id DESC LIMIT 1) AS unknown_skill"
+            " FROM sessions WHERE ended_at IS NULL ORDER BY id"
         ).fetchall()
-        return [{**dict(r), "id": str(r["id"])} for r in rows]
+        actions: dict[int, list[dict]] = {}
+        for a in self.db.execute(
+            "SELECT session_id, at, text FROM actions WHERE session_id IN"
+            " (SELECT id FROM sessions WHERE ended_at IS NULL) ORDER BY id"
+        ):
+            actions.setdefault(a["session_id"], []).append({"at": a["at"], "text": a["text"]})
+        return [
+            {
+                "id": str(r["id"]), "machine": r["machine"], "repo": r["repo"], "state": r["state"],
+                "state_since": r["state_since"], "kind": r["kind"], "skill": r["skill"],
+                "unknown_skill": r["unknown_skill"], "now": r["headline"],
+                "actions": actions.get(r["id"], []),
+            }
+            for r in rows
+        ]
 
     @locked
     def track_repo(self, repo: str, machine: str, repo_path: str, now: datetime) -> None:
@@ -194,7 +271,7 @@ class Store:
     def live_skill_starts(self) -> list[dict]:
         """Skill starts in live sessions, with the Work item's kind (None until polled, or not a Work item)."""
         rows = self.db.execute(
-            "SELECT k.session_id, k.skill, k.repo, k.number, w.kind FROM skill_starts k"
+            "SELECT k.session_id, k.skill, k.repo, k.number, w.kind, s.mattpocock_skills_version FROM skill_starts k"
             " JOIN sessions s ON s.id = k.session_id"
             " LEFT JOIN work_items w ON w.repo = k.repo AND w.number = k.number"
             " WHERE s.ended_at IS NULL ORDER BY k.id"
