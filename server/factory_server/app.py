@@ -22,8 +22,8 @@ from . import planning
 from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import QUIET_AFTER, as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
-from .step_detail import (CODE_REVIEW, REVIEW_AXES, checklist_after, commit_made, repo_relative, review_counts, review_report_ask,
-                          test_counts, test_output)
+from .step_detail import (CODE_REVIEW, REVIEW_AXES, checklist_after, commit_made, lines_changed, repo_relative, review_counts,
+                          review_report_ask, test_counts, test_output)
 from .store import Store
 from .wayfinder import (WAITS_ON_HUMAN, WAYFINDER, claims, closes, created_numbers, creates, mode_of, questions)
 from .work_items import pull_requests, work_items
@@ -566,7 +566,8 @@ def create_app(
         if signal in ("test_edit", "source_edit"):
             tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
             path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
-            store.record_edit(step_id, repo_relative(path, worktree_of(event.get("cwd"), main_tree), main_tree))
+            store.record_edit(step_id, repo_relative(path, worktree_of(event.get("cwd"), main_tree), main_tree),
+                              lines_changed(event))
         elif signal == "commit" and (commit := commit_made(event)):
             store.record_commit(step_id, commit, now)
         elif signal in ("test_pass", "test_fail"):
