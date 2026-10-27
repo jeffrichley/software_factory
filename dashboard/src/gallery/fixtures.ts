@@ -1,4 +1,4 @@
-import { specInitials, type FlowRow, type TimelineEntry, type GraphNodeInput, type NeedsYouCardProps } from "../ds";
+import { specInitials, type FlowRow, type JobData, type ReplayData, type TimelineEntry, type GraphNodeInput, type NeedsYouCardProps } from "../ds";
 
 /** Fake data for the gallery only. */
 
@@ -79,3 +79,38 @@ export const adhocActions: TimelineEntry[] = [
   { at: at(1), text: "reading a/very/long/path/that/wraps/in/the/timeline/rather/than/overflowing/its/panel/at/narrow/widths.rs" },
   { at: at(0), text: "reading src/render/chunk.ts" },
 ];
+
+/** A merged Ticket Job and its timeline, for the replay. */
+export const REPLAY_JOB: JobData = {
+  id: "21", sessionId: "7", machine: "wsl", kind: "Ticket Job", repo: "jeff/widgets", startedAt: "2026-10-26T15:30:00Z",
+  duplicateOf: null, number: 29, workItem: { name: "Job edges, abandonment and the History list", url: "https://github.com/jeff/widgets/issues/29" },
+  stage: "Merged", branch: "ticket-29-job-edges", worktree: null, pr: { number: 48, url: "https://github.com/jeff/widgets/pull/48", draft: false },
+};
+
+const rev = (t: number, kind: string, text: string, phase: string | null = null) => ({
+  t, at: "", kind, text, step_id: phase ? "9" : null, phase,
+});
+
+export const REPLAY: ReplayData = {
+  job_id: "21",
+  started_at: "2026-10-26T15:30:00Z",
+  ended_at: "2026-10-26T15:42:00Z",
+  steps: [{ id: "9", number: 29, title: "Job edges, abandonment and the History list", phase: null }],
+  events: [
+    rev(0, "start", "Job started: #29"),
+    rev(12, "action", "reading server/factory_server/store.py"),
+    rev(40, "phase", "#29 Exploring", "Exploring"),
+    rev(95, "phase", "#29 Red", "Red"),
+    rev(130, "test_fail", "Tests fail: uv run pytest tests/server -q"),
+    rev(170, "needs", "Needs you: permission for Bash: rm -rf .venv"),
+    rev(230, "test_pass", "Tests pass: uv run pytest tests/server -q"),
+    rev(231, "phase", "#29 Green", "Green"),
+    rev(400, "review", "Review: code-review"),
+    rev(401, "phase", "#29 Reviewing", "Reviewing"),
+    rev(520, "commit", 'Commit: git commit -am "Job edges"'),
+    rev(521, "phase", "#29 Committed", "Committed"),
+    rev(600, "pr", "PR: https://github.com/jeff/widgets/pull/48"),
+    rev(720, "phase", "#29 Merged", "Merged"),
+    rev(720, "end", "Merged"),
+  ],
+};

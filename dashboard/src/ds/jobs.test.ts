@@ -34,3 +34,13 @@ describe("isEnded", () => {
     expect(["In progress", "PR open", "Merged", "Closed", "Abandoned"].map(isEnded)).toEqual([false, false, true, true, true]);
   });
 });
+
+describe("historyOf with the Machine filter", () => {
+  it("leaves out Jobs on hidden Machines", () => {
+    const jobs = [
+      { id: "1", stage: "Merged", machine: "wsl" },
+      { id: "2", stage: "Merged", machine: "mac" },
+    ];
+    expect(historyOf(jobs, ["mac"]).map((j) => j.id)).toEqual(["1"]);
+  });
+});

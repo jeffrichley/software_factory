@@ -33,6 +33,8 @@ import {
   inboxOf,
   type JobData,
   newSounds,
+  ReplayView,
+  type ReplayData,
   playSound,
   resumeCommand,
   viewOf,
@@ -80,6 +82,8 @@ interface FactoryState {
   jobs: {
     id: string;
     session_id: string;
+    /** The Machine its session runs on. */
+    machine: string;
     kind: string;
     repo: string;
     number: number | null;
@@ -201,6 +205,22 @@ function useMachineFilter(names: string[]): [string[], (hidden: string[]) => voi
   return [hidden, choose];
 }
 
+/** A Job's timeline for its replay, fetched once when it opens; null while loading (or if it can't be read). */
+function useReplay(jobId: string | undefined): ReplayData | null {
+  const [replay, setReplay] = useState<ReplayData | null>(null);
+  useEffect(() => {
+    setReplay(null);
+    if (!jobId) return;
+    let live = true;
+    fetch(`/api/jobs/${jobId}/replay`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: ReplayData | null) => { if (live) setReplay(data); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [jobId]);
+  return replay;
+}
+
 /** How much of a Claude Code session id a card shows; the resume command carries all of it. */
 const SESSION_ID_CHARS = 8;
 
@@ -210,6 +230,8 @@ export function Dashboard() {
   const [selectedId, setSelectedId] = useState<string>();
   const [showHiddenSessions, setShowHiddenSessions] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [replayId, setReplayId] = useState<string>();
+  const replay = useReplay(replayId);
   const names = state?.machines.map((m) => m.machine) ?? [];
   const [hiddenMachines, setHiddenMachines] = useMachineFilter(names);
   const [soundOn, toggleSound] = useSoundOn();
@@ -230,11 +252,13 @@ export function Dashboard() {
   const setHidden = (id: string, hidden: boolean) =>
     void fetch(`/api/sessions/${id}/${hidden ? "hide" : "show"}`, { method: "POST" }).catch(() => {});
   const jobs: JobData[] = (state?.jobs ?? []).map((j) => ({
-    id: j.id, sessionId: j.session_id, kind: j.kind, repo: j.repo, startedAt: j.started_at, duplicateOf: j.duplicate_of,
+    id: j.id, sessionId: j.session_id, machine: j.machine, kind: j.kind, repo: j.repo, startedAt: j.started_at, duplicateOf: j.duplicate_of,
     number: j.number, stage: j.stage, branch: j.branch,
     worktree: j.worktree, pr: j.pr, workItem: j.work_item && { name: j.work_item.title, url: j.work_item.url },
   }));
-  const history = historyOf(jobs);
+  const history = historyOf(jobs, hiddenMachines);
+  // A replay of a Job on a Machine hidden since closes with it.
+  const replayJob = history.find((j) => j.id === replayId);
   const abandon = (jobId: string) => {
     if (window.confirm(`Mark Job ${jobId} abandoned? It moves to History.`)) {
       void fetch(`/api/jobs/${jobId}/abandon`, { method: "POST" }).catch(() => {});
@@ -278,7 +302,7 @@ export function Dashboard() {
           <HiddenNeedsBadge count={view.hiddenNeeds.length} onShow={() => showMachines(view.hiddenNeeds.map((s) => s.machine))} />
           <NeedsCount count={needs.length} />
           <DoneUnseenCount count={doneUnseen.length} />
-          <HistoryCount count={history.length} open={showHistory} onToggle={() => setShowHistory(!showHistory)} />
+          <HistoryCount count={history.length} open={showHistory} onToggle={() => { setShowHistory(!showHistory); setReplayId(undefined); }} />
           <SoundToggle on={soundOn} onToggle={toggleSound} />
         </div>
       </TopBar>
@@ -327,7 +351,11 @@ export function Dashboard() {
           </Inbox>
         }
       >
-        {showHistory ? <HistoryList jobs={history} /> : null}
+        {showHistory ? (
+          replayJob ? (
+            <ReplayView key={replayJob.id} job={replayJob} replay={replay?.job_id === replayJob.id ? replay : null} onBack={() => setReplayId(undefined)} />
+          ) : <HistoryList jobs={history} onReplay={setReplayId} />
+        ) : null}
         {repos ? <FlowStrip rows={flow} /> : null}
         {state ? (
           <SessionTable
