@@ -7,6 +7,7 @@ export * from "./format";
 export * from "./flow";
 export * from "./graph";
 export * from "./inbox";
+export * from "./machineFilter";
 export * from "./motion";
 export * from "./sounds";
 export * from "./components/Icon";

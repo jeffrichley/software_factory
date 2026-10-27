@@ -115,6 +115,7 @@ SESSION_COLUMNS = {
     "base_reason": "TEXT",
     "reason": "TEXT",  # JSON reason shown with Needs you
     "seen": "INTEGER NOT NULL DEFAULT 0",  # Done has been seen by the human
+    "hidden": "INTEGER NOT NULL DEFAULT 0",  # hidden by the human: out of the dashboard's views, and silent
     "transitions": "INTEGER NOT NULL DEFAULT 0",  # counts changes of shown state: a sound belongs to one
 }
 # The ad hoc detail view's timeline shows a session's last few actions; older ones are dropped.
@@ -226,7 +227,7 @@ class Store:
     def live_sessions(self) -> list[dict]:
         """Live rows, Needs you first (longest waiting first), then the rest in order of first sight."""
         rows = self.db.execute(
-            "SELECT id, machine, repo, cc_session_id, state, state_since, reason, seen, kind, skill, headline,"
+            "SELECT id, machine, repo, cc_session_id, state, state_since, reason, seen, hidden, kind, skill, headline,"
             " (SELECT skill FROM unknown_skills u WHERE u.session_id = sessions.id ORDER BY u.id DESC LIMIT 1) AS unknown_skill"
             " FROM sessions WHERE ended_at IS NULL"
             " ORDER BY state != 'Needs you', CASE WHEN state = 'Needs you' THEN state_since END, id"
@@ -241,7 +242,7 @@ class Store:
             {
                 "id": str(r["id"]), "machine": r["machine"], "repo": r["repo"], "cc_session_id": r["cc_session_id"],
                 "state": r["state"], "state_since": r["state_since"],
-                "reason": r["reason"] and json.loads(r["reason"]), "seen": bool(r["seen"]),
+                "reason": r["reason"] and json.loads(r["reason"]), "seen": bool(r["seen"]), "hidden": bool(r["hidden"]),
                 "kind": r["kind"], "skill": r["skill"], "unknown_skill": r["unknown_skill"], "now": r["headline"],
                 "actions": actions.get(r["id"], []),
             }
@@ -264,6 +265,11 @@ class Store:
     def mark_seen(self, session_id: int) -> bool:
         with self.db:
             return self.db.execute("UPDATE sessions SET seen = 1 WHERE id = ?", (session_id,)).rowcount > 0
+
+    @locked
+    def set_hidden(self, session_id: int, hidden: bool) -> bool:
+        with self.db:
+            return self.db.execute("UPDATE sessions SET hidden = ? WHERE id = ?", (int(hidden), session_id)).rowcount > 0
 
     @locked
     def open_tool_use(self, session_id: int, subagent: str, tool_use_id: str, tool_name: str, tool_input: dict) -> None:
@@ -372,10 +378,10 @@ class Store:
 
     @locked
     def release_sounds(self, now: datetime) -> None:
-        """Due sounds play if their session is still live in the transition they were for; the rest are dropped."""
+        """Due sounds play if their session is still live, shown, and in the transition they were for; the rest are dropped."""
         with self.db:
             due = self.db.execute(
-                "SELECT k.id, k.transition = s.transitions AND s.ended_at IS NULL AS still FROM sounds k"
+                "SELECT k.id, k.transition = s.transitions AND s.ended_at IS NULL AND NOT s.hidden AS still FROM sounds k"
                 " JOIN sessions s ON s.id = k.session_id WHERE k.seq IS NULL AND k.due <= ? ORDER BY k.due, k.id",
                 (iso(now),),
             ).fetchall()

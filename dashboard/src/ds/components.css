@@ -264,6 +264,10 @@ a { color: inherit; }
 .brand { display: flex; align-items: center; gap: 10px; font: 700 var(--fs-lg)/1 var(--font-display); letter-spacing: .02em; white-space: nowrap; }
 .brand-mark { position: relative; width: 22px; height: 22px; border: 2px solid var(--text); border-radius: var(--r-badge); }
 .brand-mark::after { content: ""; position: absolute; inset: 4px; background: var(--needs); }
+.counts { display: flex; align-items: center; gap: var(--s2); margin-left: auto; flex-shrink: 0; }
+
+/* A row of buttons acting on what sits below it, such as hiding a session. */
+.toolbar { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s2); }
 
 /* ---------- Session table ---------- */
 .tri { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }

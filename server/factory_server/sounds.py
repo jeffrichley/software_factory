@@ -5,6 +5,8 @@ Done sounds at once. A permission prompt sounds when Claude Code itself notifies
 (Notification permission_prompt, a few seconds in), not on PermissionRequest, so a quick
 approval at the terminal is silent. Any other Needs you (a question, a HITL stop, an
 escalation, an error) sounds after a grace, and not at all if the session moves on first.
+A hidden session is silent, even for a sound already scheduled; a hidden Machine is not, since
+the Machine filter only changes what the dashboard shows.
 """
 
 import json
