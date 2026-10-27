@@ -25,6 +25,11 @@ import {
   TICKET_JOB,
   TicketJobView,
   TopBar,
+  WAYFINDER,
+  WayfinderView,
+  type DecisionTicketData,
+  type MapData,
+  type WayfinderData,
   filterUrl,
   flowRows,
   hiddenMachinesOf,
@@ -109,6 +114,22 @@ interface FactoryState {
     phase_since: string;
     /** The Tickets that block this one. */
     blocked_by: number[];
+  }[];
+  /** Live Wayfinder sessions: the Map, the Decision ticket worked, the current round's question titles, and the
+   * tickets created and closed this session. */
+  wayfinder: { session_id: string; map: number | null; ticket: number | null; questions: string[]; created: number[]; closed: number[] }[];
+  /** Maps in Tracked repos, with their Destination, fog and Decision tickets (Out of scope left out). */
+  maps: {
+    repo: string;
+    number: number;
+    title: string;
+    url: string;
+    destination: string | null;
+    fog: string[];
+    tickets: {
+      number: number; title: string; url: string; state: "open" | "closed"; type: string | null; mode: string | null;
+      assignees: string[]; gist: string | null; blocked_by: number[];
+    }[];
   }[];
   /** The latest sounds the server has played, one per transition; ids only grow. */
   sounds: { id: number; session_id: string; machine: string; sound: SoundName; at: string }[];
@@ -274,7 +295,27 @@ export function Dashboard() {
     repo: r.repo,
     chips: r.chips.map(({ sessionId, ...c }) => ({ ...c, selected: sessionId === selectedId, onOpen: () => open(sessionId) })),
   }));
-  const workItemOf = (sessionId: string) => jobOf(sessionId)?.workItem ?? null;
+  const plans: WayfinderData[] = (state?.wayfinder ?? []).map((w) => ({
+    sessionId: w.session_id, map: w.map, ticket: w.ticket, questions: w.questions, created: w.created, closed: w.closed,
+  }));
+  const maps: MapData[] = (state?.maps ?? []).map((m) => ({
+    repo: m.repo, number: m.number, title: m.title, url: m.url, destination: m.destination, fog: m.fog,
+    tickets: m.tickets.map((t): DecisionTicketData => ({
+      number: t.number, title: t.title, url: t.url, state: t.state, type: t.type, mode: t.mode, assignees: t.assignees,
+      gist: t.gist, blockedBy: t.blocked_by,
+    })),
+  }));
+  const planOf = (sessionId: string) => plans.find((p) => p.sessionId === sessionId) ?? null;
+  const mapOf = (s: { id: string; repo: string }) => {
+    const n = planOf(s.id)?.map;
+    return maps.find((m) => m.repo === s.repo && m.number === n) ?? null;
+  };
+  /** A Job's Work item, or a Wayfinder session's Map. */
+  const workItemOf = (sessionId: string) => {
+    const s = sessions.find((x) => x.id === sessionId);
+    const m = s && s.kind === WAYFINDER ? mapOf(s) : null;
+    return m ? { name: `#${m.number} ${m.title}`, url: m.url } : jobOf(sessionId)?.workItem ?? null;
+  };
 
   const seen = (id: string) => void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
   /** Opening a session's detail, from its row or its inbox card, makes its Done seen. */
@@ -391,6 +432,8 @@ export function Dashboard() {
               nowMs={now}
               onAbandon={() => { const j = jobOf(selected.id); if (j) abandon(j.id); }}
             />
+          ) : selected.kind === WAYFINDER ? (
+            <WayfinderView key={selected.id} {...selected} plan={planOf(selected.id)} map={mapOf(selected)} />
           ) : (
             <AdHocView {...selected} />
           )

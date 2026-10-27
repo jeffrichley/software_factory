@@ -371,3 +371,7 @@ a { color: inherit; }
   .split { grid-template-columns: minmax(0, 1fr); }
   .inbox { border-right: 0; border-bottom: 1px solid var(--line); }
 }
+
+/* Wayfinder detail */
+.prose { margin: 0; }
+.files { margin: 0; padding-left: var(--s5); display: grid; gap: 4px; font-size: var(--fs-sm); overflow-wrap: anywhere; }

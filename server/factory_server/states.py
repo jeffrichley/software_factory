@@ -70,9 +70,10 @@ def running_background_tasks(event: dict) -> bool:
 
 
 def apply(store: Store, session_id: int, event: dict, now: datetime, job_without_pr: bool = False,
-          ticket: int | None = None) -> None:
+          ticket: int | None = None, hitl: dict | None = None) -> None:
     """Apply one hook event's effect on the session's state; `job_without_pr`: its current Job has no non-draft PR;
-    `ticket`: the Ticket of the Step the event's subagent works, which a prompt it raises names."""
+    `ticket`: the Ticket of the Step the event's subagent works, which a prompt it raises names; `hitl`: on a Stop,
+    why a Wayfinder session's HITL Decision ticket now waits on the human."""
     subagent = event.get("agent_id") or MAIN
     tool_use_id = event.get("tool_use_id")
 
@@ -124,6 +125,8 @@ def apply(store: Store, session_id: int, event: dict, now: datetime, job_without
                 # A Job is Done only once its non-draft PR exists.
                 if job_without_pr:
                     store.set_base(session_id, "Needs you", NO_PR)
+                elif hitl:
+                    store.set_base(session_id, "Needs you", hitl)
                 else:
                     store.set_base(session_id, "Done")
         case "SubagentStop":
