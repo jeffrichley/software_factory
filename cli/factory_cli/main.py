@@ -14,7 +14,7 @@ from typing import Annotated
 import typer
 
 from .tracking import (
-    Refused, data_dir, factory_dir, flush_queue, github_repo, latest_session_ids, load_setup, log_refused, machine_dir,
+    Refused, data_dir, factory_dir, flush_queue, github_repo, latest_session, latest_session_ids, load_setup, log_refused, machine_dir,
     main_worktree, marker_path, post_event, queued, save_setup, send,
 )
 
@@ -226,6 +226,37 @@ def uninstall() -> None:
 def status() -> None:
     """Show whether this repo is tracked, whether the server is reachable, and the current ids."""
     print_status(require_setup(), main_worktree(Path.cwd()))
+
+
+def report_on_session(name: str, done: str) -> None:
+    """Send 'name' for the session running this command, queueing it when the server can't be reached."""
+    setup = require_setup()
+    main = require_repo()
+    machine, url = setup["machine"], setup["server_url"]
+    marker = marker_path(main, machine)
+    if not marker.exists():
+        fail(f"Not tracked on '{machine}': {main}. Run `factory install` (or /factory:install) to track it.")
+    latest = latest_session(main, machine)
+    if not latest:
+        fail("No session has reported from this repo on this Machine yet: run this from inside a Claude Code session.")
+    cc_session_id, ids = latest
+    body = {**tracking_event(name, main, machine, json.loads(marker.read_text())["repo"]), "ids": ids}
+    body["event"] = {"hook_event_name": name, "session_id": cc_session_id}
+    if send(main, machine, url, body) is None:
+        typer.echo(f"Server unreachable at {url}; queued for when it's back. {START_SERVER}")
+    typer.echo(f"Session {cc_session_id} {done}.")
+
+
+@app.command()
+def hide() -> None:
+    """Hide the current session: off the dashboard's views, and silent."""
+    report_on_session("session_hidden", "hidden")
+
+
+@app.command()
+def show() -> None:
+    """Show the current session again."""
+    report_on_session("session_shown", "shown")
 
 
 @app.command()
