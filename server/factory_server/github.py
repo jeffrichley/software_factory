@@ -46,3 +46,18 @@ def read_blocked_by(github: GitHub, repo: str, issues: list[dict]) -> dict[int, 
         mine = f"github.com/{repo}/issues/"
         blocked[i["number"]] = sorted(b["number"] for b in blockers if mine in b.get("html_url", ""))
     return blocked
+
+
+# How the dashboard shows a finished check run's conclusion; any other conclusion is a failure.
+CHECK_STATUS = {"success": "pass", "neutral": "pass", "skipped": "skipped"}
+
+
+def read_checks(github: GitHub, repo: str, number: int) -> list[dict]:
+    """The CI check runs on the PR's head commit, each pass, fail, pending or skipped."""
+    head = github.api(f"repos/{repo}/pulls/{number}")["head"]["sha"]
+    runs = github.api(f"repos/{repo}/commits/{head}/check-runs?per_page={PAGE}")["check_runs"]
+    return [
+        {"name": r["name"],
+         "status": "pending" if r.get("status") != "completed" else CHECK_STATUS.get(r.get("conclusion"), "fail")}
+        for r in runs
+    ]

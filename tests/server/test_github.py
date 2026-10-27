@@ -24,10 +24,13 @@ class FakeClock:
 
 
 class FakeGitHub:
-    """Serves each repo's issues (and PRs, which GitHub lists as issues) a page at a time, and records every read."""
+    """Serves each repo's issues (and PRs, which GitHub lists as issues) a page at a time, each PR's head and its
+    CI check runs, and records every read."""
 
     def __init__(self) -> None:
         self.issues: dict[str, list[dict]] = {}
+        # Each PR's head commit is `head-<n>`; its check runs, by (repo, head sha), as the checks API lists them.
+        self.check_runs: dict[tuple[str, str], list[dict]] = {}
         self.reads: list[str] = []
         self.down = False
 
@@ -35,7 +38,12 @@ class FakeGitHub:
         self.reads.append(path)
         if self.down:
             raise RuntimeError("gh: could not reach api.github.com")
-        m =re.fullmatch(r"repos/([^/]+/[^/?]+)/issues\?state=all&per_page=(\d+)&page=(\d+)", path)
+        if m := re.fullmatch(r"repos/([^/]+/[^/]+)/pulls/(\d+)", path):
+            return {"number": int(m[2]), "head": {"sha": f"head-{m[2]}"}}
+        if m := re.fullmatch(r"repos/([^/]+/[^/]+)/commits/([^/]+)/check-runs\?per_page=100", path):
+            runs = self.check_runs.get((m[1], m[2]), [])
+            return {"total_count": len(runs), "check_runs": runs}
+        m = re.fullmatch(r"repos/([^/]+/[^/?]+)/issues\?state=all&per_page=(\d+)&page=(\d+)", path)
         if not m:
             raise AssertionError(f"unexpected GitHub read: {path}")
         repo, per_page, page = m[1], int(m[2]), int(m[3])

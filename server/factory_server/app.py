@@ -15,12 +15,14 @@ from pydantic import BaseModel
 
 from . import sounds, states
 from .activity import running_skill, started_skill, tool_headline
-from .github import GitHub, read_blocked_by, read_issues
+from .github import GitHub, read_blocked_by, read_checks, read_issues
 from .jobs import (IN_PROGRESS, SPEC_JOB, STEP_REPORT, TICKET_JOB, spec_job_start, spec_step_start, ticket_job_start,
                    tickets_named, worktree_of)
 from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_named
 from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
+from .step_detail import (CODE_REVIEW, REVIEW_AXES, commit_made, repo_relative, review_counts, review_report_ask,
+                          test_counts, test_output)
 from .store import Store
 from .work_items import pull_requests, work_items
 
@@ -116,6 +118,8 @@ def create_app(
             "pull_requests": store.pull_requests(),
             "jobs": store.jobs(),
             "steps": store.steps(),
+            "step_details": store.step_details(),
+            "job_reviews": store.job_reviews(),
             "mismatches": mismatches(),
             "sounds": store.sounds(),
         }
@@ -153,6 +157,17 @@ def create_app(
                 hub.publish(state())
             except Exception:
                 log.exception("GitHub poll of %s failed", repo)
+                continue
+            try:
+                read_ci_checks(repo)
+                hub.publish(state())
+            except Exception:
+                log.exception("GitHub read of %s's CI checks failed", repo)
+
+    def read_ci_checks(repo: str) -> None:
+        """The CI checks on each open PR of the repo's Jobs still going (blocking), saved."""
+        for number in store.prs_to_check(repo):
+            store.save_checks(repo, number, read_checks(github, repo, number))
 
     def read_repo(repo: str) -> None:
         """The repo's issues, PRs and blocking from GitHub (blocking), saved; each Spec Job takes up new Tickets."""
@@ -235,7 +250,7 @@ def create_app(
             case "repo_uninstalled":
                 store.untrack_repo(envelope.repo, envelope.machine, now)
                 polled_at.pop(envelope.repo, None)  # so re-tracking it polls at once
-            case "report_pr" | "job_issue" | "report_phase" | "report_step" | "escalate" as name:
+            case "report_pr" | "job_issue" | "report_phase" | "report_step" | "report_review" | "escalate" as name:
                 session_id, job_id, step_id = self_report(name, event, now)
             case name:
                 session_id = store.touch_session(envelope.machine, envelope.repo, event["session_id"], now)
@@ -257,6 +272,8 @@ def create_app(
                 step_id = step_of(job_id, event)
                 if spec_job and name == "SubagentStart" and step_id is None:
                     inject = spec_step_start(str(job_id))
+                if job_id is not None:
+                    inject = observe_review(job_id, step_id, event) or inject
                 if name == "SessionEnd":
                     store.end_session(session_id, now)
                 else:
@@ -271,7 +288,9 @@ def create_app(
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
                 observe(session_id, event, now)
                 if step_id is not None:
-                    infer_phase(step_id, job_id, phase_rules.load().signal(event), session_id, now)
+                    signal = phase_rules.load().signal(event, envelope.repo)
+                    infer_phase(step_id, job_id, signal, session_id, now)
+                    record_detail(step_id, event, signal, envelope.repo_path, now)
         hub.publish(state())
         return Reply(
             session_id=None if session_id is None else str(session_id),
@@ -314,6 +333,34 @@ def create_app(
         store.map_agent(job_id, str(agent_id), step_id)
         if store.step_phase(step_id) == PENDING:
             store.set_phase(step_id, None, now)  # started: Phase unknown until a signal says more
+
+    def observe_review(job_id: int, step_id: int | None, event: dict) -> str | None:
+        """code-review in a Job: ask its agent for the findings count, and read its summary line meanwhile."""
+        name = event.get("hook_event_name")
+        if (invocation := skill_invocation(event)) and bare_name(invocation[0]) == CODE_REVIEW:
+            store.start_review(job_id)
+        elif name == "PostToolUse" and event.get("tool_name") == "Skill":
+            tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+            if bare_name(str(tool_input.get("skill") or "")) == CODE_REVIEW:
+                ticket = store.step_number(step_id) if step_id is not None and store.job_kind(job_id) == SPEC_JOB else None
+                return review_report_ask(str(job_id), ticket)
+        elif name in ("MessageDisplay", "Stop") and store.review_started(job_id):
+            text = str(event.get("delta") or event.get("last_assistant_message") or "")
+            if counts := review_counts(text):
+                store.record_review(job_id, step_id, *counts, "summary")
+        return None
+
+    def record_detail(step_id: int, event: dict, signal: str | None, main_tree: str, now: datetime) -> None:
+        """What the event adds to the Step's detail."""
+        if signal in ("test_edit", "source_edit"):
+            tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+            path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
+            store.record_edit(step_id, repo_relative(path, worktree_of(event.get("cwd"), main_tree), main_tree))
+        elif signal == "commit" and (commit := commit_made(event)):
+            store.record_commit(step_id, commit, now)
+        elif signal in ("test_pass", "test_fail"):
+            passed, failed = test_counts(test_output(event))
+            store.record_test_run(step_id, "pass" if signal == "test_pass" else "fail", passed, failed, now)
 
     def infer_phase(step_id: int, job_id: int, signal: str | None, session_id: int, now: datetime) -> None:
         """The Step's Phase after a signal, by the Phase rules."""
@@ -376,6 +423,8 @@ def create_app(
                 step_id = report_phase(job_id, event, now)
             case "report_step":
                 step_id = report_step(job_id, event)
+            case "report_review":
+                step_id = report_review(job_id, event)
             case "escalate":
                 states.escalate(store, session_id, str(event.get("reason") or ""), now)
                 sounds.schedule(store, session_id, event, now)
@@ -388,6 +437,27 @@ def create_app(
         ticket = event.get("ticket")
         if not str(ticket).isdigit():
             raise HTTPException(status_code=422, detail="`factory step` needs --ticket <number>")
+        step_id = store.job_step_numbered(job_id, int(ticket))
+        if step_id is None:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} has no Step for #{ticket}")
+        return step_id
+
+    def report_review(job_id: int, event: dict) -> int | None:
+        """`factory review --standards N --spec M`: code-review's findings per axis, for the Step (or whole Job)."""
+        counts = [event.get(axis) for axis in REVIEW_AXES]
+        if not all(str(c).isdigit() for c in counts):
+            raise HTTPException(status_code=422, detail="`factory review` needs --standards <n> and --spec <m>")
+        step_id = reported_step(job_id, event)
+        store.record_review(job_id, step_id, *(int(c) for c in counts), "report")
+        return step_id
+
+    def reported_step(job_id: int, event: dict) -> int | None:
+        """The Step a self-report is about: its --ticket's, else the Job's one Step (none for a Spec Job)."""
+        ticket = event.get("ticket")
+        if ticket is None:
+            return step_of(job_id)
+        if not str(ticket).isdigit():
+            raise HTTPException(status_code=422, detail="--ticket needs an issue number")
         step_id = store.job_step_numbered(job_id, int(ticket))
         if step_id is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id} has no Step for #{ticket}")
