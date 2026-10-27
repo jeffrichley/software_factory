@@ -65,6 +65,7 @@ def test_implement_with_a_ticket_starts_a_ticket_job_and_injects_how_to_work_it(
     assert jobs(client) == [{
         "id": job_id,
         "session_id": reply["session_id"],
+        "machine": "wsl",
         "kind": "Ticket Job",
         "repo": "jeff/widgets",
         "number": 5,

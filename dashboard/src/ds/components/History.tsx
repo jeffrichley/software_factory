@@ -16,8 +16,8 @@ export function HistoryCount({ count, open, onToggle }: { count: number; open: b
   );
 }
 
-/** Ended Jobs (Merged, Closed, Abandoned), each with its outcome, Work item, repo, PR and start time. */
-export function HistoryList({ jobs }: { jobs: JobData[] }) {
+/** Ended Jobs (Merged, Closed, Abandoned), each with its outcome, Work item, repo, Machine, PR and start time, and a Replay. */
+export function HistoryList({ jobs, onReplay }: { jobs: JobData[]; onReplay?: (jobId: string) => void }) {
   return (
     <Panel title={`History · ${jobs.length}`} label="History">
       {jobs.length ? (
@@ -29,9 +29,13 @@ export function HistoryList({ jobs }: { jobs: JobData[] }) {
                 {j.workItem ? <WorkItemLink item={j.workItem} /> : j.number ? <span className="mono">#{j.number}</span> : <WorkItemLink item={null} />}
               </span>
               <span className="mono hist-meta">{j.repo}</span>
+              <span className="mono hist-meta">{j.machine}</span>
               <span className="hist-meta">{j.kind} {j.id}</span>
               <span className="hist-meta">PR <PrLink pr={j.pr} /></span>
               <time className="hist-meta" dateTime={j.startedAt}>started {formatClock(j.startedAt)}</time>
+              {onReplay ? (
+                <button type="button" className="btn" onClick={() => onReplay(j.id)}><Icon name="play" />Replay</button>
+              ) : null}
             </li>
           ))}
         </ul>
