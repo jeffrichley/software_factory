@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .jobs import ENDED, stage_of
 from .skills import AD_HOC
+from .wayfinder import mode_of
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -127,6 +128,22 @@ CREATE TABLE IF NOT EXISTS step_agents (
 );
 -- A sound for one transition of a session's state, due at `due`. It plays (gets `seq`, the order the
 -- dashboard plays sounds in) once due if the session is still in that transition, else it is dropped.
+-- A Wayfinder session: its Map, the Decision ticket it works (NULL until it claims one) and its latest grilling
+-- round's question titles (JSON list).
+CREATE TABLE IF NOT EXISTS wayfinder (
+  session_id INTEGER PRIMARY KEY REFERENCES sessions (id),
+  map INTEGER,
+  ticket INTEGER,
+  questions TEXT NOT NULL DEFAULT '[]'
+);
+-- The tickets a Wayfinder session created or closed, in order.
+CREATE TABLE IF NOT EXISTS wayfinder_tickets (
+  id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL REFERENCES sessions (id),
+  number INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  UNIQUE (session_id, number, action)
+);
 CREATE TABLE IF NOT EXISTS sounds (
   id INTEGER PRIMARY KEY,
   session_id INTEGER NOT NULL,
@@ -153,6 +170,9 @@ SESSION_COLUMNS = {
 WORK_ITEM_COLUMNS = {
     "parent": "INTEGER",  # the parent issue's number: a Ticket's Spec, a Decision ticket's Map
     "blocked_by": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of the issues in this repo that block it
+    "type": "TEXT",  # a Decision ticket's type, from its `wayfinder:<type>` label
+    "assignees": "TEXT NOT NULL DEFAULT '[]'",  # JSON list of logins: a Decision ticket's claim
+    "map": "TEXT",  # a Map's body as JSON: destination, fog, gists, out_of_scope
 }
 JOB_COLUMNS = {
     "abandoned_at": "TEXT",  # when the human abandoned the Job on the dashboard
@@ -515,9 +535,11 @@ class Store:
         with self.db:
             self.db.execute("DELETE FROM work_items WHERE repo = ?", (repo,))
             self.db.executemany(
-                "INSERT INTO work_items (repo, number, title, state, url, kind, parent, blocked_by)"
-                " VALUES (:repo, :number, :title, :state, :url, :kind, :parent, :blocked_by)",
-                [{"parent": None, **item, "repo": repo, "blocked_by": json.dumps(item.get("blocked_by", []))}
+                "INSERT INTO work_items (repo, number, title, state, url, kind, parent, blocked_by, type, assignees, map)"
+                " VALUES (:repo, :number, :title, :state, :url, :kind, :parent, :blocked_by, :type, :assignees, :map)",
+                [{"parent": None, "type": None, **item, "repo": repo, "blocked_by": json.dumps(item.get("blocked_by", [])),
+                  "assignees": json.dumps(item.get("assignees", [])),
+                  "map": None if item.get("map") is None else json.dumps(item["map"])}
                  for item in items],
             )
             self.db.execute("DELETE FROM pull_requests WHERE repo = ?", (repo,))
@@ -803,4 +825,75 @@ class Store:
                 "pr": pr and {k: pr[k] for k in ("number", "url", "draft")}, "started_at": j["started_at"],
                 "duplicate_of": None if j["duplicate_of"] is None else str(j["duplicate_of"]),
             })
+        return out
+
+    # ---------- Wayfinder sessions (rules in wayfinder.py) ----------
+
+    @locked
+    def set_wayfinder(self, session_id: int, **fields: int | list[str] | None) -> None:
+        """Set the session's `map`, `ticket` or `questions`."""
+        with self.db:
+            self.db.execute("INSERT INTO wayfinder (session_id) VALUES (?) ON CONFLICT DO NOTHING", (session_id,))
+            for name, value in fields.items():
+                assert name in ("map", "ticket", "questions")
+                stored = json.dumps(value) if name == "questions" else value
+                self.db.execute(f"UPDATE wayfinder SET {name} = ? WHERE session_id = ?", (stored, session_id))
+
+    @locked
+    def wayfinder(self, session_id: int) -> dict:
+        row = self.db.execute("SELECT * FROM wayfinder WHERE session_id = ?", (session_id,)).fetchone()
+        if row is None:
+            return {"map": None, "ticket": None, "questions": []}
+        return {"map": row["map"], "ticket": row["ticket"], "questions": json.loads(row["questions"])}
+
+    @locked
+    def record_wayfinder_ticket(self, session_id: int, number: int, action: str) -> None:
+        """The session `created` or `closed` the ticket."""
+        with self.db:
+            self.db.execute("INSERT INTO wayfinder_tickets (session_id, number, action) VALUES (?, ?, ?)"
+                            " ON CONFLICT DO NOTHING", (session_id, number, action))
+
+    @locked
+    def wayfinder_tickets(self, session_id: int, action: str) -> list[int]:
+        return [r["number"] for r in self.db.execute(
+            "SELECT number FROM wayfinder_tickets WHERE session_id = ? AND action = ? ORDER BY id", (session_id, action))]
+
+    @locked
+    def wayfinder_sessions(self, kind: str) -> list[dict]:
+        """Each live session of that kind, with its Map, Decision ticket, question titles and the tickets it created
+        and closed."""
+        rows = self.db.execute("SELECT id FROM sessions WHERE ended_at IS NULL AND kind = ? ORDER BY id", (kind,))
+        return [{"session_id": str(r["id"]), **self.wayfinder(r["id"]),
+                 "created": self.wayfinder_tickets(r["id"], "created"), "closed": self.wayfinder_tickets(r["id"], "closed")}
+                for r in rows.fetchall()]
+
+    @locked
+    def issue(self, repo: str, number: int) -> dict | None:
+        """A Work item as last polled, with its type, claim and parent."""
+        row = self.db.execute("SELECT * FROM work_items WHERE repo = ? AND number = ?", (repo, number)).fetchone()
+        if row is None:
+            return None
+        return {"number": row["number"], "title": row["title"], "state": row["state"], "url": row["url"],
+                "kind": row["kind"], "parent": row["parent"], "type": row["type"],
+                "assignees": json.loads(row["assignees"] or "[]"), "blocked_by": json.loads(row["blocked_by"] or "[]")}
+
+    @locked
+    def maps(self) -> list[dict]:
+        """Maps of repos some Machine still tracks, each with its body's facts and its Decision tickets."""
+        maps = self.db.execute(
+            "SELECT * FROM work_items WHERE kind = 'Map' AND repo IN (SELECT repo FROM tracking) ORDER BY repo, number"
+        ).fetchall()
+        out = []
+        for m in maps:
+            children = self.db.execute(
+                "SELECT number FROM work_items WHERE repo = ? AND parent = ? AND kind = 'Decision ticket' ORDER BY number",
+                (m["repo"], m["number"]),
+            ).fetchall()
+            body = json.loads(m["map"] or "{}")
+            gists, out_of_scope = body.get("gists", {}), set(body.get("out_of_scope", []))
+            # Out of scope is not drawn; a closed ticket has the gist the Map records for it.
+            tickets = [{**t, "mode": mode_of(t["type"]), "gist": gists.get(str(t["number"]))}
+                       for c in children if c["number"] not in out_of_scope and (t := self.issue(m["repo"], c["number"]))]
+            out.append({"repo": m["repo"], "number": m["number"], "title": m["title"], "url": m["url"], "state": m["state"],
+                        "destination": body.get("destination"), "fog": body.get("fog", []), "tickets": tickets})
         return out

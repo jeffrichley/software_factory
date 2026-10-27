@@ -22,6 +22,7 @@ from .phases import DEFAULT_PHASE_RULES, PENDING, PHASES, PhaseRules, phase_name
 from .silence import as_shown, is_silent
 from .skills import DEFAULT_SKILL_TABLE, SkillTable, bare_name, skill_invocation, work_item_named
 from .store import Store
+from .wayfinder import (WAITS_ON_HUMAN, WAYFINDER, claims, closes, created_numbers, creates, mode_of, questions)
 from .work_items import pull_requests, work_items
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -118,6 +119,8 @@ def create_app(
             "steps": store.steps(),
             "mismatches": mismatches(),
             "sounds": store.sounds(),
+            "wayfinder": store.wayfinder_sessions(WAYFINDER),
+            "maps": store.maps(),
         }
 
     def mismatches() -> list[dict]:
@@ -255,6 +258,7 @@ def create_app(
                 if spec_job:
                     map_subagent(job_id, event, envelope.repo, now)
                 step_id = step_of(job_id, event)
+                plan(session_id, event, envelope.repo)
                 if spec_job and name == "SubagentStart" and step_id is None:
                     inject = spec_step_start(str(job_id))
                 if name == "SessionEnd":
@@ -265,7 +269,8 @@ def create_app(
                     without_pr = job_id is not None and store.job_stage(job_id) == IN_PROGRESS
                     # A Spec Job's subagent asking for the human asks about its Step's Ticket.
                     ticket = store.step_number(step_id) if spec_job and step_id is not None else None
-                    states.apply(store, session_id, event, now, job_without_pr=without_pr, ticket=ticket)
+                    states.apply(store, session_id, event, now, job_without_pr=without_pr, ticket=ticket,
+                                 hitl=hitl_wait(session_id, event, envelope.repo))
                     sounds.schedule(store, session_id, event, now)
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
@@ -279,6 +284,62 @@ def create_app(
             step_id=None if step_id is None else str(step_id),
             inject=inject,
         )
+
+    def plan(session_id: int, event: dict, repo: str) -> None:
+        """A Wayfinder session's Map, the Decision ticket it works, the tickets it creates and closes, and its
+        latest grilling round's question titles."""
+        main = "agent_id" not in event
+        if (invocation := skill_invocation(event)) and bare_name(invocation[0]) == "wayfinder" and main:
+            if (number := work_item_named(invocation[1], repo)) is not None:
+                store.set_wayfinder(session_id, map=number)
+            else:
+                store.set_wayfinder(session_id)
+            return
+        if store.session(session_id)["kind"] != WAYFINDER:
+            return
+        tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+        command = str(tool_input.get("command") or "") if event.get("tool_name") == "Bash" else ""
+        match event.get("hook_event_name"):
+            case "PreToolUse" if command:
+                for number in claims(command, repo):
+                    if main:  # a subagent's claim is not the ticket this session works
+                        store.set_wayfinder(session_id, ticket=number)
+                for number in closes(command, repo):
+                    store.record_wayfinder_ticket(session_id, number, "closed")
+                    if main and store.wayfinder(session_id)["ticket"] is None:
+                        store.set_wayfinder(session_id, ticket=number)
+            case "PostToolUse" if command:
+                response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
+                for is_map in creates(command, repo):
+                    for number in created_numbers(response.get("stdout"), repo):
+                        if is_map:
+                            store.set_wayfinder(session_id, map=number)
+                        else:
+                            store.record_wayfinder_ticket(session_id, number, "created")
+            case "MessageDisplay" | "Stop" as name:
+                text = event.get("last_assistant_message") if name == "Stop" else event.get("delta") or event.get("message")
+                if found := questions(text):
+                    store.set_wayfinder(session_id, questions=found)
+            case "UserPromptSubmit":
+                store.set_wayfinder(session_id, questions=[])  # the human answered the round
+
+    def hitl_wait(session_id: int, event: dict, repo: str) -> dict | None:
+        """On a Wayfinder session's Stop: why it now waits on the human, if it does. It does on a HITL Decision
+        ticket it has not closed, never on an AFK one; on a ticket of unknown type, only when it stopped on a
+        grilling round."""
+        if event.get("hook_event_name") != "Stop" or store.session(session_id)["kind"] != WAYFINDER:
+            return None
+        w = store.wayfinder(session_id)
+        number = w["ticket"]
+        item = store.issue(repo, number) if number is not None else None
+        mode = mode_of(item and item["type"])
+        asked = questions(event.get("last_assistant_message")) or w["questions"]
+        if number is not None and number in store.wayfinder_tickets(session_id, "closed"):
+            return None
+        if mode == "AFK" or (mode not in WAITS_ON_HUMAN and not questions(event.get("last_assistant_message"))):
+            return None
+        name = (f"#{number} {item['title']}" if item else f"#{number}") if number is not None else "Decision ticket unknown"
+        return {"kind": "hitl", "ticket": name, "questions": asked}
 
     def step_of(job_id: int | None, event: dict | None = None) -> int | None:
         """The Step an event of the Job belongs to: a Ticket Job's one Step; in a Spec Job, the Step of the
