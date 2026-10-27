@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import threading
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta
@@ -221,8 +222,13 @@ def create_app(
         return repo not in polled_at or now - polled_at[repo] >= POLL_EVERY
 
     def poll_once() -> None:
-        """Read every due repo from GitHub (blocking). A repo whose read or save fails keeps its last poll."""
+        """Read every due repo from GitHub (blocking). A repo whose read or save fails keeps its last poll.
+
+        Once the server shuts down it reads no further repo: process exit waits for this thread.
+        """
         for repo in due():
+            if stopping.is_set():
+                return
             try:
                 read_repo(repo)
                 for job_id in store.repo_jobs(repo):
@@ -286,6 +292,8 @@ def create_app(
         if states.pr_no_longer_awaited(store, session_id, now):
             sounds.schedule(store, session_id, {}, now)  # a stopped Job turning Done sounds like any Done
 
+    stopping = threading.Event()
+
     async def poll_forever() -> None:
         while True:
             await asyncio.to_thread(poll_once)
@@ -295,6 +303,7 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         task = asyncio.create_task(poll_forever())
         yield
+        stopping.set()
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task

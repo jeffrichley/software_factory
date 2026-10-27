@@ -444,3 +444,13 @@ def test_an_issue_url_names_a_work_item_only_in_the_sessions_own_repo(client, pl
     typed(client, "implement", "https://github.com/someone/else/issues/4")
 
     assert mismatches(client) == []
+
+
+def test_once_the_server_shuts_down_a_poll_reads_no_further_repo(client, github):
+    with client:  # the server starts, then shuts down (Ctrl-C)
+        pass
+    install(client)
+
+    poll(client)
+
+    assert github.reads == []
