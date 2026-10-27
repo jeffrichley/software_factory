@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AdHocView,
   DoneCard,
@@ -12,13 +12,17 @@ import {
   NeedsYouCard,
   SectionHeading,
   SessionTable,
+  SoundToggle,
   Split,
   TopBar,
   inboxOf,
+  newSounds,
+  playSound,
   resumeCommand,
   type NeedsReason,
   type SessionRowData,
   type SessionState,
+  type SoundName,
   type TimelineEntry,
 } from "../ds";
 
@@ -52,6 +56,8 @@ interface FactoryState {
     /** The last few actions, oldest first. */
     actions: TimelineEntry[];
   }[];
+  /** The latest sounds the server has played, one per transition; ids only grow. */
+  sounds: { id: number; session_id: string; machine: string; sound: SoundName; at: string }[];
 }
 
 type Session = SessionRowData & {
@@ -81,6 +87,40 @@ function useNow(everyMs: number): number {
   return now;
 }
 
+const SOUND_KEY = "factory.sound";
+
+/** The header's sound toggle, remembered in this browser; on unless turned off. */
+function useSoundOn(): [boolean, () => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(SOUND_KEY) !== "off";
+    } catch {
+      return true;
+    }
+  });
+  const toggle = () =>
+    setOn((was) => {
+      try {
+        localStorage.setItem(SOUND_KEY, was ? "off" : "on");
+      } catch {
+        // Not remembered; the toggle still works for this page.
+      }
+      return !was;
+    });
+  return [on, toggle];
+}
+
+/** Plays each sound the server adds, once; none from before the page opened, none while muted. */
+function useSounds(sounds: FactoryState["sounds"] | undefined, on: boolean): void {
+  const heard = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!sounds) return;
+    const next = newSounds(sounds, heard.current);
+    heard.current = next.heard;
+    if (on) next.play.forEach((s) => playSound(s.sound));
+  }, [sounds, on]);
+}
+
 const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => {});
 
 /** How much of a Claude Code session id a card shows; the resume command carries all of it. */
@@ -90,6 +130,8 @@ export function Dashboard() {
   const state = useFactoryState();
   const now = useNow(1000);
   const [selectedId, setSelectedId] = useState<string>();
+  const [soundOn, toggleSound] = useSoundOn();
+  useSounds(state?.sounds, soundOn);
   const sessions: Session[] | undefined = state?.sessions.map((s) => ({
     id: s.id, machine: s.machine, repo: s.repo, ccSessionId: s.cc_session_id, state: s.state, staleReason: s.stale_reason, reason: s.reason,
     seen: s.seen, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, actions: s.actions,
@@ -113,6 +155,7 @@ export function Dashboard() {
             <MachinePill key={m.machine} name={m.machine} sessions={m.sessions} silentForMs={m.silent ? now - Date.parse(m.last_seen) : undefined} />
           ))}
         </MachinePills>
+        <SoundToggle on={soundOn} onToggle={toggleSound} />
       </TopBar>
       <Split
         side={
