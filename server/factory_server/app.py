@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import states
+from . import sounds, states
 from .activity import running_skill, started_skill, tool_headline
 from .github import GitHub, read_issues
 from .silence import as_shown, is_silent
@@ -89,7 +89,8 @@ def create_app(
     github: GitHub,
     clock: Callable[[], datetime],
     skill_table: Path = DEFAULT_SKILL_TABLE,
-    refresh_s: float = 5,
+    # Often enough that a sound whose grace runs out reaches the dashboard about on time.
+    refresh_s: float = 1,
 ) -> FastAPI:
     store = Store(db_path)
     skills = SkillTable(skill_table)
@@ -98,6 +99,7 @@ def create_app(
 
     def state() -> dict:
         now = clock()
+        store.release_sounds(now)
         machines = [{**m, "silent": is_silent(m["last_seen"], now)} for m in store.machines()]
         silent_since = {m["machine"]: m["last_seen"] for m in machines if m["silent"]}
         return {
@@ -108,6 +110,7 @@ def create_app(
             "work_items": store.work_items(),
             "pull_requests": store.pull_requests(),
             "mismatches": mismatches(),
+            "sounds": store.sounds(),
         }
 
     def mismatches() -> list[dict]:
@@ -206,6 +209,7 @@ def create_app(
                     # A resumed session, or one still running when its repo was uninstalled and reinstalled.
                     store.resume_session(session_id, now)
                     states.apply(store, session_id, event, now)
+                    sounds.schedule(store, session_id, event, now)
                 if name == "SessionStart":
                     store.set_mattpocock_skills_version(session_id, envelope.mattpocock_skills_version)
                 observe(session_id, event, now)

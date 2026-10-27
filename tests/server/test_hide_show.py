@@ -49,3 +49,40 @@ def test_a_hidden_session_stays_hidden_as_it_works_and_after_it_is_resumed(clien
     post(client, "SessionStart", source="resume")
 
     assert session(client)["hidden"] is True
+
+
+def sounds(client) -> list[str]:
+    return [s["sound"] for s in client.get("/api/state").json()["sounds"]]
+
+
+def test_a_hidden_session_is_silent(client, clock):
+    post(client, "SessionStart")
+    post(client, "session_hidden")
+
+    post(client, "Stop", background_tasks=[])
+    post(client, "PreToolUse", tool_use_id="toolu_q", tool_name="AskUserQuestion", tool_input=dict(questions=[dict(question="Which?")]))
+    clock.advance(30)
+
+    assert sounds(client) == []
+
+
+def test_a_session_hidden_during_the_grace_never_sounds_and_sounds_again_once_shown(client, clock):
+    post(client, "StopFailure", error="overloaded")
+    clock.advance(3)
+    post(client, "session_hidden")
+    clock.advance(30)
+    assert sounds(client) == []
+
+    post(client, "session_shown")
+    post(client, "UserPromptSubmit", prompt="go on")
+    post(client, "Stop", background_tasks=[])
+
+    assert sounds(client) == ["done"]
+
+
+def test_a_session_on_any_machine_sounds_whatever_the_dashboard_filters(client):
+    # The Machine filter lives in the browser: the server's sounds name every Machine's sessions.
+    post(client, "Stop", machine="mac", background_tasks=[])
+    post(client, "Stop", machine="wsl", session="cc-2", background_tasks=[])
+
+    assert sounds(client) == ["done", "done"]

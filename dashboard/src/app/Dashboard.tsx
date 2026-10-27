@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AdHocView,
   DoneCard,
@@ -16,16 +16,20 @@ import {
   NeedsYouCard,
   SectionHeading,
   SessionTable,
+  SoundToggle,
   Split,
   TopBar,
   filterUrl,
   hiddenMachinesOf,
   inboxOf,
+  newSounds,
+  playSound,
   resumeCommand,
   viewOf,
   type NeedsReason,
   type SessionRowData,
   type SessionState,
+  type SoundName,
   type TimelineEntry,
 } from "../ds";
 
@@ -61,6 +65,8 @@ interface FactoryState {
     /** The last few actions, oldest first. */
     actions: TimelineEntry[];
   }[];
+  /** The latest sounds the server has played, one per transition; ids only grow. */
+  sounds: { id: number; session_id: string; machine: string; sound: SoundName; at: string }[];
 }
 
 type Session = SessionRowData & {
@@ -89,6 +95,40 @@ function useNow(everyMs: number): number {
     return () => clearInterval(t);
   }, [everyMs]);
   return now;
+}
+
+const SOUND_KEY = "factory.sound";
+
+/** The header's sound toggle, remembered in this browser; on unless turned off. */
+function useSoundOn(): [boolean, () => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(SOUND_KEY) !== "off";
+    } catch {
+      return true;
+    }
+  });
+  const toggle = () =>
+    setOn((was) => {
+      try {
+        localStorage.setItem(SOUND_KEY, was ? "off" : "on");
+      } catch {
+        // Not remembered; the toggle still works for this page.
+      }
+      return !was;
+    });
+  return [on, toggle];
+}
+
+/** Plays each sound the server adds, once; none from before the page opened, none while muted. */
+function useSounds(sounds: FactoryState["sounds"] | undefined, on: boolean): void {
+  const heard = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!sounds) return;
+    const next = newSounds(sounds, heard.current);
+    heard.current = next.heard;
+    if (on) next.play.forEach((s) => playSound(s.sound));
+  }, [sounds, on]);
 }
 
 const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => {});
@@ -130,6 +170,8 @@ export function Dashboard() {
   const [showHiddenSessions, setShowHiddenSessions] = useState(false);
   const names = state?.machines.map((m) => m.machine) ?? [];
   const [hiddenMachines, setHiddenMachines] = useMachineFilter(names);
+  const [soundOn, toggleSound] = useSoundOn();
+  useSounds(state?.sounds, soundOn);
   const sessions: Session[] = state?.sessions.map((s) => ({
     id: s.id, machine: s.machine, repo: s.repo, ccSessionId: s.cc_session_id, state: s.state, staleReason: s.stale_reason, reason: s.reason,
     seen: s.seen, hidden: s.hidden, kind: s.kind, unknownSkill: s.unknown_skill, now: s.now, actions: s.actions,
@@ -172,6 +214,7 @@ export function Dashboard() {
           <HiddenNeedsBadge count={view.hiddenNeeds.length} onShow={() => showMachines(view.hiddenNeeds.map((s) => s.machine))} />
           <NeedsCount count={needs.length} />
           <DoneUnseenCount count={doneUnseen.length} />
+          <SoundToggle on={soundOn} onToggle={toggleSound} />
         </div>
       </TopBar>
       <Split
