@@ -24,6 +24,7 @@ class FakeServer:
     """Records every POSTed envelope and answers with `reply`; `restart()` brings it back on the same port.
 
     Answers 422 to the events named in `refuse`, and takes `delay` seconds over each reply.
+    Serves `state` as the dashboard state JSON.
     """
 
     def __init__(self, port: int = 0) -> None:
@@ -31,6 +32,7 @@ class FakeServer:
         self.reply: dict = {"session_id": "7", "job_id": None, "server_version": "0.1.0"}
         self.refuse: set[str] = set()
         self.delay = 0.0
+        self.state: dict = {"jobs": []}
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -46,8 +48,9 @@ class FakeServer:
                 self.wfile.write(out)
 
             def do_GET(self) -> None:
-                out = json.dumps({"server_version": server.reply["server_version"]}).encode()
-                self.send_response(200 if self.path == "/api/health" else 404)
+                pages = {"/api/health": {"server_version": server.reply["server_version"]}, "/api/state": server.state}
+                out = json.dumps(pages.get(self.path, {})).encode()
+                self.send_response(200 if self.path in pages else 404)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(out)))
                 self.end_headers()

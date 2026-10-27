@@ -269,6 +269,99 @@ def dashboard() -> None:
     webbrowser.open(f"{url}/")
 
 
+# The Job stages that end a Job; only these Jobs' worktrees and branches may be cleaned up.
+ENDED = ("Merged", "Closed", "Abandoned")
+
+
+def server_state(server_url: str) -> dict:
+    try:
+        with urllib.request.urlopen(f"{server_url}/api/state", timeout=5) as resp:
+            return json.loads(resp.read())
+    except (OSError, ValueError):
+        fail(f"Server unreachable at {server_url}: cleanup needs it to know which Jobs have ended. {START_SERVER}")
+
+
+def git_out(main: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(main), *args], capture_output=True, text=True)
+
+
+def local_worktrees(main: Path) -> dict[Path, str | None]:
+    """This Machine's linked worktrees of the repo, with the branch each has checked out."""
+    found: dict[Path, str | None] = {}
+    path = None
+    for line in git_out(main, "worktree", "list", "--porcelain").stdout.splitlines():
+        if line.startswith("worktree "):
+            path = Path(line.removeprefix("worktree ")).resolve()
+            found[path] = None
+        elif line.startswith("branch refs/heads/") and path:
+            found[path] = line.removeprefix("branch refs/heads/")
+    found.pop(main.resolve(), None)
+    return found
+
+
+def has_branch(main: Path, branch: str) -> bool:
+    return git_out(main, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}").returncode == 0
+
+
+@app.command()
+def cleanup(
+    yes: Annotated[bool, typer.Option("--yes", help="Remove without asking.")] = False,
+) -> None:
+    """List Merged, Closed and Abandoned Jobs that still have a worktree or branch on this Machine, and remove them when asked."""
+    setup = require_setup()
+    main = require_repo()
+    machine = setup["machine"]
+    marker = marker_path(main, machine)
+    if not marker.exists():
+        fail(f"Not tracked on '{machine}': {main}. Run `factory install` (or /factory:install) to track it.")
+    repo = json.loads(marker.read_text())["repo"]
+    jobs = [j for j in server_state(setup["server_url"]).get("jobs", []) if j["repo"] == repo and j.get("machine") == machine]
+    worktrees = local_worktrees(main)
+
+    def where(j: dict) -> tuple[Path | None, str | None]:
+        """The Job's worktree and branch that are still on this Machine."""
+        wt = j["worktree"] and Path(j["worktree"]).resolve()
+        wt = wt if wt in worktrees else None
+        branch = j["branch"] or (worktrees[wt] if wt else None)
+        return wt, branch if branch and has_branch(main, branch) else None
+
+    # A worktree or branch an active Job still works in (a reused worktree, a rework) is never touched.
+    active = {x for j in jobs if j["stage"] not in ENDED for x in where(j) if x}
+    finished = []  # (job, worktree or None, branch or None)
+    for j in jobs:
+        if j["stage"] in ENDED:
+            wt, branch = (None if x in active else x for x in where(j))
+            if wt or branch:
+                finished.append((j, wt, branch))
+    if not finished:
+        typer.echo("No ended Job has a worktree or branch left on this Machine.")
+        return
+
+    typer.echo("Ended Jobs with a worktree or branch on this Machine:")
+    for j, wt, branch in finished:
+        item = f"#{j['number']}" if j["number"] is not None else f"Job {j['id']}"
+        typer.echo(f"  {item} ({j['stage']}): worktree {wt or '—'}, branch {branch or '—'}")
+    if not yes and not typer.confirm("Remove these worktrees and branches?", default=False):
+        typer.echo("Nothing removed.")
+        return
+    refused = []
+    for j, wt, branch in finished:
+        if wt and git_out(wt, "status", "--porcelain").stdout.strip():
+            refused.append(f"{wt} has uncommitted changes: left it and its branch alone.")
+            continue
+        if wt and (done := git_out(main, "worktree", "remove", str(wt))).returncode != 0:
+            refused.append(f"Couldn't remove {wt}: {done.stderr.strip()}")
+            continue
+        if branch and (done := git_out(main, "branch", "-D", branch)).returncode != 0:
+            refused.append(f"Couldn't delete branch {branch}: {done.stderr.strip()}")
+            continue
+        typer.echo(f"Removed {', '.join(str(x) for x in (wt, branch and f'branch {branch}') if x)}.")
+    for problem in refused:
+        typer.echo(problem, err=True)
+    if refused:
+        raise typer.Exit(1)
+
+
 report_app = typer.Typer(no_args_is_help=True, help="Report what hooks can't see about a Job.")
 app.add_typer(report_app, name="report")
 JobOption = Annotated[str, typer.Option("--job", help="The Job's id, as the Factory gave it at Job start.")]
