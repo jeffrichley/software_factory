@@ -304,6 +304,12 @@ def job_(issue: Annotated[int, typer.Option("--issue", help="The Work item's iss
     self_report("job_issue", job, issue=issue)
 
 
+@app.command("step")
+def step_(ticket: Annotated[int, typer.Option("--ticket", help="The Ticket's issue number.")], job: JobOption) -> None:
+    """The Ticket a Spec Job's subagent works, for when the Factory couldn't tell from its launch."""
+    self_report("report_step", job, ticket=ticket)
+
+
 # The Phases a Step moves through; the server's Phase rules use the same names.
 PHASES = ("Exploring", "Red", "Green", "Refactor", "Reviewing", "Committed", "Merged")
 

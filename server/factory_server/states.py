@@ -50,23 +50,29 @@ def running_background_tasks(event: dict) -> bool:
     return any(t.get("status") == "running" for t in event.get("background_tasks") or [] if isinstance(t, dict))
 
 
-def apply(store: Store, session_id: int, event: dict, now: datetime, job_without_pr: bool = False) -> None:
-    """Apply one hook event's effect on the session's state; `job_without_pr`: its current Job has no non-draft PR."""
+def apply(store: Store, session_id: int, event: dict, now: datetime, job_without_pr: bool = False,
+          ticket: int | None = None) -> None:
+    """Apply one hook event's effect on the session's state; `job_without_pr`: its current Job has no non-draft PR;
+    `ticket`: the Ticket of the Step the event's subagent works, which a prompt it raises names."""
     subagent = event.get("agent_id") or MAIN
     tool_use_id = event.get("tool_use_id")
+
+    def naming(reason: dict) -> dict:
+        return reason if ticket is None else {**reason, "step_ticket": ticket}
+
     match event.get("hook_event_name"):
         case "PreToolUse":
             if tool_use_id:
                 store.open_tool_use(session_id, subagent, tool_use_id, event.get("tool_name", ""), event.get("tool_input") or {})
             store.clear_loose_prompts(session_id, subagent)
             if event.get("tool_name") in ASK_TOOLS:
-                store.add_prompt(session_id, subagent, tool_use_id, ask_reason(event), now)
+                store.add_prompt(session_id, subagent, tool_use_id, naming(ask_reason(event)), now)
             store.set_base(session_id, "Working")
         case "PermissionRequest":
             # No tool_use_id on this event: tie it to the open call it asks about. A question or plan
             # approval asking permission stays the question it already is.
             key = store.find_tool_use(session_id, subagent, event.get("tool_name", ""), event.get("tool_input") or {})
-            store.add_prompt(session_id, subagent, key, permission_reason(event), now)
+            store.add_prompt(session_id, subagent, key, naming(permission_reason(event)), now)
         case "PostToolUse" | "PostToolUseFailure":
             if tool_use_id:
                 store.close_tool_use(session_id, tool_use_id)
@@ -74,7 +80,8 @@ def apply(store: Store, session_id: int, event: dict, now: datetime, job_without
             store.clear_loose_prompts(session_id, subagent)
             store.set_base(session_id, "Working")
         case "Elicitation":
-            store.add_prompt(session_id, subagent, elicitation_key(event), {"kind": "question", "text": event.get("message", "")}, now)
+            store.add_prompt(session_id, subagent, elicitation_key(event),
+                             naming({"kind": "question", "text": event.get("message", "")}), now)
         case "ElicitationResult":
             store.clear_prompts(session_id, key=elicitation_key(event))
         case "UserPromptSubmit":

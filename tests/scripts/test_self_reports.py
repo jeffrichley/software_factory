@@ -47,6 +47,15 @@ def test_phase_reports_the_steps_phase(env, repo, server):
     }
 
 
+def test_step_reports_the_ticket_a_subagent_works(env, repo, server):
+    installed(env, repo, server)
+
+    done = run_factory(env, repo, "step", "--ticket", "6", "--job", "3")
+
+    assert done.returncode == 0, done.stderr
+    assert server.received[-1]["body"]["event"] == {"hook_event_name": "report_step", "job_id": "3", "ticket": 6}
+
+
 def test_phase_refuses_a_name_that_is_not_a_phase(env, repo, server):
     installed(env, repo, server)
 
@@ -60,7 +69,7 @@ def test_phase_refuses_a_name_that_is_not_a_phase(env, repo, server):
 def test_every_self_report_requires_its_job(env, repo, server):
     installed(env, repo, server)
 
-    for args in (("report", "pr", PR_URL), ("job", "--issue", "5"), ("phase", "red")):
+    for args in (("report", "pr", PR_URL), ("job", "--issue", "5"), ("phase", "red"), ("step", "--ticket", "6")):
         done = run_factory(env, repo, *args)
         assert done.returncode != 0
         assert "--job" in done.stdout + done.stderr

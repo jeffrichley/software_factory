@@ -19,6 +19,7 @@ DEFAULT_PHASE_RULES = Path(__file__).resolve().parent / "tables" / "phases.toml"
 TABLE_VERSION = 1  # the table format this server reads
 PHASES = ("Exploring", "Red", "Green", "Refactor", "Reviewing", "Committed", "Merged")
 UNKNOWN = "unknown"  # how a rule's `from` names a Step whose Phase is unknown
+PENDING = "Pending"  # a Spec Job's Step no subagent has started on yet; before the Phases, never inferred
 ANY = "*"
 SIGNALS = {"explore", "test_edit", "source_edit", "test_pass", "test_fail", "commit", "merge", "pr_merged"}
 SKILL_SIGNAL = "skill:"  # skill:<name>, a skill started in the Step (a Phase signal such as tdd or code-review)
