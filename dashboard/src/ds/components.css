@@ -375,3 +375,15 @@ a { color: inherit; }
 /* Wayfinder detail */
 .prose { margin: 0; }
 .files { margin: 0; padding-left: var(--s5); display: grid; gap: 4px; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+
+/* research, to-spec and to-tickets detail */
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: var(--s5); }
+.plan-list { padding-left: 0; list-style: none; }
+.plan-list li { display: flex; gap: var(--s2); align-items: baseline; min-width: 0; }
+.checklist { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s2); font-size: var(--fs-sm); }
+.checklist li { display: flex; gap: var(--s2); align-items: center; color: var(--text-3); }
+.checklist li.done { color: var(--text); }
+.checklist li.cur { color: var(--text); font-weight: 600; }
+.checklist .cb { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1.5px solid var(--line-2); border-radius: var(--r-sm); }
+.checklist li.done .cb { background: var(--done-bg); border-color: var(--done-line); color: var(--done); }
+.checklist li.cur .cb { border-color: var(--working); }

@@ -27,6 +27,15 @@ import {
   TopBar,
   WAYFINDER,
   WayfinderView,
+  RESEARCH,
+  ResearchView,
+  TO_SPEC,
+  ToSpecView,
+  TO_TICKETS,
+  ToTicketsView,
+  type ResearchData,
+  type ToSpecData,
+  type ToTicketsData,
   type DecisionTicketData,
   type MapData,
   type WayfinderData,
@@ -58,6 +67,8 @@ interface FactoryState {
   machines: { machine: string; sessions: number; last_seen: string; silent: boolean }[];
   /** Tracked repos, each with the Machines that track it. */
   repos: { repo: string; machines: string[] }[];
+  /** Work items of Tracked repos as last polled. */
+  work_items: { repo: string; number: number; title: string; state: string; url: string; kind: string }[];
   /** Live Tracked sessions, Needs you first. */
   sessions: {
     id: string;
@@ -130,6 +141,16 @@ interface FactoryState {
       number: number; title: string; url: string; state: "open" | "closed"; type: string | null; mode: string | null;
       assignees: string[]; gist: string | null; blocked_by: number[];
     }[];
+  }[];
+  /** Live research sessions: the question, searches run, sources fetched and findings file. */
+  research: { session_id: string; question: string | null; searches: string[]; sources: string[]; findings: { path: string; url: string | null } | null }[];
+  /** Live to-spec sessions: the Map they came from, the Spec they published and the Spec outline, ticked as written. */
+  to_spec: { session_id: string; map: number | null; spec: number | null; outline: { section: string; written: boolean }[] }[];
+  /** Live to-tickets sessions: their Spec and the Tickets they created, as GitHub last had them. */
+  to_tickets: {
+    session_id: string;
+    spec: number | null;
+    tickets: { number: number; title: string | null; url: string; state: "open" | "closed"; blocked_by: number[] }[];
   }[];
   /** The latest sounds the server has played, one per transition; ids only grow. */
   sounds: { id: number; session_id: string; machine: string; sound: SoundName; at: string }[];
@@ -305,6 +326,20 @@ export function Dashboard() {
       gist: t.gist, blockedBy: t.blocked_by,
     })),
   }));
+  const research: ResearchData[] = (state?.research ?? []).map((r) => ({
+    sessionId: r.session_id, question: r.question, searches: r.searches, sources: r.sources, findings: r.findings,
+  }));
+  const toSpecs: ToSpecData[] = (state?.to_spec ?? []).map((t) => ({ sessionId: t.session_id, map: t.map, spec: t.spec, outline: t.outline }));
+  const toTickets: ToTicketsData[] = (state?.to_tickets ?? []).map((t) => ({
+    sessionId: t.session_id, spec: t.spec,
+    tickets: t.tickets.map((x) => ({ number: x.number, title: x.title, url: x.url, state: x.state, blockedBy: x.blocked_by })),
+  }));
+  /** A Work item by number in the session's repo, named as last polled (by number alone before that). */
+  const itemRef = (repo: string, n: number | null | undefined) => {
+    if (n == null) return null;
+    const w = state?.work_items.find((x) => x.repo === repo && x.number === n);
+    return w ? { name: `#${n} ${w.title}`, url: w.url } : { name: `#${n}`, url: `https://github.com/${repo}/issues/${n}` };
+  };
   const planOf = (sessionId: string) => plans.find((p) => p.sessionId === sessionId) ?? null;
   const mapOf = (s: { id: string; repo: string }) => {
     const n = planOf(s.id)?.map;
@@ -314,7 +349,13 @@ export function Dashboard() {
   const workItemOf = (sessionId: string) => {
     const s = sessions.find((x) => x.id === sessionId);
     const m = s && s.kind === WAYFINDER ? mapOf(s) : null;
-    return m ? { name: `#${m.number} ${m.title}`, url: m.url } : jobOf(sessionId)?.workItem ?? null;
+    if (m) return { name: `#${m.number} ${m.title}`, url: m.url };
+    if (s?.kind === TO_SPEC) {
+      const t = toSpecs.find((x) => x.sessionId === sessionId);
+      return itemRef(s.repo, t?.spec ?? t?.map);
+    }
+    if (s?.kind === TO_TICKETS) return itemRef(s.repo, toTickets.find((x) => x.sessionId === sessionId)?.spec);
+    return jobOf(sessionId)?.workItem ?? null;
   };
 
   const seen = (id: string) => void fetch(`/api/sessions/${id}/seen`, { method: "POST" }).catch(() => {});
@@ -434,6 +475,23 @@ export function Dashboard() {
             />
           ) : selected.kind === WAYFINDER ? (
             <WayfinderView key={selected.id} {...selected} plan={planOf(selected.id)} map={mapOf(selected)} />
+          ) : selected.kind === RESEARCH ? (
+            <ResearchView key={selected.id} {...selected} research={research.find((r) => r.sessionId === selected.id) ?? null} />
+          ) : selected.kind === TO_SPEC ? (
+            <ToSpecView
+              key={selected.id}
+              {...selected}
+              toSpec={toSpecs.find((t) => t.sessionId === selected.id) ?? null}
+              map={itemRef(selected.repo, toSpecs.find((t) => t.sessionId === selected.id)?.map)}
+              spec={itemRef(selected.repo, toSpecs.find((t) => t.sessionId === selected.id)?.spec)}
+            />
+          ) : selected.kind === TO_TICKETS ? (
+            <ToTicketsView
+              key={selected.id}
+              {...selected}
+              toTickets={toTickets.find((t) => t.sessionId === selected.id) ?? null}
+              spec={itemRef(selected.repo, toTickets.find((t) => t.sessionId === selected.id)?.spec)}
+            />
           ) : (
             <AdHocView {...selected} />
           )

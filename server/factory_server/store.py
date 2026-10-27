@@ -156,6 +156,13 @@ CREATE TABLE IF NOT EXISTS wayfinder_tickets (
   action TEXT NOT NULL,
   UNIQUE (session_id, number, action)
 );
+-- A research, to-spec or to-tickets session's facts so far (JSON; rules in planning.py), by the kind it ran as.
+CREATE TABLE IF NOT EXISTS plans (
+  session_id INTEGER NOT NULL REFERENCES sessions (id),
+  kind TEXT NOT NULL,
+  facts TEXT NOT NULL,
+  PRIMARY KEY (session_id, kind)
+);
 CREATE TABLE IF NOT EXISTS sounds (
   id INTEGER PRIMARY KEY,
   session_id INTEGER NOT NULL,
@@ -923,6 +930,27 @@ class Store:
         return [{"session_id": str(r["id"]), **self.wayfinder(r["id"]),
                  "created": self.wayfinder_tickets(r["id"], "created"), "closed": self.wayfinder_tickets(r["id"], "closed")}
                 for r in rows.fetchall()]
+
+    # ---------- research, to-spec and to-tickets sessions (rules in planning.py) ----------
+
+    @locked
+    def plan(self, session_id: int, kind: str) -> dict | None:
+        row = self.db.execute("SELECT facts FROM plans WHERE session_id = ? AND kind = ?", (session_id, kind)).fetchone()
+        return None if row is None else json.loads(row["facts"])
+
+    @locked
+    def set_plan(self, session_id: int, kind: str, facts: dict) -> None:
+        with self.db:
+            self.db.execute("INSERT INTO plans (session_id, kind, facts) VALUES (?, ?, ?)"
+                            " ON CONFLICT DO UPDATE SET facts = excluded.facts", (session_id, kind, json.dumps(facts)))
+
+    @locked
+    def plan_sessions(self, kind: str) -> list[dict]:
+        """Each live session of that kind, with its repo and its facts as that kind."""
+        rows = self.db.execute(
+            "SELECT s.id, s.repo, p.facts FROM sessions s JOIN plans p ON p.session_id = s.id AND p.kind = s.kind"
+            " WHERE s.ended_at IS NULL AND s.kind = ? ORDER BY s.id", (kind,)).fetchall()
+        return [{"session_id": str(r["id"]), "repo": r["repo"], **json.loads(r["facts"])} for r in rows]
 
     @locked
     def issue(self, repo: str, number: int) -> dict | None:
