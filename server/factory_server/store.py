@@ -843,18 +843,16 @@ class Store:
 
     @locked
     def jobs(self) -> list[dict]:
-        """Jobs in repos some Machine tracks, oldest first, with their Work item, PR and stage."""
+        """Jobs in repos some Machine tracks, oldest first, with their Machine, Work item, PR and stage."""
         rows = self.db.execute(
             "SELECT j.*, w.title, w.url, s.machine FROM jobs j JOIN sessions s ON s.id = j.session_id"
-            " LEFT JOIN work_items w ON w.repo = j.repo AND w.number = j.number"
-            " WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY j.id"
+            " LEFT JOIN work_items w ON w.repo = j.repo AND w.number = j.number WHERE j.repo IN (SELECT repo FROM tracking) ORDER BY j.id"
         ).fetchall()
         out = []
         for j in rows:
             pr = self._job_pr(j)
             out.append({
-                "id": str(j["id"]), "session_id": str(j["session_id"]), "machine": j["machine"], "kind": j["kind"],
-                "repo": j["repo"],
+                "id": str(j["id"]), "session_id": str(j["session_id"]), "machine": j["machine"], "kind": j["kind"], "repo": j["repo"],
                 "number": j["number"],
                 "work_item": {"title": j["title"], "url": j["url"]} if j["title"] is not None else None,
                 "worktree": j["worktree"], "branch": j["branch"],
